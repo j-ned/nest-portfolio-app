@@ -9,11 +9,7 @@ import { PasswordService } from './password.service';
 import { TwoFactorService } from './two-factor.service';
 import { AppConfigService } from '../config/app-config.service';
 import type { User } from '../database/schema/users';
-
-interface JwtPayload {
-  sub: string;
-  scope?: string;
-}
+import type { JwtPayload } from './jwt-payload.interface';
 
 export type LoginResult =
   | { kind: 'authenticated'; token: string; user: PublicUser }

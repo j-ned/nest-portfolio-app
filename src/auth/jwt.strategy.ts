@@ -5,11 +5,7 @@ import type { Request } from 'express';
 import { AppConfigService } from '../config/app-config.service';
 import { UsersService } from '../users/users.service';
 import type { User } from '../database/schema/users';
-
-interface JwtPayload {
-  sub: string;
-  scope?: string;
-}
+import type { JwtPayload } from './jwt-payload.interface';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
