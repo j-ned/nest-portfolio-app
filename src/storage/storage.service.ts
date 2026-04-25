@@ -55,9 +55,7 @@ export class StorageService {
 
   async delete(bucket: string, key: string): Promise<void> {
     // S3 DeleteObject est idempotent : pas d'erreur si la clé n'existe pas.
-    await this.s3.send(
-      new DeleteObjectCommand({ Bucket: bucket, Key: key }),
-    );
+    await this.s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
   }
 
   async list(bucket: string, prefix?: string): Promise<S3Object[]> {
