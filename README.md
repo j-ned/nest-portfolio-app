@@ -177,14 +177,44 @@ pnpm test:e2e       # E2E (placeholder pour l'instant)
 | `pnpm db:reset` | Wipe + recrée + migrations |
 | `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:studio` | Drizzle Kit |
 
+## Profile public
+
+Module de contenu publié sur le portfolio. **7 entités** éditées par l'admin et lues publiquement par les visiteurs : Profile (singleton), Hero (singleton), SocialLinks, Diplomas, Technologies, Expertises (avec discriminator `offer`/`seek`), ServicePricing (avec ordering).
+
+**32 endpoints** sous 7 préfixes :
+
+| Préfixe | Endpoints | Pattern |
+|---|---|---|
+| `/profile` | 2 (GET + PATCH) | Singleton seedé |
+| `/hero` | 2 (GET + PATCH) | Singleton seedé |
+| `/social-links` | 5 (CRUD) | Collection standard |
+| `/diplomas` | 5 (CRUD) | Collection avec `skills: text[]` |
+| `/technologies` | 5 (CRUD) | Collection standard |
+| `/expertises` | 7 (offers/seeks/admin-detail/CRUD) | Collection avec discriminator `pgEnum('offer','seek')` |
+| `/service-pricing` | 6 (CRUD + `PATCH /reorder` bulk) | Collection avec champ `order` |
+
+**Lectures publiques** sans guard. **Toutes les écritures** (POST/PATCH/DELETE/reorder) protégées par `@UseGuards(JwtAuthGuard)`.
+
+**Singletons** (`Profile`, `Hero`) sont seedés via la migration `0001` — `GET /profile` retourne 200 dès le boot, `PATCH /profile` est un simple UPDATE.
+
+**Reorder** : `PATCH /service-pricing/reorder` body `{ orderedIds: string[] }` réassigne `order = index` dans une transaction. Sémantique partielle : les IDs absents conservent leur `order`.
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-25-profile-public-design.md`](docs/superpowers/specs/2026-04-25-profile-public-design.md).
+
+**Décisions clés** :
+
+- Avatar S3 reporté au sous-projet "Projects" (qui introduira le S3 setup) ; `avatarUrl` reste un champ texte PATCH-able.
+- Pas de pagination, pas de cache headers, pas de soft delete, pas de slug, pas d'ordering sur les autres collections — scope minimaliste.
+- Helper de test partagé `src/database/test-utils.ts` (`createMockDb()`) réutilisable par tous les sous-projets futurs.
+
 ## Migration depuis le backend Hono
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
 
 1. ✅ Fondations
 2. ✅ Auth (Users + JWT + 2FA + backup codes)
-3. **Profile public** *(prochain)* (Profile, Hero, SocialLinks, Diplomas, Technologies, Expertises, ServicePricing)
-4. Projects (CRUD + upload image S3)
+3. ✅ Profile public (Profile, Hero, SocialLinks, Diplomas, Technologies, Expertises, ServicePricing)
+4. **Projects** *(prochain)* (CRUD + upload image S3) — introduit le S3 setup
 5. Contact (messages + mailer)
 6. Bookings (réservations + slots + mail)
 7. CV (upload S3 + download)
