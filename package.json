@@ -7,6 +7,10 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
+    "db:down": "podman compose down",
+    "db:reset": "podman compose down -v && pnpm db:up && pnpm db:wait && pnpm db:migrate",
+    "db:up": "podman compose up -d postgres",
+    "db:wait": "until podman exec portfolio-nest-db pg_isready -U portfolio -d portfolio_nest > /dev/null 2>&1; do sleep 0.5; done",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
