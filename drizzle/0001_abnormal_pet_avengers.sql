@@ -70,4 +70,8 @@ CREATE TABLE "service_pricing" (
 );
 --> statement-breakpoint
 CREATE INDEX "expertise_type_idx" ON "expertise" USING btree ("type");--> statement-breakpoint
-CREATE INDEX "service_pricing_order_idx" ON "service_pricing" USING btree ("order");
+CREATE INDEX "service_pricing_order_idx" ON "service_pricing" USING btree ("order");--> statement-breakpoint
+
+-- Seed singletons (Profile + Hero)
+INSERT INTO "profile" DEFAULT VALUES;
+INSERT INTO "hero" DEFAULT VALUES;
