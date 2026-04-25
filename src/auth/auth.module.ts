@@ -19,15 +19,23 @@ import { JwtAuthGuard } from './jwt-auth.guard';
     JwtModule.registerAsync({
       imports: [AppConfigModule],
       inject: [AppConfigService],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       useFactory: (cfg: AppConfigService): JwtModuleOptions => ({
         secret: cfg.jwtSecret,
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         signOptions: { expiresIn: cfg.jwtExpiresIn as any },
       }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, PasswordService, TwoFactorService, JwtStrategy, JwtAuthGuard],
+  providers: [
+    AuthService,
+    PasswordService,
+    TwoFactorService,
+    JwtStrategy,
+    JwtAuthGuard,
+  ],
   exports: [AuthService, JwtAuthGuard],
 })
 export class AuthModule {}

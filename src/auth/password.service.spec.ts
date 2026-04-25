@@ -10,7 +10,7 @@ describe('PasswordService', () => {
   it('hash et verify roundtrip', async () => {
     const plain = 'my-secret-password-123';
     const hash = await service.hash(plain);
-    expect(hash).toMatch(/^\$argon2id\$/);          // Argon2id encoded format
+    expect(hash).toMatch(/^\$argon2id\$/); // Argon2id encoded format
     expect(await service.verify(plain, hash)).toBe(true);
   });
 
@@ -20,6 +20,8 @@ describe('PasswordService', () => {
   });
 
   it('verify retourne false pour un hash malformé (pas de throw)', async () => {
-    expect(await service.verify('any-password', 'not-a-valid-hash')).toBe(false);
+    expect(await service.verify('any-password', 'not-a-valid-hash')).toBe(
+      false,
+    );
   });
 });

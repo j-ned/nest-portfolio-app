@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { PasswordService } from './password.service';
@@ -32,7 +36,7 @@ export class AuthService {
     private readonly password: PasswordService,
     private readonly twoFactor: TwoFactorService,
     private readonly jwt: JwtService,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     private readonly cfg: AppConfigService,
   ) {}
 
@@ -91,26 +95,40 @@ export class AuthService {
     return { token, user: publicUser(user) };
   }
 
-  async changePassword(user: User, currentPassword: string, newPassword: string): Promise<void> {
+  async changePassword(
+    user: User,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
     const ok = await this.password.verify(currentPassword, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid current password');
     const newHash = await this.password.hash(newPassword);
     await this.users.updatePassword(user.id, newHash);
   }
 
-  async generateTwoFactorSecret(user: User): Promise<{ secret: string; qrCodeDataUrl: string }> {
+  async generateTwoFactorSecret(
+    user: User,
+  ): Promise<{ secret: string; qrCodeDataUrl: string }> {
     if (user.isTwoFactorEnabled) {
       throw new BadRequestException('2FA is already enabled');
     }
     const secret = this.twoFactor.generateSecret();
-    const qrCodeDataUrl = await this.twoFactor.generateQrCodeDataUrl(user.email, secret);
+    const qrCodeDataUrl = await this.twoFactor.generateQrCodeDataUrl(
+      user.email,
+      secret,
+    );
     await this.users.updateTwoFactorSecret(user.id, secret);
     return { secret, qrCodeDataUrl };
   }
 
-  async enableTwoFactor(user: User, code: string): Promise<{ backupCodes: string[] }> {
+  async enableTwoFactor(
+    user: User,
+    code: string,
+  ): Promise<{ backupCodes: string[] }> {
     if (!user.twoFactorSecret) {
-      throw new BadRequestException('Generate a 2FA secret first via /auth/2fa/generate');
+      throw new BadRequestException(
+        'Generate a 2FA secret first via /auth/2fa/generate',
+      );
     }
     if (!this.twoFactor.verifyTotpCode(user.twoFactorSecret, code)) {
       throw new UnauthorizedException('Invalid 2FA code');
@@ -130,7 +148,10 @@ export class AuthService {
     await this.users.disableTwoFactor(user.id);
   }
 
-  async regenerateBackupCodes(user: User, password: string): Promise<{ backupCodes: string[] }> {
+  async regenerateBackupCodes(
+    user: User,
+    password: string,
+  ): Promise<{ backupCodes: string[] }> {
     if (!user.isTwoFactorEnabled) {
       throw new BadRequestException('2FA is not enabled');
     }

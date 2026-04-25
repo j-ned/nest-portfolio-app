@@ -1,7 +1,19 @@
 import {
-  Body, Controller, Get, HttpCode, HttpStatus, Post, Res, UseGuards,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Res,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
 import ms from 'ms';
 import { AuthService } from './auth.service';
@@ -27,10 +39,18 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with email + password (returns challenge if 2FA enabled)' })
-  @ApiResponse({ status: 200, description: 'Authenticated (cookie set) OR 2FA challenge required' })
+  @ApiOperation({
+    summary: 'Login with email + password (returns challenge if 2FA enabled)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Authenticated (cookie set) OR 2FA challenge required',
+  })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.auth.login(dto.email, dto.password);
     if (result.kind === 'authenticated') {
       this.setAuthCookie(res, result.token);
@@ -43,8 +63,14 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Complete 2FA login with TOTP code or backup code' })
   @ApiResponse({ status: 200, description: 'Authenticated (cookie set)' })
-  @ApiResponse({ status: 401, description: 'Invalid challenge / code / backup code' })
-  async verifyTwoFactor(@Body() dto: TwoFactorVerifyDto, @Res({ passthrough: true }) res: Response) {
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid challenge / code / backup code',
+  })
+  async verifyTwoFactor(
+    @Body() dto: TwoFactorVerifyDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.auth.verifyTwoFactor(dto.challengeToken, {
       code: dto.code,
       backupCode: dto.backupCode,
@@ -70,7 +96,11 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current authenticated user' })
   me(@CurrentUser() user: User) {
-    return { id: user.id, email: user.email, isTwoFactorEnabled: user.isTwoFactorEnabled };
+    return {
+      id: user.id,
+      email: user.email,
+      isTwoFactorEnabled: user.isTwoFactorEnabled,
+    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -78,7 +108,10 @@ export class AuthController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Change the current user password' })
-  async changePassword(@CurrentUser() user: User, @Body() dto: ChangePasswordDto) {
+  async changePassword(
+    @CurrentUser() user: User,
+    @Body() dto: ChangePasswordDto,
+  ) {
     await this.auth.changePassword(user, dto.currentPassword, dto.newPassword);
     return { ok: true };
   }
@@ -87,7 +120,9 @@ export class AuthController {
   @Post('2fa/generate')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Generate a 2FA TOTP secret + QR code (does not enable yet)' })
+  @ApiOperation({
+    summary: 'Generate a 2FA TOTP secret + QR code (does not enable yet)',
+  })
   async generateTwoFactor(@CurrentUser() user: User) {
     return this.auth.generateTwoFactorSecret(user);
   }
@@ -96,8 +131,14 @@ export class AuthController {
   @Post('2fa/enable')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verify a TOTP code and enable 2FA (returns 10 one-time backup codes)' })
-  async enableTwoFactor(@CurrentUser() user: User, @Body() dto: TwoFactorEnableDto) {
+  @ApiOperation({
+    summary:
+      'Verify a TOTP code and enable 2FA (returns 10 one-time backup codes)',
+  })
+  async enableTwoFactor(
+    @CurrentUser() user: User,
+    @Body() dto: TwoFactorEnableDto,
+  ) {
     return this.auth.enableTwoFactor(user, dto.code);
   }
 
@@ -106,7 +147,10 @@ export class AuthController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Disable 2FA (requires current password)' })
-  async disableTwoFactor(@CurrentUser() user: User, @Body() dto: TwoFactorDisableDto) {
+  async disableTwoFactor(
+    @CurrentUser() user: User,
+    @Body() dto: TwoFactorDisableDto,
+  ) {
     await this.auth.disableTwoFactor(user, dto.password);
     return { ok: true };
   }
@@ -115,8 +159,13 @@ export class AuthController {
   @Post('2fa/regenerate-backup-codes')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Regenerate the 10 backup codes (requires current password)' })
-  async regenerateBackupCodes(@CurrentUser() user: User, @Body() dto: TwoFactorDisableDto) {
+  @ApiOperation({
+    summary: 'Regenerate the 10 backup codes (requires current password)',
+  })
+  async regenerateBackupCodes(
+    @CurrentUser() user: User,
+    @Body() dto: TwoFactorDisableDto,
+  ) {
     return this.auth.regenerateBackupCodes(user, dto.password);
   }
 
@@ -127,7 +176,8 @@ export class AuthController {
       httpOnly: true,
       secure: this.cfg.isProduction,
       sameSite: 'lax',
-      maxAge: ms(this.cfg.jwtExpiresIn) as number,
+
+      maxAge: (ms as unknown as (s: string) => number)(this.cfg.jwtExpiresIn),
       path: '/',
     });
   }
