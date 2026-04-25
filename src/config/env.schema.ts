@@ -30,6 +30,13 @@ export const envSchema = z.object({
     })
     .optional(),
   TOTP_APP_NAME: z.string().default('J-Ned Portfolio'),
+
+  // S3 Storage
+  S3_ENDPOINT: z.string().url(),
+  S3_REGION: z.string().min(1),
+  S3_ACCESS_KEY: z.string().min(4),
+  S3_SECRET_KEY: z.string().min(8),
+  S3_PUBLIC_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -43,4 +43,20 @@ export class AppConfigService {
   get totpAppName() {
     return this.config.get('TOTP_APP_NAME', { infer: true });
   }
+
+  get s3Endpoint() {
+    return this.config.get('S3_ENDPOINT', { infer: true });
+  }
+  get s3Region() {
+    return this.config.get('S3_REGION', { infer: true });
+  }
+  get s3AccessKey() {
+    return this.config.get('S3_ACCESS_KEY', { infer: true });
+  }
+  get s3SecretKey() {
+    return this.config.get('S3_SECRET_KEY', { infer: true });
+  }
+  get s3PublicUrl() {
+    return this.config.get('S3_PUBLIC_URL', { infer: true });
+  }
 }
