@@ -10,6 +10,8 @@ export function validateEnv(raw: Record<string, unknown>) {
   }
   return {
     ...result.data,
-    LOG_LEVEL: result.data.LOG_LEVEL ?? (result.data.NODE_ENV === 'development' ? 'debug' : 'info'),
+    LOG_LEVEL:
+      result.data.LOG_LEVEL ??
+      (result.data.NODE_ENV === 'development' ? 'debug' : 'info'),
   };
 }

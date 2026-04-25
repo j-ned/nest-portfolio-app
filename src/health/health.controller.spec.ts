@@ -10,9 +10,7 @@ describe('HealthController', () => {
     dbExecute = jest.fn();
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
-      providers: [
-        { provide: DRIZZLE, useValue: { execute: dbExecute } },
-      ],
+      providers: [{ provide: DRIZZLE, useValue: { execute: dbExecute } }],
     }).compile();
     controller = module.get<HealthController>(HealthController);
   });

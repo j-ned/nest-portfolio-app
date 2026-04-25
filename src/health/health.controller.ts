@@ -13,7 +13,10 @@ export class HealthController {
 
   @Get()
   @ApiOperation({ summary: 'Liveness + DB connectivity check' })
-  @ApiResponse({ status: 200, description: 'Service up; check db.status field' })
+  @ApiResponse({
+    status: 200,
+    description: 'Service up; check db.status field',
+  })
   async check() {
     const start = Date.now();
     let dbStatus: 'up' | 'down' = 'down';
