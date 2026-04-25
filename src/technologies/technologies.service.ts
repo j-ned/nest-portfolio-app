@@ -11,12 +11,20 @@ export class TechnologiesService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   findAll(): Promise<Technology[]> {
-    return this.db.select().from(technologies).orderBy(asc(technologies.createdAt));
+    return this.db
+      .select()
+      .from(technologies)
+      .orderBy(asc(technologies.createdAt));
   }
 
   async findById(id: string): Promise<Technology> {
-    const rows = await this.db.select().from(technologies).where(eq(technologies.id, id)).limit(1);
-    if (rows.length === 0) throw new NotFoundException(`Technology ${id} not found`);
+    const rows = await this.db
+      .select()
+      .from(technologies)
+      .where(eq(technologies.id, id))
+      .limit(1);
+    if (rows.length === 0)
+      throw new NotFoundException(`Technology ${id} not found`);
     return rows[0];
   }
 
@@ -40,6 +48,7 @@ export class TechnologiesService {
       .delete(technologies)
       .where(eq(technologies.id, id))
       .returning({ id: technologies.id });
-    if (rows.length === 0) throw new NotFoundException(`Technology ${id} not found`);
+    if (rows.length === 0)
+      throw new NotFoundException(`Technology ${id} not found`);
   }
 }

@@ -24,10 +24,7 @@ describe('ProfileService', () => {
   beforeEach(async () => {
     db = createMockDb();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ProfileService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [ProfileService, { provide: DRIZZLE, useValue: db }],
     }).compile();
     service = module.get(ProfileService);
   });
@@ -41,7 +38,9 @@ describe('ProfileService', () => {
 
     it('throw InternalServerErrorException si singleton absent', async () => {
       db.limit.mockResolvedValueOnce([]);
-      await expect(service.findOne()).rejects.toThrow(InternalServerErrorException);
+      await expect(service.findOne()).rejects.toThrow(
+        InternalServerErrorException,
+      );
     });
   });
 
@@ -52,7 +51,10 @@ describe('ProfileService', () => {
       // findOne d'abord (select.from.limit), puis update.set.where.returning
       db.limit.mockResolvedValueOnce([existing]);
       db.returning.mockResolvedValueOnce([updated]);
-      const result = await service.update({ displayName: 'Julien', location: 'Lyon' });
+      const result = await service.update({
+        displayName: 'Julien',
+        location: 'Lyon',
+      });
       expect(result).toEqual(updated);
     });
   });

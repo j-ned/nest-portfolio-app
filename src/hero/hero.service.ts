@@ -1,4 +1,8 @@
-import { Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
@@ -12,7 +16,9 @@ export class HeroService {
   async findOne(): Promise<Hero> {
     const rows = await this.db.select().from(hero).limit(1);
     if (rows.length === 0) {
-      throw new InternalServerErrorException('Hero singleton missing — did you run the migration?');
+      throw new InternalServerErrorException(
+        'Hero singleton missing — did you run the migration?',
+      );
     }
     return rows[0];
   }

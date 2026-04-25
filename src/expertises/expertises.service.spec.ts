@@ -13,7 +13,7 @@ describe('ExpertisesService', () => {
     id: 'exp-uuid',
     type: 'offer',
     title: 'Architecture',
-    description: 'Conception d\'architectures backend',
+    description: "Conception d'architectures backend",
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -22,10 +22,7 @@ describe('ExpertisesService', () => {
   beforeEach(async () => {
     db = createMockDb();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ExpertisesService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [ExpertisesService, { provide: DRIZZLE, useValue: db }],
     }).compile();
     service = module.get(ExpertisesService);
   });
@@ -56,17 +53,27 @@ describe('ExpertisesService', () => {
   it('create injecte type=offer si createOffer', async () => {
     const created = mkExpertise({ type: 'offer' });
     db.returning.mockResolvedValueOnce([created]);
-    const result = await service.create('offer', { title: 'X', description: 'Y' });
+    const result = await service.create('offer', {
+      title: 'X',
+      description: 'Y',
+    });
     expect(result.type).toBe('offer');
-    expect(db.values).toHaveBeenCalledWith(expect.objectContaining({ type: 'offer' }));
+    expect(db.values).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'offer' }),
+    );
   });
 
   it('create injecte type=seek si createSeek', async () => {
     const created = mkExpertise({ type: 'seek' });
     db.returning.mockResolvedValueOnce([created]);
-    const result = await service.create('seek', { title: 'X', description: 'Y' });
+    const result = await service.create('seek', {
+      title: 'X',
+      description: 'Y',
+    });
     expect(result.type).toBe('seek');
-    expect(db.values).toHaveBeenCalledWith(expect.objectContaining({ type: 'seek' }));
+    expect(db.values).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'seek' }),
+    );
   });
 
   it('update ne change PAS le type', async () => {
@@ -74,12 +81,16 @@ describe('ExpertisesService', () => {
     db.returning.mockResolvedValueOnce([updated]);
     await service.update('exp-uuid', { title: 'New title' });
     // Vérifier que le set NE contient PAS de champ "type"
-    expect(db.set).toHaveBeenCalledWith(expect.not.objectContaining({ type: expect.anything() }));
+    expect(db.set).toHaveBeenCalledWith(
+      expect.not.objectContaining({ type: expect.anything() }),
+    );
   });
 
   it('update throw NotFoundException si id inconnu', async () => {
     db.returning.mockResolvedValueOnce([]);
-    await expect(service.update('nope', { title: 'X' })).rejects.toThrow(NotFoundException);
+    await expect(service.update('nope', { title: 'X' })).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('remove supprime ou throw 404', async () => {

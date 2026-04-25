@@ -1,5 +1,22 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { DiplomasService } from './diplomas.service';
 import { CreateDiplomaDto } from './dto/create-diploma.dto';
@@ -35,7 +52,10 @@ export class DiplomasController {
   @Patch(':id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a diploma (admin)' })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateDiplomaDto) {
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateDiplomaDto,
+  ) {
     return this.diplomas.update(id, dto);
   }
 

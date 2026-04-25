@@ -11,12 +11,20 @@ export class SocialLinksService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   findAll(): Promise<SocialLink[]> {
-    return this.db.select().from(socialLinks).orderBy(asc(socialLinks.createdAt));
+    return this.db
+      .select()
+      .from(socialLinks)
+      .orderBy(asc(socialLinks.createdAt));
   }
 
   async findById(id: string): Promise<SocialLink> {
-    const rows = await this.db.select().from(socialLinks).where(eq(socialLinks.id, id)).limit(1);
-    if (rows.length === 0) throw new NotFoundException(`SocialLink ${id} not found`);
+    const rows = await this.db
+      .select()
+      .from(socialLinks)
+      .where(eq(socialLinks.id, id))
+      .limit(1);
+    if (rows.length === 0)
+      throw new NotFoundException(`SocialLink ${id} not found`);
     return rows[0];
   }
 
@@ -40,6 +48,7 @@ export class SocialLinksService {
       .delete(socialLinks)
       .where(eq(socialLinks.id, id))
       .returning({ id: socialLinks.id });
-    if (rows.length === 0) throw new NotFoundException(`SocialLink ${id} not found`);
+    if (rows.length === 0)
+      throw new NotFoundException(`SocialLink ${id} not found`);
   }
 }

@@ -23,10 +23,7 @@ describe('DiplomasService', () => {
   beforeEach(async () => {
     db = createMockDb();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        DiplomasService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [DiplomasService, { provide: DRIZZLE, useValue: db }],
     }).compile();
     service = module.get(DiplomasService);
   });
@@ -81,12 +78,16 @@ describe('DiplomasService', () => {
     it('met à jour les skills', async () => {
       const updated = mkDiploma({ skills: ['Drizzle'] });
       db.returning.mockResolvedValueOnce([updated]);
-      await expect(service.update('diploma-uuid', { skills: ['Drizzle'] })).resolves.toEqual(updated);
+      await expect(
+        service.update('diploma-uuid', { skills: ['Drizzle'] }),
+      ).resolves.toEqual(updated);
     });
 
     it('throw NotFoundException si id inconnu', async () => {
       db.returning.mockResolvedValueOnce([]);
-      await expect(service.update('nope', { title: 'X' })).rejects.toThrow(NotFoundException);
+      await expect(service.update('nope', { title: 'X' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

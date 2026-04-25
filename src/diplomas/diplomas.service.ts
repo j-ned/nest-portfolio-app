@@ -15,8 +15,13 @@ export class DiplomasService {
   }
 
   async findById(id: string): Promise<Diploma> {
-    const rows = await this.db.select().from(diplomas).where(eq(diplomas.id, id)).limit(1);
-    if (rows.length === 0) throw new NotFoundException(`Diploma ${id} not found`);
+    const rows = await this.db
+      .select()
+      .from(diplomas)
+      .where(eq(diplomas.id, id))
+      .limit(1);
+    if (rows.length === 0)
+      throw new NotFoundException(`Diploma ${id} not found`);
     return rows[0];
   }
 
@@ -40,6 +45,7 @@ export class DiplomasService {
       .delete(diplomas)
       .where(eq(diplomas.id, id))
       .returning({ id: diplomas.id });
-    if (rows.length === 0) throw new NotFoundException(`Diploma ${id} not found`);
+    if (rows.length === 0)
+      throw new NotFoundException(`Diploma ${id} not found`);
   }
 }

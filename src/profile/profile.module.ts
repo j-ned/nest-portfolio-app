@@ -4,7 +4,7 @@ import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
 
 @Module({
-  imports: [AuthModule],     // pour JwtAuthGuard
+  imports: [AuthModule], // pour JwtAuthGuard
   controllers: [ProfileController],
   providers: [ProfileService],
 })
