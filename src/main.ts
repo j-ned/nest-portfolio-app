@@ -12,12 +12,14 @@ async function bootstrap() {
 
   const config = app.get(AppConfigService);
 
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-    transformOptions: { enableImplicitConversion: true },
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  );
   app.useGlobalFilters(new HttpExceptionFilter());
 
   const swaggerConfig = new DocumentBuilder()
@@ -25,10 +27,16 @@ async function bootstrap() {
     .setDescription('NestJS backend for J-Ned portfolio')
     .setVersion(process.env.npm_package_version ?? 'dev')
     .build();
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+  SwaggerModule.setup(
+    'docs',
+    app,
+    SwaggerModule.createDocument(app, swaggerConfig),
+  );
 
   app.enableShutdownHooks();
   await app.listen(config.port);
-  app.get(Logger).log(`Listening on http://localhost:${config.port} (docs: /docs)`);
+  app
+    .get(Logger)
+    .log(`Listening on http://localhost:${config.port} (docs: /docs)`);
 }
 void bootstrap();

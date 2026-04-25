@@ -27,11 +27,15 @@ describe('validateEnv', () => {
   });
 
   it('rejette DATABASE_URL non-postgres', () => {
-    expect(() => validateEnv({ DATABASE_URL: 'mysql://u:p@h/d' })).toThrow(/postgres/);
+    expect(() => validateEnv({ DATABASE_URL: 'mysql://u:p@h/d' })).toThrow(
+      /postgres/,
+    );
   });
 
   it('accepte postgresql:// (alias officiel)', () => {
-    const result = validateEnv({ DATABASE_URL: 'postgresql://u:p@localhost:5432/d' });
+    const result = validateEnv({
+      DATABASE_URL: 'postgresql://u:p@localhost:5432/d',
+    });
     expect(result.DATABASE_URL).toBe('postgresql://u:p@localhost:5432/d');
   });
 
@@ -51,6 +55,8 @@ describe('validateEnv', () => {
   });
 
   it('rejette LOG_LEVEL invalide', () => {
-    expect(() => validateEnv({ ...baseValid, LOG_LEVEL: 'verbose' })).toThrow(/LOG_LEVEL/);
+    expect(() => validateEnv({ ...baseValid, LOG_LEVEL: 'verbose' })).toThrow(
+      /LOG_LEVEL/,
+    );
   });
 });
