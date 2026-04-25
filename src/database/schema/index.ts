@@ -1,3 +1,8 @@
-// Barrel central. Chaque module ajoutera son schéma ici.
-// Exemple futur : export * from './users';
-export const schema = {} as const;
+// Barrel central. Chaque module métier ajoute son schéma ici.
+import * as users from './users';
+
+export * from './users';
+
+export const schema = {
+  ...users,
+} as const;
