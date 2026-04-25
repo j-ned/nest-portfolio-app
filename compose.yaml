@@ -17,5 +17,40 @@ services:
       timeout: 3s
       retries: 5
 
+  minio:
+    image: docker.io/minio/minio:latest
+    container_name: portfolio-nest-s3
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: portfolio-admin
+      MINIO_ROOT_PASSWORD: portfolio-admin-secret
+    volumes:
+      - portfolio_nest_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio-init:
+    image: docker.io/minio/mc:latest
+    container_name: portfolio-nest-s3-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 portfolio-admin portfolio-admin-secret &&
+        (mc mb local/portfolio-storage --ignore-existing) &&
+        mc anonymous set download local/portfolio-storage &&
+        echo 'MinIO bucket portfolio-storage ready (public-read).'
+      "
+    restart: "no"
+
 volumes:
   portfolio_nest_pgdata:
+  portfolio_nest_minio_data:
