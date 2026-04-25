@@ -82,6 +82,7 @@ describe('ExpertisesService', () => {
     await service.update('exp-uuid', { title: 'New title' });
     // Vérifier que le set NE contient PAS de champ "type"
     expect(db.set).toHaveBeenCalledWith(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expect.not.objectContaining({ type: expect.anything() }),
     );
   });

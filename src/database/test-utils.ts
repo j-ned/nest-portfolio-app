@@ -27,6 +27,7 @@ export function createMockDb() {
     set: jest.fn(),
     delete: jest.fn(),
     returning: jest.fn(),
+    // eslint-disable-next-line @typescript-eslint/require-await
     transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(builder)),
     execute: jest.fn(),
   };
