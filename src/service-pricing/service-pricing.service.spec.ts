@@ -110,7 +110,6 @@ describe('ServicePricingService', () => {
     });
 
     it('accepte un tableau vide (no-op)', async () => {
-      db.where.mockResolvedValueOnce([]);
       db.orderBy.mockResolvedValueOnce([]);
       const result = await service.reorder({ orderedIds: [] });
       expect(result).toEqual([]);

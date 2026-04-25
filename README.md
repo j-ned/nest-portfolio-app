@@ -206,6 +206,7 @@ Module de contenu publié sur le portfolio. **7 entités** éditées par l'admin
 - Avatar S3 reporté au sous-projet "Projects" (qui introduira le S3 setup) ; `avatarUrl` reste un champ texte PATCH-able.
 - Pas de pagination, pas de cache headers, pas de soft delete, pas de slug, pas d'ordering sur les autres collections — scope minimaliste.
 - Helper de test partagé `src/database/test-utils.ts` (`createMockDb()`) réutilisable par tous les sous-projets futurs.
+- **Migration `0001_*.sql` éditée manuellement** : on a appendé `INSERT INTO profile DEFAULT VALUES;` et `INSERT INTO hero DEFAULT VALUES;` à la fin du fichier généré par `drizzle-kit generate`. Ne pas régénérer cette migration sans réajouter ces inserts (sinon `GET /profile` retourne 500 sur une DB fraîchement créée).
 
 ## Migration depuis le backend Hono
 
