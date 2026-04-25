@@ -67,11 +67,6 @@ export class ServicePricingService {
   async reorder(dto: ReorderServicePricingDto): Promise<ServicePricing[]> {
     const { orderedIds } = dto;
     if (orderedIds.length === 0) {
-      // No-op reorder: lookup empty + return current findAll
-      await this.db
-        .select({ id: servicePricing.id })
-        .from(servicePricing)
-        .where(inArray(servicePricing.id, orderedIds));
       return this.findAll();
     }
     // Vérifier que tous les IDs existent
