@@ -14,7 +14,11 @@ export class TwoFactorService {
   }
 
   async generateQrCodeDataUrl(email: string, secret: string): Promise<string> {
-    const otpauthUrl = generateURI({ issuer: this.cfg.totpAppName, label: email, secret });
+    const otpauthUrl = generateURI({
+      issuer: this.cfg.totpAppName,
+      label: email,
+      secret,
+    });
     return QRCode.toDataURL(otpauthUrl);
   }
 
@@ -36,7 +40,10 @@ export class TwoFactorService {
     return Promise.all(codes.map((c) => argon2.hash(c)));
   }
 
-  async findMatchingBackupCode(plain: string, hashes: string[]): Promise<string | null> {
+  async findMatchingBackupCode(
+    plain: string,
+    hashes: string[],
+  ): Promise<string | null> {
     if (hashes.length === 0) return null;
     // Vérifie en parallèle ; renvoie le premier hash qui matche.
     // Promise.any rejette avec AggregateError si TOUS rejettent.
@@ -55,7 +62,7 @@ export class TwoFactorService {
 
   private randomCode(): string {
     // 8 caractères hex (4 bytes) → format 'xxxx-xxxx'
-    const bytes = randomBytes(4).toString('hex');     // 8 chars hex
+    const bytes = randomBytes(4).toString('hex'); // 8 chars hex
     return `${bytes.slice(0, 4)}-${bytes.slice(4, 8)}`;
   }
 }

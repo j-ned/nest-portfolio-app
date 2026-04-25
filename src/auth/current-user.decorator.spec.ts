@@ -3,7 +3,7 @@ import { ExecutionContext } from '@nestjs/common';
 // On réplique la factory du decorator pour pouvoir la tester directement.
 // (createParamDecorator wrappe la factory dans un metadata Symbol qu'on n'a pas accès depuis dehors.)
 const currentUserFactory = (_data: unknown, ctx: ExecutionContext) => {
-  return ctx.switchToHttp().getRequest().user;
+  return ctx.switchToHttp().getRequest<Record<string, unknown>>()['user'];
 };
 
 describe('CurrentUser decorator factory', () => {

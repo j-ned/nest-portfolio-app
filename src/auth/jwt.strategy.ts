@@ -19,7 +19,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
-        (req: Request) => (req?.cookies as Record<string, string> | undefined)?.token ?? null,
+        (req: Request) =>
+          (req?.cookies as Record<string, string> | undefined)?.token ?? null,
         ExtractJwt.fromAuthHeaderAsBearerToken(),
       ]),
       ignoreExpiration: false,
@@ -29,7 +30,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: JwtPayload): Promise<User> {
     if (payload.scope === '2fa-challenge') {
-      throw new UnauthorizedException('Challenge token cannot be used for authentication');
+      throw new UnauthorizedException(
+        'Challenge token cannot be used for authentication',
+      );
     }
     const user = await this.users.findById(payload.sub);
     if (!user) {

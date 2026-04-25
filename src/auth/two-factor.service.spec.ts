@@ -1,4 +1,4 @@
-import { generateSync, verifySync } from 'otplib';
+import { generateSync } from 'otplib';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TwoFactorService } from './two-factor.service';
 import { AppConfigService } from '../config/app-config.service';
@@ -18,7 +18,7 @@ describe('TwoFactorService', () => {
 
   it('generateSecret retourne un secret base32 valide', () => {
     const secret = service.generateSecret();
-    expect(secret).toMatch(/^[A-Z2-7]+=*$/);            // base32 alphabet
+    expect(secret).toMatch(/^[A-Z2-7]+=*$/); // base32 alphabet
     expect(secret.length).toBeGreaterThanOrEqual(16);
   });
 
@@ -35,7 +35,10 @@ describe('TwoFactorService', () => {
 
   it('generateQrCodeDataUrl retourne une data URL PNG', async () => {
     const secret = service.generateSecret();
-    const dataUrl = await service.generateQrCodeDataUrl('user@example.com', secret);
+    const dataUrl = await service.generateQrCodeDataUrl(
+      'user@example.com',
+      secret,
+    );
     expect(dataUrl).toMatch(/^data:image\/png;base64,/);
   });
 
