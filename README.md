@@ -12,7 +12,11 @@ Backend NestJS du portfolio J-Ned. Sous-projet **"Fondations"** : squelette tech
 ```bash
 pnpm install
 cp .env.example .env
-pnpm dev          # Démarre Postgres en container puis l'app NestJS
+# Éditer .env : remplir au moins JWT_SECRET (32+ chars), ADMIN_EMAIL et ADMIN_INITIAL_PASSWORD
+pnpm db:up && pnpm db:wait
+pnpm db:migrate                       # crée la table users
+pnpm db:seed                          # crée l'admin (idempotent)
+pnpm dev                              # démarre l'app en watch
 ```
 
 Endpoints disponibles :
@@ -95,6 +99,49 @@ Format JSON unifié émis par le filter global `HttpExceptionFilter` :
 
 Les exceptions non-HTTP (bug code, panique Drizzle) sont capturées en 500 propre avec stack loggée en `error`.
 
+## Auth
+
+Module d'authentification : admin unique pré-seedé, JWT en cookie httpOnly, 2FA TOTP avec backup codes.
+
+**Setup initial** :
+
+```bash
+pnpm db:seed     # crée l'admin avec ADMIN_EMAIL + ADMIN_INITIAL_PASSWORD (idempotent)
+```
+
+**9 endpoints sous `/auth`** :
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| POST | `/auth/login` | ❌ | Login email + password (renvoie cookie ou challenge 2FA) |
+| POST | `/auth/2fa/verify` | ❌ | Complete 2FA login (avec `challengeToken` + `code` ou `backupCode`) |
+| POST | `/auth/logout` | ✅ | Clear cookie |
+| GET | `/auth/me` | ✅ | Infos user courant |
+| POST | `/auth/change-password` | ✅ | Change le mot de passe |
+| POST | `/auth/2fa/generate` | ✅ | Génère secret + QR code (n'active pas encore) |
+| POST | `/auth/2fa/enable` | ✅ | Active 2FA après vérif code (renvoie 10 backup codes one-time) |
+| POST | `/auth/2fa/disable` | ✅ | Désactive 2FA (requiert password courant) |
+| POST | `/auth/2fa/regenerate-backup-codes` | ✅ | Régénère les 10 backup codes (requiert password courant) |
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-25-auth-nest-portfolio-design.md`](docs/superpowers/specs/2026-04-25-auth-nest-portfolio-design.md).
+
+**Décisions clés (résumées)** :
+
+- JWT unique long (7d défaut), un seul cookie httpOnly `token` (pas de refresh token).
+- 2FA TOTP via `otplib` + 10 backup codes hashés Argon2 (consommés à l'usage).
+- Argon2id pour le hash password.
+- Pas de `/register` (admin pré-seedé).
+- Pas de rate limiting par défaut (peut être ajouté via `@nestjs/throttler` si besoin).
+- `JwtStrategy` rejette tout JWT avec `scope === '2fa-challenge'` (défense en profondeur).
+
+**Modules métier consommateurs** : importer `AuthModule` puis `@UseGuards(JwtAuthGuard)` + `@CurrentUser()` :
+
+```typescript
+@UseGuards(JwtAuthGuard)
+@Post('something')
+create(@CurrentUser() user: User, @Body() dto: CreateSomethingDto) { /* ... */ }
+```
+
 ## Validation HTTP
 
 `ValidationPipe` global :
@@ -134,9 +181,9 @@ pnpm test:e2e       # E2E (placeholder pour l'instant)
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
 
-1. **Fondations** *(en cours)*
-2. Auth (Users + JWT + 2FA + cookies)
-3. Profile public (Profile, Hero, SocialLinks, Diplomas, Technologies, Expertises, ServicePricing)
+1. ✅ Fondations
+2. ✅ Auth (Users + JWT + 2FA + backup codes)
+3. **Profile public** *(prochain)* (Profile, Hero, SocialLinks, Diplomas, Technologies, Expertises, ServicePricing)
 4. Projects (CRUD + upload image S3)
 5. Contact (messages + mailer)
 6. Bookings (réservations + slots + mail)
