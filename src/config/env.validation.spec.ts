@@ -40,6 +40,11 @@ describe('validateEnv', () => {
     expect(result.LOG_LEVEL).toBe('info');
   });
 
+  it('utilise LOG_LEVEL=info par défaut en NODE_ENV=test', () => {
+    const result = validateEnv({ ...baseValid, NODE_ENV: 'test' });
+    expect(result.LOG_LEVEL).toBe('info');
+  });
+
   it('respecte LOG_LEVEL fourni explicitement', () => {
     const result = validateEnv({ ...baseValid, LOG_LEVEL: 'warn' });
     expect(result.LOG_LEVEL).toBe('warn');
