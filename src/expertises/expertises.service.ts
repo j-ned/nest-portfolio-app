@@ -2,7 +2,11 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { asc, eq } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
-import { expertises, type Expertise, type ExpertiseType } from '../database/schema/expertises';
+import {
+  expertises,
+  type Expertise,
+  type ExpertiseType,
+} from '../database/schema/expertises';
 import { CreateExpertiseDto } from './dto/create-expertise.dto';
 import { UpdateExpertiseDto } from './dto/update-expertise.dto';
 
@@ -11,21 +15,40 @@ export class ExpertisesService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   findOffers(): Promise<Expertise[]> {
-    return this.db.select().from(expertises).where(eq(expertises.type, 'offer')).orderBy(asc(expertises.createdAt));
+    return this.db
+      .select()
+      .from(expertises)
+      .where(eq(expertises.type, 'offer'))
+      .orderBy(asc(expertises.createdAt));
   }
 
   findSeeks(): Promise<Expertise[]> {
-    return this.db.select().from(expertises).where(eq(expertises.type, 'seek')).orderBy(asc(expertises.createdAt));
+    return this.db
+      .select()
+      .from(expertises)
+      .where(eq(expertises.type, 'seek'))
+      .orderBy(asc(expertises.createdAt));
   }
 
   async findById(id: string): Promise<Expertise> {
-    const rows = await this.db.select().from(expertises).where(eq(expertises.id, id)).limit(1);
-    if (rows.length === 0) throw new NotFoundException(`Expertise ${id} not found`);
+    const rows = await this.db
+      .select()
+      .from(expertises)
+      .where(eq(expertises.id, id))
+      .limit(1);
+    if (rows.length === 0)
+      throw new NotFoundException(`Expertise ${id} not found`);
     return rows[0];
   }
 
-  async create(type: ExpertiseType, dto: CreateExpertiseDto): Promise<Expertise> {
-    const [row] = await this.db.insert(expertises).values({ ...dto, type }).returning();
+  async create(
+    type: ExpertiseType,
+    dto: CreateExpertiseDto,
+  ): Promise<Expertise> {
+    const [row] = await this.db
+      .insert(expertises)
+      .values({ ...dto, type })
+      .returning();
     return row;
   }
 
@@ -45,6 +68,7 @@ export class ExpertisesService {
       .delete(expertises)
       .where(eq(expertises.id, id))
       .returning({ id: expertises.id });
-    if (rows.length === 0) throw new NotFoundException(`Expertise ${id} not found`);
+    if (rows.length === 0)
+      throw new NotFoundException(`Expertise ${id} not found`);
   }
 }

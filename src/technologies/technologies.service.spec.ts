@@ -22,10 +22,7 @@ describe('TechnologiesService', () => {
   beforeEach(async () => {
     db = createMockDb();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        TechnologiesService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [TechnologiesService, { provide: DRIZZLE, useValue: db }],
     }).compile();
     service = module.get(TechnologiesService);
   });
@@ -50,17 +47,25 @@ describe('TechnologiesService', () => {
   it('create insère et retourne', async () => {
     const created = mkTech();
     db.returning.mockResolvedValueOnce([created]);
-    const result = await service.create({ name: 'TypeScript', category: 'language', icon: 'devicon-typescript-plain' });
+    const result = await service.create({
+      name: 'TypeScript',
+      category: 'language',
+      icon: 'devicon-typescript-plain',
+    });
     expect(result).toEqual(created);
   });
 
   it('update met à jour ou throw 404', async () => {
     const updated = mkTech({ name: 'TS' });
     db.returning.mockResolvedValueOnce([updated]);
-    await expect(service.update('tech-uuid', { name: 'TS' })).resolves.toEqual(updated);
+    await expect(service.update('tech-uuid', { name: 'TS' })).resolves.toEqual(
+      updated,
+    );
 
     db.returning.mockResolvedValueOnce([]);
-    await expect(service.update('nope', { name: 'X' })).rejects.toThrow(NotFoundException);
+    await expect(service.update('nope', { name: 'X' })).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('remove supprime ou throw 404', async () => {

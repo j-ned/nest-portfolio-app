@@ -1,5 +1,22 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ServicePricingService } from './service-pricing.service';
 import { CreateServicePricingDto } from './dto/create-service-pricing.dto';
@@ -12,7 +29,10 @@ export class ServicePricingController {
   constructor(private readonly sp: ServicePricingService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all service pricings (public, sorted by order ASC, includes enabled=false)' })
+  @ApiOperation({
+    summary:
+      'List all service pricings (public, sorted by order ASC, includes enabled=false)',
+  })
   findAll() {
     return this.sp.findAll();
   }
@@ -35,7 +55,10 @@ export class ServicePricingController {
   @UseGuards(JwtAuthGuard)
   @Patch('reorder')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Reorder service pricings (admin, bulk). IDs absents conservent leur order.' })
+  @ApiOperation({
+    summary:
+      'Reorder service pricings (admin, bulk). IDs absents conservent leur order.',
+  })
   @ApiResponse({ status: 400, description: 'Some IDs not found' })
   reorder(@Body() dto: ReorderServicePricingDto) {
     return this.sp.reorder(dto);
@@ -45,7 +68,10 @@ export class ServicePricingController {
   @Patch(':id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a service pricing (admin)' })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateServicePricingDto) {
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateServicePricingDto,
+  ) {
     return this.sp.update(id, dto);
   }
 

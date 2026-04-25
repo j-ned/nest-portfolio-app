@@ -1,5 +1,22 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ExpertisesService } from './expertises.service';
 import { CreateExpertiseDto } from './dto/create-expertise.dto';
@@ -51,7 +68,10 @@ export class ExpertisesController {
   @Patch(':id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update an expertise (admin, type non modifiable)' })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateExpertiseDto) {
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateExpertiseDto,
+  ) {
     return this.expertises.update(id, dto);
   }
 

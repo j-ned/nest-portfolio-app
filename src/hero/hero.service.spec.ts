@@ -22,10 +22,7 @@ describe('HeroService', () => {
   beforeEach(async () => {
     db = createMockDb();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        HeroService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [HeroService, { provide: DRIZZLE, useValue: db }],
     }).compile();
     service = module.get(HeroService);
   });
@@ -39,7 +36,9 @@ describe('HeroService', () => {
 
     it('throw InternalServerErrorException si absent', async () => {
       db.limit.mockResolvedValueOnce([]);
-      await expect(service.findOne()).rejects.toThrow(InternalServerErrorException);
+      await expect(service.findOne()).rejects.toThrow(
+        InternalServerErrorException,
+      );
     });
   });
 
@@ -49,7 +48,10 @@ describe('HeroService', () => {
       const updated = mkHero({ name: 'Julien', tagline: 'Dev fullstack' });
       db.limit.mockResolvedValueOnce([existing]);
       db.returning.mockResolvedValueOnce([updated]);
-      const result = await service.update({ name: 'Julien', tagline: 'Dev fullstack' });
+      const result = await service.update({
+        name: 'Julien',
+        tagline: 'Dev fullstack',
+      });
       expect(result).toEqual(updated);
     });
   });

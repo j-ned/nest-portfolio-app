@@ -22,10 +22,7 @@ describe('SocialLinksService', () => {
   beforeEach(async () => {
     db = createMockDb();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        SocialLinksService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [SocialLinksService, { provide: DRIZZLE, useValue: db }],
     }).compile();
     service = module.get(SocialLinksService);
   });
@@ -53,9 +50,17 @@ describe('SocialLinksService', () => {
 
   describe('create', () => {
     it('insère et retourne la nouvelle ligne', async () => {
-      const created = mkLink({ icon: 'linkedin', label: 'LinkedIn', href: 'https://linkedin.com/in/jned' });
+      const created = mkLink({
+        icon: 'linkedin',
+        label: 'LinkedIn',
+        href: 'https://linkedin.com/in/jned',
+      });
       db.returning.mockResolvedValueOnce([created]);
-      const result = await service.create({ icon: 'linkedin', label: 'LinkedIn', href: 'https://linkedin.com/in/jned' });
+      const result = await service.create({
+        icon: 'linkedin',
+        label: 'LinkedIn',
+        href: 'https://linkedin.com/in/jned',
+      });
       expect(result).toEqual(created);
     });
   });
@@ -64,12 +69,16 @@ describe('SocialLinksService', () => {
     it('met à jour et retourne la ligne', async () => {
       const updated = mkLink({ label: 'Mon GitHub' });
       db.returning.mockResolvedValueOnce([updated]);
-      await expect(service.update('link-uuid', { label: 'Mon GitHub' })).resolves.toEqual(updated);
+      await expect(
+        service.update('link-uuid', { label: 'Mon GitHub' }),
+      ).resolves.toEqual(updated);
     });
 
     it('throw NotFoundException si id inconnu', async () => {
       db.returning.mockResolvedValueOnce([]);
-      await expect(service.update('nope', { label: 'X' })).rejects.toThrow(NotFoundException);
+      await expect(service.update('nope', { label: 'X' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

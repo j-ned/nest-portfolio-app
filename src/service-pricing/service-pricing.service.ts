@@ -1,8 +1,16 @@
-import { Inject, Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
-import { servicePricing, type ServicePricing } from '../database/schema/service-pricing';
+import {
+  servicePricing,
+  type ServicePricing,
+} from '../database/schema/service-pricing';
 import { CreateServicePricingDto } from './dto/create-service-pricing.dto';
 import { UpdateServicePricingDto } from './dto/update-service-pricing.dto';
 import { ReorderServicePricingDto } from './dto/reorder-service-pricing.dto';
@@ -12,12 +20,20 @@ export class ServicePricingService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   findAll(): Promise<ServicePricing[]> {
-    return this.db.select().from(servicePricing).orderBy(asc(servicePricing.order));
+    return this.db
+      .select()
+      .from(servicePricing)
+      .orderBy(asc(servicePricing.order));
   }
 
   async findById(id: string): Promise<ServicePricing> {
-    const rows = await this.db.select().from(servicePricing).where(eq(servicePricing.id, id)).limit(1);
-    if (rows.length === 0) throw new NotFoundException(`ServicePricing ${id} not found`);
+    const rows = await this.db
+      .select()
+      .from(servicePricing)
+      .where(eq(servicePricing.id, id))
+      .limit(1);
+    if (rows.length === 0)
+      throw new NotFoundException(`ServicePricing ${id} not found`);
     return rows[0];
   }
 
@@ -26,7 +42,10 @@ export class ServicePricingService {
     return row;
   }
 
-  async update(id: string, dto: UpdateServicePricingDto): Promise<ServicePricing> {
+  async update(
+    id: string,
+    dto: UpdateServicePricingDto,
+  ): Promise<ServicePricing> {
     const [row] = await this.db
       .update(servicePricing)
       .set({ ...dto, updatedAt: new Date() })
@@ -41,14 +60,18 @@ export class ServicePricingService {
       .delete(servicePricing)
       .where(eq(servicePricing.id, id))
       .returning({ id: servicePricing.id });
-    if (rows.length === 0) throw new NotFoundException(`ServicePricing ${id} not found`);
+    if (rows.length === 0)
+      throw new NotFoundException(`ServicePricing ${id} not found`);
   }
 
   async reorder(dto: ReorderServicePricingDto): Promise<ServicePricing[]> {
     const { orderedIds } = dto;
     if (orderedIds.length === 0) {
       // No-op reorder: lookup empty + return current findAll
-      await this.db.select({ id: servicePricing.id }).from(servicePricing).where(inArray(servicePricing.id, orderedIds));
+      await this.db
+        .select({ id: servicePricing.id })
+        .from(servicePricing)
+        .where(inArray(servicePricing.id, orderedIds));
       return this.findAll();
     }
     // Vérifier que tous les IDs existent
@@ -59,7 +82,9 @@ export class ServicePricingService {
     const existingIds = new Set(existing.map((r) => r.id));
     const missing = orderedIds.filter((id) => !existingIds.has(id));
     if (missing.length > 0) {
-      throw new BadRequestException(`ServicePricing IDs not found: ${missing.join(', ')}`);
+      throw new BadRequestException(
+        `ServicePricing IDs not found: ${missing.join(', ')}`,
+      );
     }
     // Transaction: update each
     await this.db.transaction(async (tx) => {

@@ -26,10 +26,7 @@ describe('ServicePricingService', () => {
   beforeEach(async () => {
     db = createMockDb();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ServicePricingService,
-        { provide: DRIZZLE, useValue: db },
-      ],
+      providers: [ServicePricingService, { provide: DRIZZLE, useValue: db }],
     }).compile();
     service = module.get(ServicePricingService);
   });
@@ -52,17 +49,25 @@ describe('ServicePricingService', () => {
   it('create insère et retourne', async () => {
     const created = mkSP();
     db.returning.mockResolvedValueOnce([created]);
-    const result = await service.create({ title: 'Audit', description: 'X', price: '1500' });
+    const result = await service.create({
+      title: 'Audit',
+      description: 'X',
+      price: '1500',
+    });
     expect(result).toEqual(created);
   });
 
   it('update met à jour ou throw 404', async () => {
     const updated = mkSP({ title: 'Audit Plus' });
     db.returning.mockResolvedValueOnce([updated]);
-    await expect(service.update('sp-uuid', { title: 'Audit Plus' })).resolves.toEqual(updated);
+    await expect(
+      service.update('sp-uuid', { title: 'Audit Plus' }),
+    ).resolves.toEqual(updated);
 
     db.returning.mockResolvedValueOnce([]);
-    await expect(service.update('nope', { title: 'X' })).rejects.toThrow(NotFoundException);
+    await expect(service.update('nope', { title: 'X' })).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('remove supprime ou throw 404', async () => {
@@ -77,7 +82,9 @@ describe('ServicePricingService', () => {
     it('réassigne order = index pour chaque ID dans le tableau', async () => {
       // 1er select pour vérifier que tous les IDs existent
       db.where.mockResolvedValueOnce([
-        { id: 'sp-a' }, { id: 'sp-b' }, { id: 'sp-c' },
+        { id: 'sp-a' },
+        { id: 'sp-b' },
+        { id: 'sp-c' },
       ]);
       // findAll retour final
       const finalRows = [
@@ -87,7 +94,9 @@ describe('ServicePricingService', () => {
       ];
       db.orderBy.mockResolvedValueOnce(finalRows);
 
-      const result = await service.reorder({ orderedIds: ['sp-c', 'sp-a', 'sp-b'] });
+      const result = await service.reorder({
+        orderedIds: ['sp-c', 'sp-a', 'sp-b'],
+      });
       expect(result).toEqual(finalRows);
       // Le builder.transaction a été appelé
       expect(db.transaction).toHaveBeenCalled();
@@ -95,7 +104,9 @@ describe('ServicePricingService', () => {
 
     it('throw BadRequestException si un ID est inexistant', async () => {
       db.where.mockResolvedValueOnce([{ id: 'sp-a' }, { id: 'sp-b' }]); // sp-c manquant
-      await expect(service.reorder({ orderedIds: ['sp-c', 'sp-a', 'sp-b'] })).rejects.toThrow(BadRequestException);
+      await expect(
+        service.reorder({ orderedIds: ['sp-c', 'sp-a', 'sp-b'] }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('accepte un tableau vide (no-op)', async () => {
