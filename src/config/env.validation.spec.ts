@@ -4,6 +4,10 @@ describe('validateEnv', () => {
   const baseValid = {
     DATABASE_URL: 'postgres://u:p@localhost:55432/db',
     JWT_SECRET: '0123456789abcdef0123456789abcdef', // exactly 32 chars
+    S3_ENDPOINT: 'http://localhost:9000',
+    S3_REGION: 'us-east-1',
+    S3_ACCESS_KEY: 'access-key',
+    S3_SECRET_KEY: 'secret-key-12345',
   };
 
   it('parse une env valide minimaliste avec défauts', () => {
@@ -93,5 +97,27 @@ describe('validateEnv', () => {
   it('utilise TOTP_APP_NAME=J-Ned Portfolio par défaut', () => {
     const result = validateEnv(baseValid);
     expect(result.TOTP_APP_NAME).toBe('J-Ned Portfolio');
+  });
+
+  it('rejette S3_ENDPOINT non-URL', () => {
+    expect(() => validateEnv({ ...baseValid, S3_ENDPOINT: 'not-a-url' })).toThrow(/S3_ENDPOINT/);
+  });
+
+  it('rejette S3_ACCESS_KEY trop courte', () => {
+    expect(() => validateEnv({ ...baseValid, S3_ACCESS_KEY: 'abc' })).toThrow(/S3_ACCESS_KEY/);
+  });
+
+  it('rejette S3_SECRET_KEY trop courte', () => {
+    expect(() => validateEnv({ ...baseValid, S3_SECRET_KEY: 'short' })).toThrow(/S3_SECRET_KEY/);
+  });
+
+  it('utilise S3_PUBLIC_URL = S3_ENDPOINT par défaut', () => {
+    const result = validateEnv(baseValid);
+    expect(result.S3_PUBLIC_URL).toBe('http://localhost:9000');
+  });
+
+  it('respecte S3_PUBLIC_URL explicite', () => {
+    const result = validateEnv({ ...baseValid, S3_PUBLIC_URL: 'https://cdn.example.com' });
+    expect(result.S3_PUBLIC_URL).toBe('https://cdn.example.com');
   });
 });
