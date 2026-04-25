@@ -100,15 +100,21 @@ describe('validateEnv', () => {
   });
 
   it('rejette S3_ENDPOINT non-URL', () => {
-    expect(() => validateEnv({ ...baseValid, S3_ENDPOINT: 'not-a-url' })).toThrow(/S3_ENDPOINT/);
+    expect(() =>
+      validateEnv({ ...baseValid, S3_ENDPOINT: 'not-a-url' }),
+    ).toThrow(/S3_ENDPOINT/);
   });
 
   it('rejette S3_ACCESS_KEY trop courte', () => {
-    expect(() => validateEnv({ ...baseValid, S3_ACCESS_KEY: 'abc' })).toThrow(/S3_ACCESS_KEY/);
+    expect(() => validateEnv({ ...baseValid, S3_ACCESS_KEY: 'abc' })).toThrow(
+      /S3_ACCESS_KEY/,
+    );
   });
 
   it('rejette S3_SECRET_KEY trop courte', () => {
-    expect(() => validateEnv({ ...baseValid, S3_SECRET_KEY: 'short' })).toThrow(/S3_SECRET_KEY/);
+    expect(() => validateEnv({ ...baseValid, S3_SECRET_KEY: 'short' })).toThrow(
+      /S3_SECRET_KEY/,
+    );
   });
 
   it('utilise S3_PUBLIC_URL = S3_ENDPOINT par défaut', () => {
@@ -117,7 +123,10 @@ describe('validateEnv', () => {
   });
 
   it('respecte S3_PUBLIC_URL explicite', () => {
-    const result = validateEnv({ ...baseValid, S3_PUBLIC_URL: 'https://cdn.example.com' });
+    const result = validateEnv({
+      ...baseValid,
+      S3_PUBLIC_URL: 'https://cdn.example.com',
+    });
     expect(result.S3_PUBLIC_URL).toBe('https://cdn.example.com');
   });
 });
