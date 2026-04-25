@@ -27,4 +27,20 @@ export class AppConfigService {
   get logLevel() {
     return this.config.get('LOG_LEVEL', { infer: true });
   }
+
+  get jwtSecret() {
+    return this.config.get('JWT_SECRET', { infer: true });
+  }
+  get jwtExpiresIn() {
+    return this.config.get('JWT_EXPIRES_IN', { infer: true });
+  }
+  get adminEmail() {
+    return this.config.get('ADMIN_EMAIL', { infer: true });
+  }
+  get adminInitialPassword() {
+    return this.config.get('ADMIN_INITIAL_PASSWORD', { infer: true });
+  }
+  get totpAppName() {
+    return this.config.get('TOTP_APP_NAME', { infer: true });
+  }
 }

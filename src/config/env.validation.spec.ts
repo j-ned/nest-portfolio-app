@@ -3,6 +3,9 @@ import { validateEnv } from './env.validation';
 describe('validateEnv', () => {
   const baseValid = {
     DATABASE_URL: 'postgres://u:p@localhost:55432/db',
+    JWT_SECRET: '0123456789abcdef0123456789abcdef', // exactly 32 chars
+    ADMIN_EMAIL: 'admin@example.com',
+    ADMIN_INITIAL_PASSWORD: 'change-me-please-secure', // ≥12 chars
   };
 
   it('parse une env valide minimaliste avec défauts', () => {
@@ -34,6 +37,7 @@ describe('validateEnv', () => {
 
   it('accepte postgresql:// (alias officiel)', () => {
     const result = validateEnv({
+      ...baseValid,
       DATABASE_URL: 'postgresql://u:p@localhost:5432/d',
     });
     expect(result.DATABASE_URL).toBe('postgresql://u:p@localhost:5432/d');
@@ -58,5 +62,38 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...baseValid, LOG_LEVEL: 'verbose' })).toThrow(
       /LOG_LEVEL/,
     );
+  });
+
+  it('rejette JWT_SECRET trop court', () => {
+    expect(() => validateEnv({ ...baseValid, JWT_SECRET: 'short' })).toThrow(
+      /JWT_SECRET/,
+    );
+  });
+
+  it('utilise JWT_EXPIRES_IN=7d par défaut', () => {
+    const result = validateEnv(baseValid);
+    expect(result.JWT_EXPIRES_IN).toBe('7d');
+  });
+
+  it('respecte JWT_EXPIRES_IN explicite', () => {
+    const result = validateEnv({ ...baseValid, JWT_EXPIRES_IN: '14d' });
+    expect(result.JWT_EXPIRES_IN).toBe('14d');
+  });
+
+  it('rejette ADMIN_EMAIL invalide', () => {
+    expect(() =>
+      validateEnv({ ...baseValid, ADMIN_EMAIL: 'not-an-email' }),
+    ).toThrow(/ADMIN_EMAIL/);
+  });
+
+  it('rejette ADMIN_INITIAL_PASSWORD trop court', () => {
+    expect(() =>
+      validateEnv({ ...baseValid, ADMIN_INITIAL_PASSWORD: 'short' }),
+    ).toThrow(/ADMIN_INITIAL_PASSWORD/);
+  });
+
+  it('utilise TOTP_APP_NAME=J-Ned Portfolio par défaut', () => {
+    const result = validateEnv(baseValid);
+    expect(result.TOTP_APP_NAME).toBe('J-Ned Portfolio');
   });
 });
