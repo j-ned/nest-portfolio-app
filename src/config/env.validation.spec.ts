@@ -4,8 +4,6 @@ describe('validateEnv', () => {
   const baseValid = {
     DATABASE_URL: 'postgres://u:p@localhost:55432/db',
     JWT_SECRET: '0123456789abcdef0123456789abcdef', // exactly 32 chars
-    ADMIN_EMAIL: 'admin@example.com',
-    ADMIN_INITIAL_PASSWORD: 'change-me-please-secure', // ≥12 chars
   };
 
   it('parse une env valide minimaliste avec défauts', () => {
@@ -80,13 +78,13 @@ describe('validateEnv', () => {
     expect(result.JWT_EXPIRES_IN).toBe('14d');
   });
 
-  it('rejette ADMIN_EMAIL invalide', () => {
+  it('rejette ADMIN_EMAIL invalide quand fourni', () => {
     expect(() =>
       validateEnv({ ...baseValid, ADMIN_EMAIL: 'not-an-email' }),
     ).toThrow(/ADMIN_EMAIL/);
   });
 
-  it('rejette ADMIN_INITIAL_PASSWORD trop court', () => {
+  it('rejette ADMIN_INITIAL_PASSWORD trop court quand fourni', () => {
     expect(() =>
       validateEnv({ ...baseValid, ADMIN_INITIAL_PASSWORD: 'short' }),
     ).toThrow(/ADMIN_INITIAL_PASSWORD/);
