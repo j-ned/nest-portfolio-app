@@ -14,6 +14,7 @@ import { DiplomasModule } from './diplomas/diplomas.module';
 import { TechnologiesModule } from './technologies/technologies.module';
 import { ExpertisesModule } from './expertises/expertises.module';
 import { ServicePricingModule } from './service-pricing/service-pricing.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { ServicePricingModule } from './service-pricing/service-pricing.module';
     TechnologiesModule,
     ExpertisesModule,
     ServicePricingModule,
+    StorageModule,
   ],
 })
 export class AppModule {}
