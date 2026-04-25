@@ -7,6 +7,13 @@ import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
+import { ProfileModule } from './profile/profile.module';
+import { HeroModule } from './hero/hero.module';
+import { SocialLinksModule } from './social-links/social-links.module';
+import { DiplomasModule } from './diplomas/diplomas.module';
+import { TechnologiesModule } from './technologies/technologies.module';
+import { ExpertisesModule } from './expertises/expertises.module';
+import { ServicePricingModule } from './service-pricing/service-pricing.module';
 
 @Module({
   imports: [
@@ -46,6 +53,13 @@ import { AuthModule } from './auth/auth.module';
     DatabaseModule,
     HealthModule,
     AuthModule,
+    ProfileModule,
+    HeroModule,
+    SocialLinksModule,
+    DiplomasModule,
+    TechnologiesModule,
+    ExpertisesModule,
+    ServicePricingModule,
   ],
 })
 export class AppModule {}
