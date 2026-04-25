@@ -208,6 +208,73 @@ Module de contenu publié sur le portfolio. **7 entités** éditées par l'admin
 - Helper de test partagé `src/database/test-utils.ts` (`createMockDb()`) réutilisable par tous les sous-projets futurs.
 - **Migration `0001_*.sql` éditée manuellement** : on a appendé `INSERT INTO profile DEFAULT VALUES;` et `INSERT INTO hero DEFAULT VALUES;` à la fin du fichier généré par `drizzle-kit generate`. Ne pas régénérer cette migration sans réajouter ces inserts (sinon `GET /profile` retourne 500 sur une DB fraîchement créée).
 
+## S3 Storage
+
+Module d'infrastructure pour le stockage d'objets S3-compatible. Utilisé par les feature modules qui ont besoin d'uploader/servir des fichiers (Projects, CV, Avatar futur).
+
+**Stack** :
+- Lib : `@aws-sdk/client-s3` v3
+- Dev local : container MinIO (S3-compatible) sur ports 9000 (API) + 9001 (console)
+- Prod : Garage sur VPS (interopérable, mêmes APIs)
+
+**Quickstart S3 (en plus du DB) :**
+
+```bash
+pnpm s3:up           # démarre MinIO + crée le bucket portfolio-storage en anonymous-read
+pnpm s3:console      # affiche l'URL + creds de la console web MinIO
+pnpm s3:logs         # tail logs MinIO
+pnpm s3:reset        # wipe + recrée le bucket (dev only)
+```
+
+> Le hook `predev` démarre automatiquement Postgres + MinIO avant `pnpm dev`. Onboarding nouveau dev : `pnpm install && cp .env.example .env && pnpm dev`.
+
+**API** :
+
+| Méthode | Signature |
+|---|---|
+| `upload` | `(bucket, key, body: Buffer, contentType): Promise<void>` |
+| `get` | `(bucket, key): Promise<Buffer>` (404 si NoSuchKey) |
+| `delete` | `(bucket, key): Promise<void>` (idempotent) |
+| `list` | `(bucket, prefix?): Promise<S3Object[]>` |
+| `getPublicUrl` | `(bucket, key): string` (URL publique anonymous-read) |
+
+**Usage dans un feature module futur** :
+
+```typescript
+@Injectable()
+export class ProjectsService {
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly storage: StorageService,
+  ) {}
+
+  async uploadImage(slug: string, file: Buffer, mime: string): Promise<string> {
+    const ext = mime.split('/')[1];
+    const key = `projects/${slug}.${ext}`;
+    await this.storage.upload('portfolio-storage', key, file, mime);
+    return this.storage.getPublicUrl('portfolio-storage', key);
+  }
+}
+```
+
+**`StorageModule` est `@Global`** : `StorageService` est injectable directement, pas besoin d'`imports: [StorageModule]` dans les feature modules.
+
+**Configuration prod (Garage VPS)** :
+
+Sur ton VPS Garage, créer le bucket `portfolio-storage` (ou un nom différent par convention si tu veux la segmentation par feature) et mettre à jour `.env` prod :
+
+```bash
+S3_ENDPOINT=https://garage-s3.j-ned.dev
+S3_REGION=garage
+S3_ACCESS_KEY=<...>
+S3_SECRET_KEY=<...>
+S3_PUBLIC_URL=https://garage-s3.j-ned.dev      # ou un CDN devant
+```
+
+Le bucket Garage doit être configuré en **anonymous-read** (commande `garage bucket allow ...`) et avec **CORS public** si le frontend tape directement (pas via nginx proxy). Cf. doc Garage.
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-25-s3-storage-design.md`](docs/superpowers/specs/2026-04-25-s3-storage-design.md).
+
 ## Migration depuis le backend Hono
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
@@ -215,11 +282,13 @@ Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant 
 1. ✅ Fondations
 2. ✅ Auth (Users + JWT + 2FA + backup codes)
 3. ✅ Profile public (Profile, Hero, SocialLinks, Diplomas, Technologies, Expertises, ServicePricing)
-4. **Projects** *(prochain)* (CRUD + upload image S3) — introduit le S3 setup
-5. Contact (messages + mailer)
-6. Bookings (réservations + slots + mail)
-7. CV (upload S3 + download)
-8. Analytics (page views + agrégats)
+4. ✅ S3 Storage (StorageModule + MinIO local + Garage prod)
+5. **Projects** *(prochain)* (CRUD + upload image qui consomme S3 Storage)
+6. Avatar Profile (`POST /profile/avatar` qui consomme S3 Storage)
+7. Contact (messages + mailer)
+8. Bookings (réservations + slots + mail)
+9. CV (upload S3 + download)
+10. Analytics (page views + agrégats)
 
 La DB du NestJS est **isolée** de celle du Hono (port 55432 vs port d'origine). Aucune sync de données pendant la migration. La copie des données réelles sera traitée à la fin.
 
