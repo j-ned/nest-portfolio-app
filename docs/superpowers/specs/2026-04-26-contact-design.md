@@ -40,7 +40,7 @@ L'admin du portfolio reçoit une notification email à chaque message envoyé vi
 - **Templates HTML** : port 1:1 depuis Hono → `src/contact/mail-templates/contact-notification.html` + `contact-confirmation.html`.
 - **Wiring** : `ContactModule` + `ThrottlerModule` dans `AppModule.imports`. Schéma dans le barrel `src/database/schema/index.ts`.
 - **Deps** : `@nestjs/throttler` (prod). `class-transformer` est déjà installé (`ValidationPipe` global).
-- **Tests** : ~20 nouveaux (~5 pagination utils + ~10-15 service avec MailerService mock).
+- **Tests** : ~18 nouveaux (5 pagination utils + 13 service avec MailerService mock).
 - **Mise à jour README** : section "Contact" + liste des sous-projets renumérotée.
 
 ### Explicitement exclus
@@ -625,19 +625,39 @@ Aucune transformation. Les variables sont déjà en `{{name}}`/`{{email}}`/`{{su
 
 ### `nest-cli.json` — copie des assets HTML au build
 
-NestJS ne copie par défaut que les fichiers TS compilés. Pour que `loadTemplate(resolve(__dirname, 'mail-templates', 'xxx.html'))` fonctionne en prod (lecture depuis `dist/`), il faut configurer `assets` :
+NestJS ne copie par défaut que les fichiers TS compilés. Pour que `loadTemplate(resolve(__dirname, 'mail-templates', 'xxx.html'))` fonctionne en prod (lecture depuis `dist/`), il faut configurer `assets`.
+
+État actuel de `nest-cli.json` :
 
 ```json
 {
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
   "compilerOptions": {
-    "assets": [
-      { "include": "**/mail-templates/**/*.html", "outDir": "dist", "watchAssets": true }
-    ]
+    "deleteOutDir": true
   }
 }
 ```
 
-À ajouter dans `nest-cli.json` (vérifier la structure existante avant — les options peuvent déjà être sous `compilerOptions` ou ailleurs).
+À remplacer par (ajout `assets` + `watchAssets` dans `compilerOptions`) :
+
+```json
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "assets": [
+      { "include": "**/mail-templates/**/*.html" }
+    ],
+    "watchAssets": true
+  }
+}
+```
+
+Le `outDir` est implicite (`dist/`, défaut NestJS). `watchAssets: true` recharge les templates en mode `pnpm dev`.
 
 ## 15. Tests
 
@@ -651,7 +671,7 @@ NestJS ne copie par défaut que les fichiers TS compilés. Pour que `loadTemplat
 | 4 | `limit > 100` capé : `parsePagination({ limit: 200 })` → `limit: 100` |
 | 5 | offset compute : `parsePagination({ page: 3, limit: 20 })` → `offset: 40` |
 
-### `src/contact/contact.service.spec.ts` (~10-15 tests)
+### `src/contact/contact.service.spec.ts` (13 tests)
 
 Stack : `createMockDb()` (helper partagé) + mock `MailerService` + mock `AppConfigService`.
 
@@ -692,7 +712,7 @@ Validation e2e via Mailpit déjà couverte au sous-projet Mailer (7a). Ici on mo
    - `PATCH /contact/messages/:id/read` → 200 / 404
    - `DELETE /contact/messages/:id` → 204 / 404
 6. Templates HTML copiés dans `dist/` au build (vérifier via `pnpm build && ls dist/contact/mail-templates/`).
-7. ~20 nouveaux tests verts (~5 pagination + ~10-15 service), total projet ~194.
+7. ~18 nouveaux tests verts (5 pagination + 13 service), total projet ~192.
 8. Build prod OK, lint clean.
 9. Vérification e2e manuelle : flow complet `POST /messages` → DB row + 2 mails Mailpit + 429 si > 5/60s.
 10. README mis à jour : section "Contact" + sous-projets `8. ✅ Contact`, `9. **Bookings** *(prochain)*`.
