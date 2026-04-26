@@ -5,7 +5,7 @@ import { MAIL_TRANSPORTER } from './mailer.constants';
 
 const MAX_RETRIES = 3;
 
-interface SendMailOptions {
+export interface SendMailOptions {
   to: string;
   subject: string;
   html: string;

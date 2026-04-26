@@ -153,7 +153,7 @@ package.json                             # MODIFIÉ : +nodemailer + scripts mail
 ```typescript
 SMTP_HOST: z.string().min(1),
 SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
-SMTP_SECURE: z.coerce.boolean().default(false),
+SMTP_SECURE: z.string().default('false').transform((v) => v === 'true' || v === '1'),
 SMTP_USER: z.string().min(1),
 SMTP_PASS: z.string().min(1),
 SMTP_FROM: z.string().email(),

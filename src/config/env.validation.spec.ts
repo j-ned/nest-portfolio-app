@@ -144,6 +144,16 @@ describe('validateEnv', () => {
     expect(result.SMTP_SECURE).toBe(false);
   });
 
+  it("parse SMTP_SECURE='true' comme true", () => {
+    const result = validateEnv({ ...baseValid, SMTP_SECURE: 'true' });
+    expect(result.SMTP_SECURE).toBe(true);
+  });
+
+  it("parse SMTP_SECURE='1' comme true", () => {
+    const result = validateEnv({ ...baseValid, SMTP_SECURE: '1' });
+    expect(result.SMTP_SECURE).toBe(true);
+  });
+
   it('coerce SMTP_PORT depuis une string', () => {
     const result = validateEnv({ ...baseValid, SMTP_PORT: '1025' });
     expect(result.SMTP_PORT).toBe(1025);
