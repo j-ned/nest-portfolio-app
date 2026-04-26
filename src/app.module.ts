@@ -21,6 +21,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ContactModule } from './contact/contact.module';
 import { BookingsModule } from './bookings/bookings.module';
+import { CvModule } from './cv/cv.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { BookingsModule } from './bookings/bookings.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
     ContactModule,
     BookingsModule,
+    CvModule,
   ],
   providers: [
     {
