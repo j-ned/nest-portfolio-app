@@ -7,6 +7,7 @@ import * as diplomas from './diplomas';
 import * as technologies from './technologies';
 import * as expertises from './expertises';
 import * as servicePricing from './service-pricing';
+import * as projects from './projects';
 
 export * from './users';
 export * from './profile';
@@ -16,6 +17,7 @@ export * from './diplomas';
 export * from './technologies';
 export * from './expertises';
 export * from './service-pricing';
+export * from './projects';
 
 export const schema = {
   ...users,
@@ -26,4 +28,5 @@ export const schema = {
   ...technologies,
   ...expertises,
   ...servicePricing,
+  ...projects,
 } as const;
