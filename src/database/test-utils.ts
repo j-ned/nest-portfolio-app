@@ -20,6 +20,7 @@ export function createMockDb() {
     from: jest.fn(),
     where: jest.fn(),
     orderBy: jest.fn(),
+    groupBy: jest.fn(),
     limit: jest.fn(),
     offset: jest.fn(),
     insert: jest.fn(),
