@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, gte } from 'drizzle-orm';
-import { format, startOfDay } from 'date-fns';
 import { isbot } from 'isbot';
 import geoip from 'geoip-lite';
 import { UAParser } from 'ua-parser-js';
@@ -28,7 +27,7 @@ export class AnalyticsTrackerService {
       }
 
       // 2. Session hash déterministe par jour (UTC)
-      const day = format(new Date(), 'yyyy-MM-dd');
+      const day = new Date().toISOString().slice(0, 10);
       const sessionHash = createHash('sha256')
         .update(`${ip}|${ua}|${day}`)
         .digest('hex');
@@ -68,7 +67,9 @@ export class AnalyticsTrackerService {
     os: string | null,
     country: string | null,
   ): Promise<void> {
-    const todayStart = startOfDay(new Date());
+    const todayStart = new Date(
+      `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`,
+    );
     const [existing] = await this.db
       .select()
       .from(pageView)
