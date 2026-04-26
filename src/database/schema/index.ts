@@ -11,6 +11,7 @@ import * as projects from './projects';
 import * as contactMessages from './contact-messages';
 import * as bookings from './bookings';
 import * as cvFiles from './cv-files';
+import * as analytics from './analytics';
 
 export * from './users';
 export * from './profile';
@@ -24,6 +25,7 @@ export * from './projects';
 export * from './contact-messages';
 export * from './bookings';
 export * from './cv-files';
+export * from './analytics';
 
 export const schema = {
   ...users,
@@ -38,4 +40,5 @@ export const schema = {
   ...contactMessages,
   ...bookings,
   ...cvFiles,
+  ...analytics,
 } as const;
