@@ -199,10 +199,25 @@ describe('BookingsService', () => {
     });
 
     it('throw ConflictException sur unique violation (date déjà désactivée)', async () => {
+      // Flat error (legacy / direct pg path)
       db.returning.mockRejectedValueOnce({
         code: '23505',
         constraint_name: 'disabled_date_date_unique',
       });
+      await expect(
+        service.createDisabledDate({ date: '2026-12-25' }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('throw ConflictException quand Drizzle wrappe le PostgresError dans .cause', async () => {
+      // Drizzle ≥0.36 wraps the raw pg error in a DrizzleQueryError whose
+      // `.cause` holds the PostgresError (code '23505' + constraint_name).
+      const wrappedErr = new Error('Failed query: INSERT INTO ...');
+      (wrappedErr as unknown as Record<string, unknown>).cause = {
+        code: '23505',
+        constraint_name: 'disabled_date_date_unique',
+      };
+      db.returning.mockRejectedValueOnce(wrappedErr);
       await expect(
         service.createDisabledDate({ date: '2026-12-25' }),
       ).rejects.toThrow(ConflictException);
