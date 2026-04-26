@@ -275,6 +275,32 @@ Le bucket Garage doit être configuré en **anonymous-read** (commande `garage b
 
 **Voir le spec complet** : [`docs/superpowers/specs/2026-04-25-s3-storage-design.md`](docs/superpowers/specs/2026-04-25-s3-storage-design.md).
 
+## Projects
+
+Module CRUD admin pour les projets affichés sur le portfolio. Premier consommateur du `StorageModule` (upload d'image avec lifecycle complet).
+
+**Schéma** : table `project` (uuid + slug unique + 14 colonnes + 3 indexes : `category`, `featured`, `order`).
+
+**6 endpoints sous `/projects`** :
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/projects` | ❌ | Liste publique. Filtres `?category=xxx`, `?featured=true`. Tri fixe `order ASC, createdAt DESC`. |
+| GET | `/projects/:id` | ❌ | Récupère un projet (404 si absent). |
+| POST | `/projects` | ✅ | Crée un projet. Slug auto-généré depuis `title`. 409 si collision. |
+| PATCH | `/projects/:id` | ✅ | Met à jour. Re-slugifie si `title` change. `image: null` supprime l'image S3. |
+| DELETE | `/projects/:id` | ✅ | Supprime le projet + son image S3 si présente. |
+| POST | `/projects/:id/image` | ✅ | Upload multipart (`file`, max 5MB, `image/webp\|jpeg\|png\|avif`). Cleanup ancienne clé si extension diffère. |
+
+**Lifecycle S3** : key = `projects/<id>.<ext>`. Upload écrit dans le bucket `portfolio-storage`, met à jour la DB, puis supprime l'ancienne clé si l'extension a changé (ordre upload → DB → cleanup pour ne jamais laisser une référence DB cassée).
+
+**Validation** :
+- DTO classique class-validator + Swagger.
+- Whitelist MIME stricte (pas de SVG → pas de surface XSS).
+- `@Equals(null)` sur `image` dans `UpdateProjectDto` : empêche un PATCH avec une string arbitraire d'écraser la key DB. Pour set une nouvelle image, passer par `POST /:id/image`.
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-projects-design.md`](docs/superpowers/specs/2026-04-26-projects-design.md).
+
 ## Migration depuis le backend Hono
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
@@ -283,8 +309,8 @@ Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant 
 2. ✅ Auth (Users + JWT + 2FA + backup codes)
 3. ✅ Profile public (Profile, Hero, SocialLinks, Diplomas, Technologies, Expertises, ServicePricing)
 4. ✅ S3 Storage (StorageModule + MinIO local + Garage prod)
-5. **Projects** *(prochain)* (CRUD + upload image qui consomme S3 Storage)
-6. Avatar Profile (`POST /profile/avatar` qui consomme S3 Storage)
+5. ✅ Projects (CRUD + upload image qui consomme S3 Storage)
+6. **Avatar Profile** *(prochain)* (`POST /profile/avatar` qui consomme S3 Storage)
 7. Contact (messages + mailer)
 8. Bookings (réservations + slots + mail)
 9. CV (upload S3 + download)
