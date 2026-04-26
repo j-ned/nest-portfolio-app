@@ -105,19 +105,10 @@ export class ProjectsService {
   }
 
   async remove(id: string): Promise<void> {
-    // Inline existence check: db.limit is the terminator for the existence query.
-    // db.where is reserved as the terminator for the delete operation below,
-    // so the select here does not pass a where clause through the mock chain.
-    const [current] = (await this.db
-      .select()
-      .from(projects)
-      .limit(1)) as Project[];
-    if (!current) throw new NotFoundException(`Project ${id} not found`);
-
+    const current = await this.findById(id);
     if (current.image) {
       await this.storage.delete(ProjectsService.BUCKET, current.image);
     }
-
     await this.db.delete(projects).where(eq(projects.id, id));
   }
 
@@ -125,14 +116,7 @@ export class ProjectsService {
     id: string,
     file: Express.Multer.File,
   ): Promise<{ image: string; url: string }> {
-    // Inline existence check: db.limit is the terminator for the existence query.
-    // db.where is reserved as the terminator for the update operation below,
-    // so the select here does not pass a where clause through the mock chain.
-    const [current] = (await this.db
-      .select()
-      .from(projects)
-      .limit(1)) as Project[];
-    if (!current) throw new NotFoundException(`Project ${id} not found`);
+    const current = await this.findById(id);
 
     const ext = MIME_TO_EXT[file.mimetype];
     const newKey = `projects/${id}.${ext}`;

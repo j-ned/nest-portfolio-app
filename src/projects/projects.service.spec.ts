@@ -189,7 +189,6 @@ describe('ProjectsService', () => {
     it('supprime image S3 puis row DB si image présente', async () => {
       const current = mkProject({ image: 'projects/<id>.webp' });
       db.limit.mockResolvedValueOnce([current]);
-      db.where.mockResolvedValueOnce(undefined);
       await service.remove(current.id);
       expect(storage.delete).toHaveBeenCalledWith(
         'portfolio-storage',
@@ -200,7 +199,6 @@ describe('ProjectsService', () => {
     it("ne touche pas S3 si pas d'image", async () => {
       const current = mkProject({ image: '' });
       db.limit.mockResolvedValueOnce([current]);
-      db.where.mockResolvedValueOnce(undefined);
       await service.remove(current.id);
       expect(storage.delete).not.toHaveBeenCalled();
     });
@@ -223,7 +221,6 @@ describe('ProjectsService', () => {
     it("upload puis update DB, pas de delete si pas d'image existante", async () => {
       const current = mkProject({ image: '' });
       db.limit.mockResolvedValueOnce([current]);
-      db.where.mockResolvedValueOnce(undefined);
       const result = await service.uploadImage(current.id, file);
       expect(storage.upload).toHaveBeenCalledWith(
         'portfolio-storage',
@@ -242,7 +239,6 @@ describe('ProjectsService', () => {
         image: 'projects/22222222-2222-2222-2222-222222222222.webp',
       });
       db.limit.mockResolvedValueOnce([current]);
-      db.where.mockResolvedValueOnce(undefined);
       await service.uploadImage(current.id, file);
       expect(storage.upload).toHaveBeenCalled();
       expect(storage.delete).not.toHaveBeenCalled();
@@ -254,7 +250,6 @@ describe('ProjectsService', () => {
         image: 'projects/33333333-3333-3333-3333-333333333333.jpg',
       });
       db.limit.mockResolvedValueOnce([current]);
-      db.where.mockResolvedValueOnce(undefined);
       await service.uploadImage(current.id, file);
       expect(storage.upload).toHaveBeenCalledWith(
         'portfolio-storage',
