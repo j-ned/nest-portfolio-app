@@ -70,7 +70,10 @@ export class StorageService {
   }
 
   getPublicUrl(bucket: string, key: string): string {
-    const base = (this.cfg.s3PublicUrl ?? '').replace(/\/$/, '');
+    const base = (this.cfg.s3PublicUrl ?? this.cfg.s3Endpoint ?? '').replace(
+      /\/$/,
+      '',
+    );
     return `${base}/${bucket}/${encodeURIComponent(key)}`;
   }
 }
