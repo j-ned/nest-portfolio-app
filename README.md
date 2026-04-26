@@ -326,6 +326,79 @@ Endpoint d'upload de l'avatar pour le singleton Profile. Deuxième consommateur 
 
 **Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-avatar-profile-design.md`](docs/superpowers/specs/2026-04-26-avatar-profile-design.md).
 
+## Mailer
+
+Module d'infrastructure pour l'envoi d'emails SMTP. Utilisé par les feature modules qui ont besoin de notifier (Contact, Bookings, futurs modules).
+
+**Stack** :
+- Lib : `nodemailer` (SMTP transport)
+- Dev local : container Mailpit (SMTP catch-all + web UI sur ports 1025/8025)
+- Prod : SMTP utilisateur (Gmail / OVH / SES / etc.)
+
+**Quickstart Mailer (en plus du DB et S3)** :
+
+```bash
+pnpm mail:up           # démarre Mailpit
+pnpm mail:console      # affiche l'URL de la web UI
+pnpm mail:logs         # tail logs Mailpit
+```
+
+> Le hook `predev` démarre automatiquement Postgres + MinIO + Mailpit avant `pnpm dev`. Onboarding : `pnpm install && cp .env.example .env && pnpm dev`.
+
+**API** :
+
+| Méthode | Signature |
+|---|---|
+| `sendMail` | `({ to, subject, html }): Promise<void>` (3 retries linear backoff 1s/2s, throws final si tous échouent) |
+
+**Helpers utilitaires** (depuis `src/mailer/mailer.utils.ts`) :
+
+| Fonction | Signature |
+|---|---|
+| `renderTemplate` | `(html: string, vars: Record<string, string>): string` (string replace `{{var}}`) |
+| `loadTemplate` | `(absolutePath: string): string` (sucre sur `readFileSync`) |
+
+**Usage dans un feature module** :
+
+```typescript
+import { resolve } from 'node:path';
+import { Injectable } from '@nestjs/common';
+import { MailerService } from '../mailer/mailer.service';
+import { loadTemplate, renderTemplate } from '../mailer/mailer.utils';
+
+@Injectable()
+export class ContactService {
+  constructor(private readonly mailer: MailerService) {}
+
+  async notifyAdmin(data: { name: string; email: string; message: string }): Promise<void> {
+    const tmpl = loadTemplate(
+      resolve(__dirname, 'mail-templates', 'contact-notification.html'),
+    );
+    const html = renderTemplate(tmpl, data);
+    await this.mailer.sendMail({
+      to: 'admin@nedellec-julien.fr',
+      subject: `Nouveau message de ${data.name}`,
+      html,
+    });
+  }
+}
+```
+
+**`MailerModule` est `@Global`** : `MailerService` est injectable directement, pas besoin d'`imports: [MailerModule]` dans les feature modules.
+
+**Configuration prod** :
+
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false   # true pour port 465 (TLS direct)
+SMTP_USER=<...>
+SMTP_PASS=<...>
+SMTP_FROM=noreply@nedellec-julien.fr
+```
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-mailer-design.md`](docs/superpowers/specs/2026-04-26-mailer-design.md).
+
 ## Migration depuis le backend Hono
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
@@ -336,10 +409,11 @@ Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant 
 4. ✅ S3 Storage (StorageModule + MinIO local + Garage prod)
 5. ✅ Projects (CRUD + upload image qui consomme S3 Storage)
 6. ✅ Avatar Profile (`POST /profile/avatar` + transformation key→URL en sortie API, cohérent Projects)
-7. **Contact** *(prochain)* (messages + mailer)
-8. Bookings (réservations + slots + mail)
-9. CV (upload S3 + download)
-10. Analytics (page views + agrégats)
+7. ✅ Mailer (MailerModule @Global + Mailpit local + nodemailer)
+8. **Contact** *(prochain)* (messages + 2 templates qui consomment Mailer)
+9. Bookings (réservations + slots + 2 templates qui consomment Mailer)
+10. CV (upload S3 + download)
+11. Analytics (page views + agrégats)
 
 La DB du NestJS est **isolée** de celle du Hono (port 55432 vs port d'origine). Aucune sync de données pendant la migration. La copie des données réelles sera traitée à la fin.
 
