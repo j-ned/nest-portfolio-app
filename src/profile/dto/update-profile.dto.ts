@@ -1,9 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  Equals,
   IsBoolean,
   IsOptional,
   IsString,
-  IsUrl,
   MaxLength,
 } from 'class-validator';
 
@@ -20,12 +20,15 @@ export class UpdateProfileDto {
   @MaxLength(200)
   location?: string;
 
-  @ApiPropertyOptional({ maxLength: 500 })
+  @ApiPropertyOptional({
+    type: 'null',
+    nullable: true,
+    description:
+      'Pass null to remove avatar (also deletes from S3). Use POST /profile/avatar to upload a new one.',
+  })
   @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  @IsUrl({}, { message: 'avatarUrl must be a valid URL' })
-  avatarUrl?: string;
+  @Equals(null)
+  avatarUrl?: null;
 
   @ApiPropertyOptional()
   @IsOptional()
