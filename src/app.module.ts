@@ -17,6 +17,9 @@ import { ServicePricingModule } from './service-pricing/service-pricing.module';
 import { StorageModule } from './storage/storage.module';
 import { ProjectsModule } from './projects/projects.module';
 import { MailerModule } from './mailer/mailer.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { ContactModule } from './contact/contact.module';
 
 @Module({
   imports: [
@@ -66,6 +69,14 @@ import { MailerModule } from './mailer/mailer.module';
     StorageModule,
     ProjectsModule,
     MailerModule,
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
+    ContactModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}
