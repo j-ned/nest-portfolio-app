@@ -200,7 +200,7 @@ describe('ProjectsService', () => {
       await expect(service.remove('nope')).rejects.toThrow(NotFoundException);
     });
 
-    it('supprime image S3 puis row DB si image présente', async () => {
+    it('supprime row DB puis image S3 si image présente', async () => {
       const current = mkProject({ image: 'projects/<id>.webp' });
       db.limit.mockResolvedValueOnce([current]);
       await service.remove(current.id);
