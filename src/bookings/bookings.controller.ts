@@ -64,6 +64,10 @@ export class BookingsController {
     summary:
       'List bookings of a month (public, frontend computes availability)',
   })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid month format (must be YYYY-MM)',
+  })
   findSlots(@Query() query: ListSlotsDto) {
     return this.bookings.findSlotsByMonth(query.month);
   }
@@ -78,6 +82,7 @@ export class BookingsController {
 
   @UseGuards(JwtAuthGuard)
   @Post('disabled-dates')
+  @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Disable a date (admin)' })
   @ApiResponse({ status: 201, description: 'Date disabled' })

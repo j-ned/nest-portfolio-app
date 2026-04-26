@@ -126,6 +126,52 @@ describe('BookingsService', () => {
       mailer.sendMail.mockRejectedValue(new Error('SMTP down'));
       await expect(service.create(dtoOk)).resolves.toEqual(created);
     });
+
+    it('appelle sendMail 2 fois en cas de succès', async () => {
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([]);
+      db.where.mockResolvedValueOnce([]);
+      const created = mkBooking();
+      db.returning.mockResolvedValueOnce([created]);
+      await service.create(dtoOk);
+      // Drain microtask queue for fire-and-forget
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(mailer.sendMail).toHaveBeenCalledTimes(2);
+    });
+
+    it('envoie le mail admin à cfg.contactEmail avec le bon sujet', async () => {
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([]);
+      db.where.mockResolvedValueOnce([]);
+      const created = mkBooking({ subject: 'Demande RDV' });
+      db.returning.mockResolvedValueOnce([created]);
+      await service.create({ ...dtoOk, subject: 'Demande RDV' });
+      await new Promise((resolve) => setImmediate(resolve));
+      const adminCall = mailer.sendMail.mock.calls.find(
+        (call) => call[0].to === 'admin@test.local',
+      );
+      expect(adminCall).toBeDefined();
+      expect(adminCall![0].subject).toBe(
+        'Nouvelle demande de rendez-vous: Demande RDV',
+      );
+    });
+
+    it('envoie le mail confirmation à booking.email avec le bon sujet', async () => {
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([]);
+      db.where.mockResolvedValueOnce([]);
+      const created = mkBooking({ email: 'visitor@test.com' });
+      db.returning.mockResolvedValueOnce([created]);
+      await service.create({ ...dtoOk, email: 'visitor@test.com' });
+      await new Promise((resolve) => setImmediate(resolve));
+      const visitorCall = mailer.sendMail.mock.calls.find(
+        (call) => call[0].to === 'visitor@test.com',
+      );
+      expect(visitorCall).toBeDefined();
+      expect(visitorCall![0].subject).toBe(
+        'Confirmation de votre demande de rendez-vous',
+      );
+    });
   });
 
   describe('findAll', () => {
