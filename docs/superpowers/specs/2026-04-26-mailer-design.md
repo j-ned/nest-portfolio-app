@@ -30,7 +30,7 @@ L'utilisateur a son SMTP en prod (typiquement OVH/Gmail/SES). Pour le dev local,
 ### Inclus
 
 - **`MailerModule`** `@Global` exposant le service.
-- **`MailerService`** avec 1 méthode publique : `sendMail({ to, subject, html }): Promise<void>` (3 retries linear backoff 1s/2s/3s, throws après échec final).
+- **`MailerService`** avec 1 méthode publique : `sendMail({ to, subject, html }): Promise<void>` (3 retries linear backoff 1s/2s, throws après échec final).
 - **`MAIL_TRANSPORTER`** injection token (Symbol) avec provider factory créant le `Transporter` nodemailer depuis `AppConfigService`.
 - **`OnModuleDestroy`** qui appelle `transporter.close()` (cleanup keep-alive SMTP).
 - **`compose.yaml` étendu** : service `mailpit` (image officielle, ports `1025` SMTP + `8025` web UI).
@@ -61,7 +61,7 @@ L'utilisateur a son SMTP en prod (typiquement OVH/Gmail/SES). Pour le dev local,
 | Q2 — lib mail | A : `nodemailer` direct (pas de wrapper) | Calque Hono. Contrôle total, dépendances minimales |
 | Q3 — API + templates | A : `sendMail({ to, subject, html })` minimal + helpers `renderTemplate`/`loadTemplate` | Templates vivent à côté de leur feature module, découplé |
 | Q4 — SMTP dev | A : container Mailpit dans `compose.yaml` | Onboarding zero-friction, calque MinIO |
-| (lock) — Retry | 3 tentatives, backoff linéaire 1s/2s/3s | Calque Hono, robuste contre blips SMTP |
+| (lock) — Retry | 3 tentatives, backoff linéaire 1s/2s | Calque Hono, robuste contre blips SMTP |
 | (lock) — Lifecycle | `OnModuleDestroy` + `transporter.close()` | Calque `StorageModule.s3.destroy()` |
 | (lock) — `renderTemplate` | Standalone export depuis `mailer.utils.ts` | Pareil que `MIME_TO_EXT` dans `projects.utils.ts` |
 
