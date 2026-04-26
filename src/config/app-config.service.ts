@@ -59,4 +59,23 @@ export class AppConfigService {
   get s3PublicUrl() {
     return this.config.get('S3_PUBLIC_URL', { infer: true });
   }
+
+  get smtpHost() {
+    return this.config.get('SMTP_HOST', { infer: true });
+  }
+  get smtpPort() {
+    return this.config.get('SMTP_PORT', { infer: true });
+  }
+  get smtpSecure() {
+    return this.config.get('SMTP_SECURE', { infer: true });
+  }
+  get smtpUser() {
+    return this.config.get('SMTP_USER', { infer: true });
+  }
+  get smtpPass() {
+    return this.config.get('SMTP_PASS', { infer: true });
+  }
+  get smtpFrom() {
+    return this.config.get('SMTP_FROM', { infer: true });
+  }
 }

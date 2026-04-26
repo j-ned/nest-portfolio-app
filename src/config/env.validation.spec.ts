@@ -8,6 +8,10 @@ describe('validateEnv', () => {
     S3_REGION: 'us-east-1',
     S3_ACCESS_KEY: 'access-key',
     S3_SECRET_KEY: 'secret-key-12345',
+    SMTP_HOST: 'localhost',
+    SMTP_USER: 'mailpit',
+    SMTP_PASS: 'mailpit',
+    SMTP_FROM: 'noreply@test.local',
   };
 
   it('parse une env valide minimaliste avec défauts', () => {
@@ -128,5 +132,26 @@ describe('validateEnv', () => {
       S3_PUBLIC_URL: 'https://cdn.example.com',
     });
     expect(result.S3_PUBLIC_URL).toBe('https://cdn.example.com');
+  });
+
+  it('défaut SMTP_PORT à 587', () => {
+    const result = validateEnv(baseValid);
+    expect(result.SMTP_PORT).toBe(587);
+  });
+
+  it('défaut SMTP_SECURE à false', () => {
+    const result = validateEnv(baseValid);
+    expect(result.SMTP_SECURE).toBe(false);
+  });
+
+  it('coerce SMTP_PORT depuis une string', () => {
+    const result = validateEnv({ ...baseValid, SMTP_PORT: '1025' });
+    expect(result.SMTP_PORT).toBe(1025);
+  });
+
+  it('rejette SMTP_FROM si pas un email valide', () => {
+    expect(() =>
+      validateEnv({ ...baseValid, SMTP_FROM: 'not-an-email' }),
+    ).toThrow(/SMTP_FROM/);
   });
 });
