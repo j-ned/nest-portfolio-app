@@ -6,7 +6,9 @@ export function renderTemplate(
 ): string {
   let result = html;
   for (const [key, value] of Object.entries(variables)) {
-    result = result.replaceAll(`{{${key}}}`, value);
+    // Function form disables special $-sequence interpretation in `value`
+    // (e.g., a value of "$&" would otherwise be interpreted as "matched text").
+    result = result.replaceAll(`{{${key}}}`, () => value);
   }
   return result;
 }

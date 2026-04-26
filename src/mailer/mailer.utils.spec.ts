@@ -20,4 +20,14 @@ describe('renderTemplate', () => {
   it('gère un template sans variables ni placeholders', () => {
     expect(renderTemplate('static', {})).toBe('static');
   });
+
+  it('préserve les caractères spéciaux $ dans les valeurs', () => {
+    // String form of replaceAll interprets $-sequences ($&, $$, $1, etc.).
+    // The function form (used in renderTemplate) disables that — verify here.
+    expect(renderTemplate('Prix: {{amount}}', { amount: '$100' })).toBe(
+      'Prix: $100',
+    );
+    expect(renderTemplate('Match: {{x}}', { x: '$&' })).toBe('Match: $&');
+    expect(renderTemplate('Dollar: {{x}}', { x: '$$' })).toBe('Dollar: $$');
+  });
 });
