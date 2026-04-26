@@ -185,5 +185,19 @@ describe('ProfileService', () => {
         'avatar/avatar.webp',
       );
     });
+
+    it('throw UnprocessableEntityException si mimetype non whitelisté', async () => {
+      const fileWithBadMime = {
+        buffer: Buffer.from('fake'),
+        mimetype: 'application/octet-stream',
+        size: 100,
+      } as Express.Multer.File;
+      const existing = mkProfile({ avatarUrl: '' });
+      db.limit.mockResolvedValueOnce([existing]);
+      await expect(service.uploadAvatar(fileWithBadMime)).rejects.toThrow(
+        'Unsupported file type: application/octet-stream',
+      );
+      expect(storage.upload).not.toHaveBeenCalled();
+    });
   });
 });

@@ -320,5 +320,19 @@ describe('ProjectsService', () => {
       );
       expect(result.image).toBe('https://example.test/url');
     });
+
+    it('throw UnprocessableEntityException si mimetype non whitelisté', async () => {
+      const fileWithBadMime = {
+        buffer: Buffer.from('fake'),
+        mimetype: 'application/octet-stream',
+        size: 100,
+      } as Express.Multer.File;
+      const current = mkProject({ image: '' });
+      db.limit.mockResolvedValueOnce([current]);
+      await expect(
+        service.uploadImage(current.id, fileWithBadMime),
+      ).rejects.toThrow('Unsupported file type: application/octet-stream');
+      expect(storage.upload).not.toHaveBeenCalled();
+    });
   });
 });

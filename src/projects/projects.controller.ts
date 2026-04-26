@@ -118,6 +118,7 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile(
       new ParseFilePipe({
+        errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
         validators: [
           new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
           new FileTypeValidator({
