@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   and,
+  asc,
   count,
   countDistinct,
   desc,
@@ -8,6 +9,7 @@ import {
   gte,
   isNotNull,
   lt,
+  lte,
   sql,
   sum,
 } from 'drizzle-orm';
@@ -136,11 +138,15 @@ export class AnalyticsStatsService {
   }
 
   async chart(query: DateRangeQueryDto) {
-    const { start, end, toDateStr, isTodayIncluded } = this.bounds(query);
+    const { start, end, isTodayIncluded } = this.bounds(query);
     const today = format(new Date(), 'yyyy-MM-dd');
 
     const fromDateStr = format(start, 'yyyy-MM-dd');
-    const histEndDateStr = isTodayIncluded ? today : format(end, 'yyyy-MM-dd');
+    const toDateStr = format(end, 'yyyy-MM-dd');
+
+    const whereClause = isTodayIncluded
+      ? and(gte(dailyStat.date, fromDateStr), lt(dailyStat.date, today))
+      : and(gte(dailyStat.date, fromDateStr), lte(dailyStat.date, toDateStr));
 
     const histRows = await this.db
       .select({
@@ -149,15 +155,10 @@ export class AnalyticsStatsService {
         pageviews: dailyStat.pageviews,
       })
       .from(dailyStat)
-      .where(
-        and(
-          gte(dailyStat.date, fromDateStr),
-          lt(dailyStat.date, histEndDateStr),
-        ),
-      )
-      .orderBy(desc(dailyStat.date));
+      .where(whereClause)
+      .orderBy(asc(dailyStat.date));
 
-    const data = histRows.reverse(); // ASC
+    const data = histRows;
 
     if (isTodayIncluded && toDateStr === today) {
       const todayStart = startOfDay(new Date());
@@ -277,6 +278,10 @@ export class AnalyticsStatsService {
   async cvDownloads(query: DateRangeQueryDto) {
     const { start, end } = this.bounds(query);
 
+    // Timeline: hardcoded 30 derniers jours, indépendant du query
+    const timelineEnd = endOfDay(new Date());
+    const timelineStart = startOfDay(subDays(new Date(), 30));
+
     const [[totalRow], timeline] = await Promise.all([
       this.db
         .select({ value: count() })
@@ -297,8 +302,8 @@ export class AnalyticsStatsService {
         .where(
           and(
             eq(analyticsEvent.eventType, 'cv_download'),
-            gte(analyticsEvent.createdAt, start),
-            lt(analyticsEvent.createdAt, end),
+            gte(analyticsEvent.createdAt, timelineStart),
+            lt(analyticsEvent.createdAt, timelineEnd),
           ),
         )
         .groupBy(sql`DATE(${analyticsEvent.createdAt})`)
