@@ -26,7 +26,7 @@ export class ProjectsService {
     private readonly storage: StorageService,
   ) {}
 
-  findAll(filters: {
+  async findAll(filters: {
     category?: string;
     featured?: boolean;
   }): Promise<Project[]> {
@@ -35,21 +35,17 @@ export class ProjectsService {
       conditions.push(eq(projects.category, filters.category));
     if (filters.featured) conditions.push(eq(projects.featured, true));
 
-    return this.db
+    const rows = await this.db
       .select()
       .from(projects)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(asc(projects.order), desc(projects.createdAt));
+    return rows.map((r) => this.toResponse(r));
   }
 
   async findById(id: string): Promise<Project> {
-    const [row] = await this.db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
-    if (!row) throw new NotFoundException(`Project ${id} not found`);
-    return row;
+    const row = await this.findByIdRaw(id);
+    return this.toResponse(row);
   }
 
   async create(dto: CreateProjectDto): Promise<Project> {
@@ -59,7 +55,7 @@ export class ProjectsService {
         .insert(projects)
         .values({ ...dto, slug })
         .returning();
-      return row;
+      return this.toResponse(row);
     } catch (err) {
       if (isUniqueViolation(err, 'slug')) {
         throw new ConflictException(
@@ -71,7 +67,7 @@ export class ProjectsService {
   }
 
   async update(id: string, dto: UpdateProjectDto): Promise<Project> {
-    const current = await this.findById(id);
+    const current = await this.findByIdRaw(id);
 
     // image extrait du spread : il ne peut être que null ou undefined côté DTO,
     // mais on ne veut jamais qu'il soit propagé tel quel dans le patch DB
@@ -103,22 +99,19 @@ export class ProjectsService {
       await this.storage.delete(ProjectsService.BUCKET, current.image);
     }
 
-    return row;
+    return this.toResponse(row);
   }
 
   async remove(id: string): Promise<void> {
-    const current = await this.findById(id);
+    const current = await this.findByIdRaw(id);
     await this.db.delete(projects).where(eq(projects.id, id));
     if (current.image) {
       await this.storage.delete(ProjectsService.BUCKET, current.image);
     }
   }
 
-  async uploadImage(
-    id: string,
-    file: Express.Multer.File,
-  ): Promise<{ image: string; url: string }> {
-    const current = await this.findById(id);
+  async uploadImage(id: string, file: Express.Multer.File): Promise<Project> {
+    const current = await this.findByIdRaw(id);
 
     const ext = MIME_TO_EXT[file.mimetype];
     const newKey = `projects/${id}.${ext}`;
@@ -133,18 +126,38 @@ export class ProjectsService {
       file.mimetype,
     );
 
-    await this.db
+    const [row] = await this.db
       .update(projects)
       .set({ image: newKey, updatedAt: new Date() })
-      .where(eq(projects.id, id));
+      .where(eq(projects.id, id))
+      .returning();
 
     if (current.image && current.image !== newKey) {
       await this.storage.delete(ProjectsService.BUCKET, current.image);
     }
 
+    return this.toResponse(row);
+  }
+
+  // Helper privé : retourne la row brute (sans transformation URL).
+  // Utilisé par toutes les opérations internes qui ont besoin de la key S3.
+  private async findByIdRaw(id: string): Promise<Project> {
+    const [row] = await this.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, id))
+      .limit(1);
+    if (!row) throw new NotFoundException(`Project ${id} not found`);
+    return row;
+  }
+
+  // Transforme la key DB en URL publique pour la sortie API.
+  private toResponse(p: Project): Project {
     return {
-      image: newKey,
-      url: this.storage.getPublicUrl(ProjectsService.BUCKET, newKey),
+      ...p,
+      image: p.image
+        ? this.storage.getPublicUrl(ProjectsService.BUCKET, p.image)
+        : '',
     };
   }
 }

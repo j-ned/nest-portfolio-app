@@ -52,10 +52,16 @@ describe('ProjectsService', () => {
   });
 
   describe('findAll', () => {
-    it('retourne tous les projets, triés order ASC, createdAt DESC', async () => {
-      const rows = [mkProject({ id: 'a' }), mkProject({ id: 'b' })];
+    it('retourne tous les projets transformés (image=URL ou ""), triés order ASC, createdAt DESC', async () => {
+      const rows = [
+        mkProject({ id: 'a', image: 'projects/a.webp' }),
+        mkProject({ id: 'b', image: '' }),
+      ];
       db.orderBy.mockResolvedValueOnce(rows);
-      await expect(service.findAll({})).resolves.toEqual(rows);
+      const result = await service.findAll({});
+      expect(result).toHaveLength(2);
+      expect(result[0].image).toBe('https://example.test/url');
+      expect(result[1].image).toBe('');
     });
 
     it('applique filtre category', async () => {
@@ -78,10 +84,18 @@ describe('ProjectsService', () => {
   });
 
   describe('findById', () => {
-    it('retourne le projet', async () => {
-      const row = mkProject();
+    it('retourne le projet avec image transformée en URL', async () => {
+      const row = mkProject({ image: 'projects/<id>.webp' });
       db.limit.mockResolvedValueOnce([row]);
-      await expect(service.findById(row.id)).resolves.toEqual(row);
+      const result = await service.findById(row.id);
+      expect(result.image).toBe('https://example.test/url');
+    });
+
+    it('retourne image: "" quand DB image est vide', async () => {
+      const row = mkProject({ image: '' });
+      db.limit.mockResolvedValueOnce([row]);
+      const result = await service.findById(row.id);
+      expect(result.image).toBe('');
     });
 
     it('throw NotFoundException si absent', async () => {
@@ -246,7 +260,12 @@ describe('ProjectsService', () => {
 
     it("upload puis update DB, pas de delete si pas d'image existante", async () => {
       const current = mkProject({ image: '' });
+      const updated = mkProject({
+        ...current,
+        image: `projects/${current.id}.webp`,
+      });
       db.limit.mockResolvedValueOnce([current]);
+      db.returning.mockResolvedValueOnce([updated]);
       const result = await service.uploadImage(current.id, file);
       expect(storage.upload).toHaveBeenCalledWith(
         'portfolio-storage',
@@ -255,8 +274,8 @@ describe('ProjectsService', () => {
         'image/webp',
       );
       expect(storage.delete).not.toHaveBeenCalled();
-      expect(result.image).toBe(`projects/${current.id}.webp`);
-      expect(result.url).toBe('https://example.test/url');
+      expect(result.image).toBe('https://example.test/url');
+      expect(result.id).toBe(current.id);
     });
 
     it('replace même extension → upload, pas de delete (clé identique)', async () => {
@@ -264,7 +283,9 @@ describe('ProjectsService', () => {
         id: '22222222-2222-2222-2222-222222222222',
         image: 'projects/22222222-2222-2222-2222-222222222222.webp',
       });
+      const updated = mkProject({ ...current });
       db.limit.mockResolvedValueOnce([current]);
+      db.returning.mockResolvedValueOnce([updated]);
       await service.uploadImage(current.id, file);
       expect(storage.upload).toHaveBeenCalled();
       expect(storage.delete).not.toHaveBeenCalled();
@@ -275,7 +296,12 @@ describe('ProjectsService', () => {
         id: '33333333-3333-3333-3333-333333333333',
         image: 'projects/33333333-3333-3333-3333-333333333333.jpg',
       });
+      const updated = mkProject({
+        ...current,
+        image: 'projects/33333333-3333-3333-3333-333333333333.webp',
+      });
       db.limit.mockResolvedValueOnce([current]);
+      db.returning.mockResolvedValueOnce([updated]);
       await service.uploadImage(current.id, file);
       expect(storage.upload).toHaveBeenCalledWith(
         'portfolio-storage',
