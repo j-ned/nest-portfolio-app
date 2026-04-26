@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { and, asc, desc, eq, type SQL } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
@@ -114,6 +115,11 @@ export class ProjectsService {
     const current = await this.findByIdRaw(id);
 
     const ext = MIME_TO_EXT[file.mimetype];
+    if (!ext) {
+      throw new UnprocessableEntityException(
+        `Unsupported file type: ${file.mimetype}`,
+      );
+    }
     const newKey = `projects/${id}.${ext}`;
 
     // Ordre : upload → update DB → cleanup ancienne clé.
