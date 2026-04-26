@@ -399,6 +399,48 @@ SMTP_FROM=noreply@nedellec-julien.fr
 
 **Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-mailer-design.md`](docs/superpowers/specs/2026-04-26-mailer-design.md).
 
+## Contact
+
+Module métier pour le formulaire de contact public et la gestion admin des messages reçus. **Premier consommateur réel du `MailerService`** livré au sous-projet précédent.
+
+**Schéma** : table `contact_message` (uuid + 6 cols + 3 indexes : `read`, `createdAt`, composite `read+createdAt`).
+
+**6 endpoints sous `/contact`** :
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/contact/info` | ❌ | Retourne `{ email, phone, location }` depuis env vars (`CONTACT_*`). |
+| POST | `/contact/messages` | ❌ | Soumission publique du formulaire. **Throttle 5/60s par IP**. Insère en DB + envoie 2 mails fire-and-forget (notification admin + confirmation visiteur). Retourne 201 avec la row. |
+| GET | `/contact/messages` | ✅ | Liste paginée (`?page&limit`, defaults 1/10, max limit 100), tri `createdAt DESC`. |
+| GET | `/contact/messages/unread-count` | ✅ | Compteur de messages non-lus. |
+| PATCH | `/contact/messages/:id/read` | ✅ | Marque le message comme lu. |
+| DELETE | `/contact/messages/:id` | ✅ | Suppression hard. |
+
+**Throttling** : `@nestjs/throttler` configuré globalement (10/60s par défaut), override fin sur `POST /messages` à 5/60s. Guard global via `APP_GUARD`. Storage in-memory — switcher Redis si scale horizontal.
+
+**Stratégie mails** : fire-and-forget après `db.insert`. Le visiteur reçoit 201 dès que la persistence est garantie. Les 2 mails partent en arrière-plan. En cas d'échec SMTP (3 retries du `MailerService` épuisés), l'erreur est loggée mais le visiteur ne voit rien — le message reste en DB pour consultation admin.
+
+**Templates** :
+- `src/contact/mail-templates/contact-notification.html` — envoyé à `CONTACT_EMAIL` (admin)
+- `src/contact/mail-templates/contact-confirmation.html` — envoyé à l'email du visiteur
+
+Variables : `{{name}}`, `{{email}}`, `{{subject}}`, `{{message}}`.
+
+**Helpers transversaux** :
+- `src/common/pagination.ts` : `parsePagination` + types `PaginationParams`/`PaginatedResult<T>`. Premier utilitaire de `src/common/`, réutilisable par futurs modules paginés (Bookings, etc.).
+
+**Configuration prod** :
+
+```bash
+CONTACT_EMAIL=admin@nedellec-julien.fr  # destinataire des notifications
+CONTACT_PHONE=+33 6 00 00 00 00
+CONTACT_LOCATION=Lyon, France
+```
+
+Le `SMTP_FROM` (sous-projet Mailer) reste l'expéditeur — souvent identique à `CONTACT_EMAIL` mais conceptuellement distinct.
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-contact-design.md`](docs/superpowers/specs/2026-04-26-contact-design.md).
+
 ## Migration depuis le backend Hono
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
@@ -410,8 +452,8 @@ Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant 
 5. ✅ Projects (CRUD + upload image qui consomme S3 Storage)
 6. ✅ Avatar Profile (`POST /profile/avatar` + transformation key→URL en sortie API, cohérent Projects)
 7. ✅ Mailer (MailerModule @Global + Mailpit local + nodemailer)
-8. **Contact** *(prochain)* (messages + 2 templates qui consomment Mailer)
-9. Bookings (réservations + slots + 2 templates qui consomment Mailer)
+8. ✅ Contact (6 endpoints + 2 templates + throttling 5/60s, premier consumer Mailer)
+9. **Bookings** *(prochain)* (réservations + slots + 2 templates qui consomment Mailer)
 10. CV (upload S3 + download)
 11. Analytics (page views + agrégats)
 
