@@ -15,6 +15,13 @@
       "when": 1777140297326,
       "tag": "0001_abnormal_pet_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777193759263,
+      "tag": "0002_mighty_the_watchers",
+      "breakpoints": true
     }
   ]
 }
