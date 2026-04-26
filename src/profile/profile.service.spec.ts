@@ -89,5 +89,101 @@ describe('ProfileService', () => {
       expect(result.displayName).toBe('Julien');
       expect(result.avatarUrl).toBe('');
     });
+
+    it('avatarUrl: null + key existante → DB write puis storage.delete', async () => {
+      const existing = mkProfile({ avatarUrl: 'avatar/avatar.webp' });
+      const updated = mkProfile({ avatarUrl: '' });
+      db.limit.mockResolvedValueOnce([existing]);
+      db.returning.mockResolvedValueOnce([updated]);
+      await service.update({ avatarUrl: null });
+      expect(storage.delete).toHaveBeenCalledWith(
+        'portfolio-storage',
+        'avatar/avatar.webp',
+      );
+    });
+
+    it('avatarUrl: null + pas de key → DB write, pas de delete S3', async () => {
+      const existing = mkProfile({ avatarUrl: '' });
+      const updated = mkProfile({ avatarUrl: '' });
+      db.limit.mockResolvedValueOnce([existing]);
+      db.returning.mockResolvedValueOnce([updated]);
+      await service.update({ avatarUrl: null });
+      expect(storage.delete).not.toHaveBeenCalled();
+    });
+
+    it('ne touche pas S3 si le write DB échoue (avatarUrl: null)', async () => {
+      const existing = mkProfile({ avatarUrl: 'avatar/avatar.webp' });
+      db.limit.mockResolvedValueOnce([existing]);
+      db.returning.mockRejectedValueOnce(new Error('DB connection lost'));
+      await expect(service.update({ avatarUrl: null })).rejects.toThrow(
+        'DB connection lost',
+      );
+      expect(storage.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('uploadAvatar', () => {
+    const file = {
+      buffer: Buffer.from('fake'),
+      mimetype: 'image/webp',
+      size: 100,
+    } as Express.Multer.File;
+
+    it('upload + DB write, pas de delete si pas de key existante', async () => {
+      const existing = mkProfile({ avatarUrl: '' });
+      const updated = mkProfile({ avatarUrl: 'avatar/avatar.webp' });
+      db.limit.mockResolvedValueOnce([existing]);
+      db.returning.mockResolvedValueOnce([updated]);
+      const result = await service.uploadAvatar(file);
+      expect(storage.upload).toHaveBeenCalledWith(
+        'portfolio-storage',
+        'avatar/avatar.webp',
+        file.buffer,
+        'image/webp',
+      );
+      expect(storage.delete).not.toHaveBeenCalled();
+      expect(result.avatarUrl).toBe('https://example.test/url');
+    });
+
+    it('replace même extension → upload, pas de delete (clé identique)', async () => {
+      const existing = mkProfile({ avatarUrl: 'avatar/avatar.webp' });
+      const updated = mkProfile({ avatarUrl: 'avatar/avatar.webp' });
+      db.limit.mockResolvedValueOnce([existing]);
+      db.returning.mockResolvedValueOnce([updated]);
+      await service.uploadAvatar(file);
+      expect(storage.upload).toHaveBeenCalled();
+      expect(storage.delete).not.toHaveBeenCalled();
+    });
+
+    it('replace extension différente → upload + DB + delete ancienne', async () => {
+      const existing = mkProfile({ avatarUrl: 'avatar/avatar.jpg' });
+      const updated = mkProfile({ avatarUrl: 'avatar/avatar.webp' });
+      db.limit.mockResolvedValueOnce([existing]);
+      db.returning.mockResolvedValueOnce([updated]);
+      await service.uploadAvatar(file);
+      expect(storage.upload).toHaveBeenCalledWith(
+        'portfolio-storage',
+        'avatar/avatar.webp',
+        file.buffer,
+        'image/webp',
+      );
+      expect(storage.delete).toHaveBeenCalledWith(
+        'portfolio-storage',
+        'avatar/avatar.jpg',
+      );
+    });
+
+    it('retourne Profile avec avatarUrl transformée en URL', async () => {
+      const existing = mkProfile({ avatarUrl: '' });
+      const updated = mkProfile({ avatarUrl: 'avatar/avatar.webp' });
+      db.limit.mockResolvedValueOnce([existing]);
+      db.returning.mockResolvedValueOnce([updated]);
+      const result = await service.uploadAvatar(file);
+      expect(result.avatarUrl).toBe('https://example.test/url');
+      expect(storage.getPublicUrl).toHaveBeenCalledWith(
+        'portfolio-storage',
+        'avatar/avatar.webp',
+      );
+    });
   });
 });

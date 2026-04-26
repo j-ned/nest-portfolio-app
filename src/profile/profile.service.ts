@@ -13,6 +13,7 @@ import {
 } from '../database/schema/profile';
 import { StorageService } from '../storage/storage.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { MIME_TO_EXT } from '../projects/projects.utils';
 
 @Injectable()
 export class ProfileService {
@@ -47,6 +48,35 @@ export class ProfileService {
     // Cleanup S3 APRÈS le write DB réussi : si le write échoue, on préfère
     // garder l'objet S3 (orphelin DB-cohérent) plutôt qu'une DB cassée.
     if (avatarUrl === null && current.avatarUrl) {
+      await this.storage.delete(ProfileService.BUCKET, current.avatarUrl);
+    }
+
+    return this.toResponse(row);
+  }
+
+  async uploadAvatar(file: Express.Multer.File): Promise<Profile> {
+    const current = await this.findOneRaw();
+
+    const ext = MIME_TO_EXT[file.mimetype];
+    const newKey = `avatar/avatar.${ext}`;
+
+    // Ordre : upload → update DB → cleanup ancienne clé.
+    // Si une étape échoue, on préfère un orphelin S3 (cleanup manuel possible)
+    // à une DB qui référence une clé supprimée (image cassée côté front).
+    await this.storage.upload(
+      ProfileService.BUCKET,
+      newKey,
+      file.buffer,
+      file.mimetype,
+    );
+
+    const [row] = await this.db
+      .update(profile)
+      .set({ avatarUrl: newKey, updatedAt: new Date() })
+      .where(eq(profile.id, current.id))
+      .returning();
+
+    if (current.avatarUrl && current.avatarUrl !== newKey) {
       await this.storage.delete(ProfileService.BUCKET, current.avatarUrl);
     }
 
