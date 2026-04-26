@@ -62,6 +62,11 @@ export class ProfileController {
       'Upload/replace profile avatar (admin, max 5MB, image/webp|jpeg|png|avif)',
   })
   @ApiResponse({
+    status: 200,
+    description: 'Profile with avatar uploaded and URL transformed',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
     status: 422,
     description: 'File too large or unsupported MIME type',
   })
