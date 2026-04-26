@@ -15,11 +15,23 @@ export const MIME_TO_EXT: Record<string, string> = {
 };
 
 export function isUniqueViolation(err: unknown, columnHint?: string): boolean {
-  if (typeof err !== 'object' || err === null) return false;
-  const code = (err as { code?: string }).code;
-  if (code !== '23505') return false;
-  if (!columnHint) return true;
-  const constraint =
-    (err as { constraint_name?: string }).constraint_name ?? '';
-  return constraint.includes(columnHint);
+  // Walk the error cause chain (Drizzle wraps the raw pg error in a
+  // DrizzleQueryError whose `.cause` holds the original PostgresError).
+  let current: unknown = err;
+  let depth = 0;
+  while (current !== null && typeof current === 'object' && depth < 5) {
+    const obj = current as {
+      code?: string;
+      constraint_name?: string;
+      cause?: unknown;
+    };
+    if (obj.code === '23505') {
+      if (!columnHint) return true;
+      const constraint = obj.constraint_name ?? '';
+      return constraint.includes(columnHint);
+    }
+    current = obj.cause;
+    depth++;
+  }
+  return false;
 }

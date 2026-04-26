@@ -145,6 +145,24 @@ describe('ProjectsService', () => {
         }),
       ).rejects.toThrow(ConflictException);
     });
+
+    it('throw ConflictException quand Drizzle wrappe le PostgresError dans .cause', async () => {
+      // Drizzle ≥0.36 wraps the raw pg error in a DrizzleQueryError whose
+      // `.cause` holds the PostgresError (code '23505' + constraint_name).
+      const wrappedErr = new Error('Failed query: INSERT INTO ...');
+      (wrappedErr as unknown as Record<string, unknown>).cause = {
+        code: '23505',
+        constraint_name: 'project_slug_unique',
+      };
+      db.returning.mockRejectedValueOnce(wrappedErr);
+      await expect(
+        service.create({
+          title: 'Mon site',
+          category: 'web',
+          description: 'desc',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
   });
 
   describe('update', () => {
@@ -205,6 +223,21 @@ describe('ProjectsService', () => {
         code: '23505',
         constraint_name: 'project_slug_unique',
       });
+      await expect(
+        service.update('11111111-1111-1111-1111-111111111111', {
+          title: 'Collision',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('throw ConflictException quand Drizzle wrappe le PostgresError dans .cause (update)', async () => {
+      const wrappedErr = new Error('Failed query: UPDATE ...');
+      (wrappedErr as unknown as Record<string, unknown>).cause = {
+        code: '23505',
+        constraint_name: 'project_slug_unique',
+      };
+      db.limit.mockResolvedValueOnce([mkProject()]);
+      db.returning.mockRejectedValueOnce(wrappedErr);
       await expect(
         service.update('11111111-1111-1111-1111-111111111111', {
           title: 'Collision',
