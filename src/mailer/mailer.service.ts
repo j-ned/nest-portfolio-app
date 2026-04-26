@@ -40,7 +40,7 @@ export class MailerService {
     }
     this.logger.error(
       `Failed to send email to ${to} after ${MAX_RETRIES} attempts`,
-      lastError,
+      lastError instanceof Error ? lastError.stack : String(lastError),
     );
     throw lastError;
   }
