@@ -25,6 +25,7 @@ export function createMockDb() {
     offset: jest.fn(),
     insert: jest.fn(),
     values: jest.fn(),
+    onConflictDoUpdate: jest.fn(),
     update: jest.fn(),
     set: jest.fn(),
     delete: jest.fn(),
