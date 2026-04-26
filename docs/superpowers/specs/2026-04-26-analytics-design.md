@@ -234,7 +234,7 @@ export class TrackEventDto {
 
   @ApiPropertyOptional({ enum: ANALYTICS_EVENT_TYPES })
   @IsOptional()
-  @IsIn(ANALYTICS_EVENT_TYPES as unknown as string[])
+  @IsIn([...ANALYTICS_EVENT_TYPES])
   eventType?: AnalyticsEventType;
 
   @ApiPropertyOptional({ maxLength: 255 })
@@ -307,7 +307,7 @@ export class MetricsQueryDto extends DateRangeQueryDto {
 - **Auth** : aucune
 - **Input** : `TrackEventDto` (JSON body)
 - **Logic** :
-  1. Extract `req.ip` (Express trust proxy déjà configuré pour X-Forwarded-For), header `User-Agent`
+  1. Extract IP : `req.ip` (Express). En prod, le reverse proxy (Caddy/Nginx) doit forwarder `X-Forwarded-For` et l'app activer `app.set('trust proxy', true)`. **À vérifier au Task 6** : ajouter `app.set('trust proxy', 1)` dans `main.ts` si pas déjà fait. Extract User-Agent header.
   2. `if (isbot(ua)) return;` — silent skip 204
   3. `sessionHash = sha256(`${ip}|${ua}|${YYYY-MM-DD UTC}`).digest('hex')`
   4. UA parsing : `const r = new UAParser(ua).getResult(); browser = r.browser.name + ' ' + r.browser.version; os = r.os.name + ' ' + r.os.version;` (gère `undefined` → `null`)
@@ -333,7 +333,7 @@ export class MetricsQueryDto extends DateRangeQueryDto {
     totalPageviews: number;      // count page_view
     totalSessions: number;       // countDistinct (= visitors par jour, mais col historique)
     bounceRate: number;          // % (sessions avec 1 seul page-view) / total sessions, 0-100, arrondi 2 décimales
-    avgDuration: number;         // AVG(duration) seconds, NULL → 0
+    avgDuration: number;         // AVG(duration) seconds (NULL coalesced à 0 côté service)
     projectClicks: number;       // count analytics_event WHERE event_type='project_click'
     articleViews: number;
     cvDownloads: number;
@@ -454,9 +454,21 @@ export class AnalyticsAggregatorService {
     );
   }
 
-  private async computeAggregates(start: Date, end: Date) {
-    // 8 sub-queries en parallèle (Promise.all) sur page_view + analytics_event filtrées par created_at
-    // Renvoie { visitors, pageviews, sessions, bounces, totalDuration, projectClicks, articleViews, cvDownloads }
+  private async computeAggregates(start: Date, end: Date): Promise<{
+    visitors: number;
+    pageviews: number;
+    sessions: number;
+    bounces: number;
+    totalDuration: number;
+    projectClicks: number;
+    articleViews: number;
+    cvDownloads: number;
+  }> {
+    // Stratégie : 8 sub-queries Drizzle exécutées en parallèle via Promise.all
+    // - 5 sur page_view (visitors=countDistinct sessionHash, pageviews=count, sessions=countDistinct, bounces via subquery HAVING count=1, totalDuration=sum(duration))
+    // - 3 sur analytics_event (group by event_type filtré sur 'project_click' / 'article_view' / 'cv_download')
+    // Tous filtrés par `created_at >= start AND created_at < end`.
+    // AVG(NULL) → 0 géré côté JS (fallback `?? 0`).
   }
 
   private async purgeOldRawEvents(): Promise<void> {
