@@ -257,18 +257,21 @@ export class CreateProjectDto {
 
 ```ts
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsOptional, IsString, ValidateIf } from 'class-validator';
+import { Equals, IsOptional } from 'class-validator';
 import { CreateProjectDto } from './create-project.dto';
 
 export class UpdateProjectDto extends PartialType(CreateProjectDto) {
   @ApiPropertyOptional({
+    type: 'null',
     nullable: true,
-    description: 'Pass null to remove image (also deletes from S3)',
+    description: 'Pass null to remove image (also deletes from S3). Use POST /:id/image to upload a new one.',
   })
-  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString()
-  image?: string | null;
+  @IsOptional() @Equals(null)
+  image?: null;
 }
 ```
+
+> **Pourquoi `@Equals(null)`** : la seule valeur acceptée pour `image` dans un PATCH est `null` (= supprimer). Toute autre valeur (string arbitraire) est rejetée par le validator. Empêche un client de réécrire silencieusement la key S3 stockée en DB. Pour set une nouvelle image, l'admin passe par l'endpoint multipart dédié.
 
 ### Notes
 
@@ -340,11 +343,17 @@ export class ProjectsService {
   async update(id: string, dto: UpdateProjectDto): Promise<Project> {
     const current = await this.findById(id);
 
-    const patch: Partial<NewProject> = { ...dto, updatedAt: new Date() };
+    // image extrait du spread : il ne peut être que null ou undefined côté DTO,
+    // mais on ne veut jamais qu'il soit propagé tel quel dans le patch DB
+    // (la column est NOT NULL DEFAULT '').
+    const { image, ...rest } = dto;
+    const patch: Partial<NewProject> = { ...rest, updatedAt: new Date() };
     if (dto.title !== undefined) patch.slug = slugify(dto.title);
 
-    if (dto.image === null && current.image) {
-      await this.storage.delete(ProjectsService.BUCKET, current.image);
+    if (image === null) {
+      if (current.image) {
+        await this.storage.delete(ProjectsService.BUCKET, current.image);
+      }
       patch.image = '';
     }
 
@@ -376,16 +385,19 @@ export class ProjectsService {
     const ext = MIME_TO_EXT[file.mimetype];
     const newKey = `projects/${id}.${ext}`;
 
-    if (current.image && current.image !== newKey) {
-      await this.storage.delete(ProjectsService.BUCKET, current.image);
-    }
-
+    // Ordre : upload → update DB → cleanup ancienne clé.
+    // Si une étape échoue, on préfère un orphelin S3 (cleanup manuel possible)
+    // à une DB qui référence une clé supprimée (image cassée côté front).
     await this.storage.upload(ProjectsService.BUCKET, newKey, file.buffer, file.mimetype);
 
     await this.db
       .update(projects)
       .set({ image: newKey, updatedAt: new Date() })
       .where(eq(projects.id, id));
+
+    if (current.image && current.image !== newKey) {
+      await this.storage.delete(ProjectsService.BUCKET, current.image);
+    }
 
     return {
       image: newKey,
@@ -402,7 +414,7 @@ export function slugify(input: string): string {
   return input
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // strip accents
+    .replace(/[\u0300-\u036f]/g, '') // strip combining diacritics (NFD form)
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
 }
