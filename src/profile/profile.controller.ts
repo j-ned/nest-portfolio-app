@@ -1,6 +1,21 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  FileTypeValidator,
+  Get,
+  MaxFileSizeValidator,
+  ParseFilePipe,
+  Patch,
+  Post,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -29,5 +44,41 @@ export class ProfileController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   update(@Body() dto: UpdateProfileDto) {
     return this.profile.update(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('avatar')
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @ApiOperation({
+    summary:
+      'Upload/replace profile avatar (admin, max 5MB, image/webp|jpeg|png|avif)',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'File too large or unsupported MIME type',
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  uploadAvatar(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+          new FileTypeValidator({
+            fileType: /^image\/(webp|jpeg|png|avif)$/,
+          }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.profile.uploadAvatar(file);
   }
 }
