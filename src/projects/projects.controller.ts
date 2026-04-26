@@ -88,6 +88,7 @@ export class ProjectsController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a project + its S3 image (admin)' })
+  @ApiResponse({ status: 404, description: 'Not found' })
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.projects.remove(id);
   }
@@ -106,6 +107,11 @@ export class ProjectsController {
   @ApiOperation({
     summary:
       'Upload/replace project image (admin, max 5MB, image/webp|jpeg|png|avif)',
+  })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({
+    status: 422,
+    description: 'File too large or unsupported MIME type',
   })
   @UseInterceptors(FileInterceptor('file'))
   uploadImage(
