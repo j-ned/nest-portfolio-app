@@ -142,29 +142,20 @@ export class AnalyticsStatsService {
     const fromDateStr = format(start, 'yyyy-MM-dd');
     const histEndDateStr = isTodayIncluded ? today : format(end, 'yyyy-MM-dd');
 
-    const histRows = isTodayIncluded
-      ? await this.db
-          .select({
-            date: dailyStat.date,
-            visitors: dailyStat.visitors,
-            pageviews: dailyStat.pageviews,
-          })
-          .from(dailyStat)
-          .orderBy(desc(dailyStat.date))
-      : await this.db
-          .select({
-            date: dailyStat.date,
-            visitors: dailyStat.visitors,
-            pageviews: dailyStat.pageviews,
-          })
-          .from(dailyStat)
-          .where(
-            and(
-              gte(dailyStat.date, fromDateStr),
-              lt(dailyStat.date, histEndDateStr),
-            ),
-          )
-          .orderBy(desc(dailyStat.date));
+    const histRows = await this.db
+      .select({
+        date: dailyStat.date,
+        visitors: dailyStat.visitors,
+        pageviews: dailyStat.pageviews,
+      })
+      .from(dailyStat)
+      .where(
+        and(
+          gte(dailyStat.date, fromDateStr),
+          lt(dailyStat.date, histEndDateStr),
+        ),
+      )
+      .orderBy(desc(dailyStat.date));
 
     const data = histRows.reverse(); // ASC
 

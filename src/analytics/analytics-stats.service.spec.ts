@@ -88,8 +88,10 @@ describe('AnalyticsStatsService', () => {
 
     it('si to=today, append une row live calculée depuis page_view', async () => {
       const histRows = [{ date: '2026-04-25', visitors: 50, pageviews: 100 }];
+      // History: .where() returns builder so .orderBy() can be called next
+      db.where.mockReturnValueOnce(db);
       db.orderBy.mockResolvedValueOnce(histRows);
-      // Live agg today : visitors + pageviews
+      // Live agg today : visitors + pageviews (each chain ends in .where())
       db.where
         .mockResolvedValueOnce([{ value: 12 }])
         .mockResolvedValueOnce([{ value: 30 }]);
