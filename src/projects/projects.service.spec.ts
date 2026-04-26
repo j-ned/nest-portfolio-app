@@ -105,8 +105,12 @@ describe('ProjectsService', () => {
   });
 
   describe('create', () => {
-    it('insère avec slug auto-calculé depuis title', async () => {
-      const created = mkProject({ title: 'Mon site', slug: 'mon-site' });
+    it('insère avec slug auto-calculé depuis title et image transformée en URL', async () => {
+      const created = mkProject({
+        title: 'Mon site',
+        slug: 'mon-site',
+        image: 'projects/foo.webp',
+      });
       db.returning.mockResolvedValueOnce([created]);
       const result = await service.create({
         title: 'Mon site',
@@ -114,6 +118,7 @@ describe('ProjectsService', () => {
         description: 'desc',
       });
       expect(result.slug).toBe('mon-site');
+      expect(result.image).toBe('https://example.test/url');
     });
 
     it('normalise les accents dans le slug', async () => {
@@ -302,7 +307,7 @@ describe('ProjectsService', () => {
       });
       db.limit.mockResolvedValueOnce([current]);
       db.returning.mockResolvedValueOnce([updated]);
-      await service.uploadImage(current.id, file);
+      const result = await service.uploadImage(current.id, file);
       expect(storage.upload).toHaveBeenCalledWith(
         'portfolio-storage',
         `projects/${current.id}.webp`,
@@ -313,6 +318,7 @@ describe('ProjectsService', () => {
         'portfolio-storage',
         'projects/33333333-3333-3333-3333-333333333333.jpg',
       );
+      expect(result.image).toBe('https://example.test/url');
     });
   });
 });
