@@ -79,21 +79,15 @@ export class ProjectsService {
     const { image, ...rest } = dto;
     const patch: Partial<NewProject> = { ...rest, updatedAt: new Date() };
     if (dto.title !== undefined) patch.slug = slugify(dto.title);
+    if (image === null) patch.image = '';
 
-    if (image === null) {
-      if (current.image) {
-        await this.storage.delete(ProjectsService.BUCKET, current.image);
-      }
-      patch.image = '';
-    }
-
+    let row: Project;
     try {
-      const [row] = await this.db
+      [row] = await this.db
         .update(projects)
         .set(patch)
         .where(eq(projects.id, id))
         .returning();
-      return row;
     } catch (err) {
       if (isUniqueViolation(err, 'slug')) {
         throw new ConflictException(
@@ -102,6 +96,14 @@ export class ProjectsService {
       }
       throw err;
     }
+
+    // S3 cleanup APRÈS le write DB réussi : si le write échoue, on préfère
+    // garder l'objet S3 (orphelin DB-cohérent) plutôt qu'une DB cassée.
+    if (image === null && current.image) {
+      await this.storage.delete(ProjectsService.BUCKET, current.image);
+    }
+
+    return row;
   }
 
   async remove(id: string): Promise<void> {

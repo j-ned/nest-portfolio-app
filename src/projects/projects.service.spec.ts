@@ -143,6 +143,20 @@ describe('ProjectsService', () => {
       db.returning.mockResolvedValueOnce([updated]);
       const result = await service.update(current.id, { title: 'Nouveau' });
       expect(result.slug).toBe('nouveau');
+      expect(storage.delete).not.toHaveBeenCalled();
+    });
+
+    it('ne touche pas S3 si le write DB échoue (image: null)', async () => {
+      const current = mkProject({ image: 'projects/some-id.webp' });
+      db.limit.mockResolvedValueOnce([current]);
+      db.returning.mockRejectedValueOnce({
+        code: '23505',
+        constraint_name: 'project_slug_unique',
+      });
+      await expect(
+        service.update(current.id, { title: 'Collision', image: null }),
+      ).rejects.toThrow(ConflictException);
+      expect(storage.delete).not.toHaveBeenCalled();
     });
 
     it('image: null + image existante → storage.delete + image=""', async () => {
