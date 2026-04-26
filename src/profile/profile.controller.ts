@@ -3,6 +3,7 @@ import {
   Controller,
   FileTypeValidator,
   Get,
+  HttpStatus,
   MaxFileSizeValidator,
   ParseFilePipe,
   Patch,
@@ -74,6 +75,7 @@ export class ProfileController {
   uploadAvatar(
     @UploadedFile(
       new ParseFilePipe({
+        errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
         validators: [
           new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
           new FileTypeValidator({

@@ -149,5 +149,20 @@ describe('StorageService', () => {
         'https://cdn.example.com/b/k',
       );
     });
+
+    it('fallback sur s3Endpoint si s3PublicUrl undefined', () => {
+      const cfgFallback = {
+        s3PublicUrl: undefined,
+        s3Endpoint: 'http://localhost:9000',
+      } as AppConfigService;
+      const localService = new StorageService(realClient, cfgFallback);
+      const url = localService.getPublicUrl(
+        'portfolio-storage',
+        'avatar/avatar.webp',
+      );
+      expect(url).toBe(
+        'http://localhost:9000/portfolio-storage/avatar%2Favatar.webp',
+      );
+    });
   });
 });
