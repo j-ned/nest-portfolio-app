@@ -480,6 +480,34 @@ L'helper de chevauchement (`bookings.utils.ts`) est testé indépendamment (6 te
 
 **Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-bookings-design.md`](docs/superpowers/specs/2026-04-26-bookings-design.md).
 
+## CV
+
+Module métier pour la gestion du CV téléchargeable. **Troisième consommateur du `StorageService`** après Projects et Avatar.
+
+**Schéma** : table `cv_file` (uuid + fileName + fileKey unique + fileSize + mimeType + uploadedAt + updatedAt + 1 index sur uploadedAt). Pattern singleton : 1 row max en DB.
+
+**4 endpoints sous `/cv`** :
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| POST | `/cv/upload` | ✅ | Upload multipart (`file`, max 10MB, `application/pdf` strict). Upsert singleton sur key fixe `cv/cv.pdf`. INSERT si pas de CV, UPDATE sinon. |
+| GET | `/cv` | ❌ | Métadonnées du CV courant ou `null` si aucun. |
+| GET | `/cv/download` | ❌ | Stream backend du PDF avec `Content-Disposition: attachment; filename="<original>"`. 404 si pas de CV. |
+| DELETE | `/cv` | ✅ | Supprime DB row + S3 file. 204 ou 404. |
+
+**Lifecycle S3** :
+- Upload : `S3 PutObject` (idempotent, écrase la key) → `DB UPSERT` (INSERT si vide, UPDATE sinon).
+- Delete : `DB DELETE` → `S3 DELETE` (cohérence Projects/Bookings — DB clean d'abord, S3 ensuite).
+
+**Pourquoi backend proxy pour download** : le `Content-Disposition: attachment; filename="<latest.fileName>"` permet au navigateur de proposer le téléchargement avec le nom original que l'admin a uploadé (ex `Julien-Nedellec-CV-2026.pdf`), pas la clé S3 (`cv.pdf`). La memory pressure pour 10MB est négligeable.
+
+**Configuration** :
+- Pas de nouvelle env var (réutilise le bucket `portfolio-storage`)
+- Pas de nouvelle dépendance (`multer` + `@types/multer` déjà installés au sous-projet Projects)
+- Pas de throttle (admin-only POST + read-only GETs)
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-cv-design.md`](docs/superpowers/specs/2026-04-26-cv-design.md).
+
 ## Migration depuis le backend Hono
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
@@ -493,8 +521,8 @@ Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant 
 7. ✅ Mailer (MailerModule @Global + Mailpit local + nodemailer)
 8. ✅ Contact (6 endpoints + 2 templates + throttling 5/60s, premier consumer Mailer)
 9. ✅ Bookings (7 endpoints + 2 templates + validation conflit serveur, 2ème consumer Mailer)
-10. **CV** *(prochain)* (upload S3 + download — 3ème consumer S3)
-11. Analytics (page views + agrégats)
+10. ✅ CV (upload PDF + download stream + singleton, 3ème consumer S3)
+11. **Analytics** *(prochain)* (page views + agrégats)
 
 La DB du NestJS est **isolée** de celle du Hono (port 55432 vs port d'origine). Aucune sync de données pendant la migration. La copie des données réelles sera traitée à la fin.
 
