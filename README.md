@@ -508,6 +508,47 @@ Module métier pour la gestion du CV téléchargeable. **Troisième consommateur
 
 **Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-cv-design.md`](docs/superpowers/specs/2026-04-26-cv-design.md).
 
+## Analytics
+
+Module métier pour la collecte de page-views et events custom du portfolio public, avec agrégation quotidienne via cron. **Dernier sous-projet de la migration Hono → NestJS.**
+
+**3 tables** :
+- `page_view` (raw events, 9 colonnes, 3 indexes) — purgé après 30j par le cron
+- `analytics_event` (events custom : project_click, article_view, cv_download, 7 colonnes, 3 indexes) — purgé après 30j
+- `daily_stat` (rollup quotidien, 12 colonnes, unique sur `date`) — conservé indéfiniment
+
+**8 endpoints sous `/analytics`** :
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| POST | `/analytics/track` | ❌ | Track page-view ou event custom (fire-and-forget, 204). Throttle 10/sec/IP. Filtre bots via `isbot`. |
+| GET | `/analytics/stats/overview` | ✅ | Totaux (visitors, pv, sessions, bounceRate, avgDuration, eventCounts) sur date range. |
+| GET | `/analytics/stats/chart` | ✅ | Time-series quotidien (depuis `daily_stat` + live agg pour today). |
+| GET | `/analytics/stats/metrics?type=url\|referrer\|browser\|country\|os` | ✅ | Top N par dimension. |
+| GET | `/analytics/stats/active` | ✅ | Sessions actives 5 dernières minutes. |
+| GET | `/analytics/stats/projects` | ✅ | Top projets cliqués. |
+| GET | `/analytics/stats/articles` | ✅ | Top articles vus. |
+| GET | `/analytics/stats/cv-downloads` | ✅ | Total + timeline 30j. |
+
+**Privacy / sécurité** :
+- Pas de cookies posés ou lus
+- IP utilisée uniquement pour calculer hash session + lookup pays, jamais persistée
+- User-Agent jamais persisté brut, seulement parsé en `browser` + `os`
+- Session hash = `SHA256(IP + UA + YYYY-MM-DD UTC)` — non-réversible, change chaque jour
+- Bots filtrés à l'entrée (lib `isbot`)
+
+**Cron quotidien** : `@Cron('0 0 * * *', { timeZone: 'UTC' })`. Agrège J-1 dans `daily_stat` (UPSERT idempotent), puis purge `page_view` + `analytics_event` > 30j.
+
+**Trigger manuel** : `pnpm build && node dist/scripts/run-analytics-aggregator.js [YYYY-MM-DD]` pour agréger une date arbitraire (utile en cas de cron raté).
+
+**Configuration** :
+- Pas de nouvelle env var
+- Nouvelles deps : `@nestjs/schedule`, `geoip-lite` (DB MaxMind ~22MB embarquée), `ua-parser-js`, `isbot`
+- Throttle global = 10/60s, override 10/sec sur `POST /track`
+- `app.set('trust proxy', 1)` activé dans `main.ts` pour lire `X-Forwarded-For` derrière un reverse proxy
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-analytics-design.md`](docs/superpowers/specs/2026-04-26-analytics-design.md).
+
 ## Migration depuis le backend Hono
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
@@ -522,7 +563,9 @@ Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant 
 8. ✅ Contact (6 endpoints + 2 templates + throttling 5/60s, premier consumer Mailer)
 9. ✅ Bookings (7 endpoints + 2 templates + validation conflit serveur, 2ème consumer Mailer)
 10. ✅ CV (upload PDF + download stream + singleton, 3ème consumer S3)
-11. **Analytics** *(prochain)* (page views + agrégats)
+11. ✅ Analytics (3 tables + 8 endpoints + cron rollup nocturne + bot filter + UA + géoloc IP)
+
+**🎉 Migration Hono → NestJS terminée — 11/11 sous-projets livrés.**
 
 La DB du NestJS est **isolée** de celle du Hono (port 55432 vs port d'origine). Aucune sync de données pendant la migration. La copie des données réelles sera traitée à la fin.
 
