@@ -78,4 +78,14 @@ export class AppConfigService {
   get smtpFrom() {
     return this.config.get('SMTP_FROM', { infer: true });
   }
+
+  get contactEmail() {
+    return this.config.get('CONTACT_EMAIL', { infer: true });
+  }
+  get contactPhone() {
+    return this.config.get('CONTACT_PHONE', { infer: true });
+  }
+  get contactLocation() {
+    return this.config.get('CONTACT_LOCATION', { infer: true });
+  }
 }

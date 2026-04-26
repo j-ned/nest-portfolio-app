@@ -48,6 +48,11 @@ export const envSchema = z.object({
   SMTP_USER: z.string().min(1),
   SMTP_PASS: z.string().min(1),
   SMTP_FROM: z.string().email(),
+
+  // Contact
+  CONTACT_EMAIL: z.string().email(),
+  CONTACT_PHONE: z.string().min(1),
+  CONTACT_LOCATION: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;
