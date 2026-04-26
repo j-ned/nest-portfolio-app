@@ -20,6 +20,7 @@ import { MailerModule } from './mailer/mailer.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ContactModule } from './contact/contact.module';
+import { BookingsModule } from './bookings/bookings.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { ContactModule } from './contact/contact.module';
     MailerModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
     ContactModule,
+    BookingsModule,
   ],
   providers: [
     {
