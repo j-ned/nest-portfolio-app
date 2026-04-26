@@ -73,8 +73,8 @@ describe('AnalyticsStatsService', () => {
   describe('chart', () => {
     it('retourne les rows daily_stat triées', async () => {
       const rows = [
-        { date: '2026-04-25', visitors: 100, pageviews: 250 },
         { date: '2026-04-24', visitors: 80, pageviews: 200 },
+        { date: '2026-04-25', visitors: 100, pageviews: 250 },
       ];
       db.orderBy.mockResolvedValueOnce(rows);
 
@@ -168,11 +168,15 @@ describe('AnalyticsStatsService', () => {
   describe('cvDownloads', () => {
     it('total + timeline 30 jours', async () => {
       // 2 queries : count(*) + groupBy date
-      db.where.mockResolvedValueOnce([{ value: 42 }]); // total
+      // total: select.from.where (terminator)
+      // timeline: select.from.where.groupBy.orderBy (terminator)
+      db.where
+        .mockResolvedValueOnce([{ value: 42 }]) // total terminator (1st .where call)
+        .mockReturnValueOnce(db); // timeline .where (2nd .where call, returns builder)
       db.orderBy.mockResolvedValueOnce([
         { date: '2026-04-25', count: 3 },
         { date: '2026-04-24', count: 2 },
-      ]);
+      ]); // timeline terminator
 
       const result = await service.cvDownloads({});
 
