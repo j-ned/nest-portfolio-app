@@ -150,9 +150,10 @@ describe('ContactService', () => {
   describe('findAll', () => {
     it('retourne le résultat paginé { data, total, page, limit }', async () => {
       const rows = [mkMessage({ id: 'a' }), mkMessage({ id: 'b' })];
-      // findAll fait 2 queries en parallèle :
-      // 1) select.from.orderBy.limit.offset → rows
-      // 2) select(count).from → totalRow
+      // findAll fait 2 queries en parallèle (Promise.all, ordre dans le tableau) :
+      // 1) select(count).from → totalRow (terminator: from)
+      // 2) select.from.orderBy.limit.offset → rows (terminator: offset)
+      // mockResolvedValueOnce sur chaque terminator dans l'ordre d'exécution.
       db.offset.mockResolvedValueOnce(rows);
       db.from.mockResolvedValueOnce([{ count: 42 }]);
       const result = await service.findAll({
