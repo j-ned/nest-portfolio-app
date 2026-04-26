@@ -2,6 +2,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
@@ -58,6 +59,11 @@ export class ProfileService {
     const current = await this.findOneRaw();
 
     const ext = MIME_TO_EXT[file.mimetype];
+    if (!ext) {
+      throw new UnprocessableEntityException(
+        `Unsupported file type: ${file.mimetype}`,
+      );
+    }
     const newKey = `avatar/avatar.${ext}`;
 
     // Ordre : upload → update DB → cleanup ancienne clé.
