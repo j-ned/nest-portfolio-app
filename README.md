@@ -441,6 +441,45 @@ Le `SMTP_FROM` (sous-projet Mailer) reste l'expéditeur — souvent identique à
 
 **Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-contact-design.md`](docs/superpowers/specs/2026-04-26-contact-design.md).
 
+## Bookings
+
+Module métier pour le système de prise de rendez-vous public + gestion admin. **Deuxième consommateur réel du `MailerService`** après Contact, valide la généralisation du pattern.
+
+**Schémas** :
+- `booking` (uuid + date + startTime + duration + name/email/phone/subject/message + createdAt + 2 indexes)
+- `disabled_date` (uuid + date unique + reason optionnelle) — l'admin peut désactiver des journées (vacances, indisponibilités)
+
+**7 endpoints sous `/bookings`** :
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| POST | `/bookings` | ❌ | Soumission RDV public. **Throttle 3/60s**. **Validation conflit serveur** : 409 si date dans `disabled_date` ou si slot chevauche un booking existant. Insère + envoie 2 mails fire-and-forget. |
+| GET | `/bookings` | ✅ | Liste paginée (`?page&limit`), tri `createdAt DESC`. |
+| GET | `/bookings/slots?month=YYYY-MM` | ❌ | Liste les bookings du mois (frontend calcule la disponibilité avec ses heures de bureau). |
+| DELETE | `/bookings/:id` | ✅ | Suppression hard. |
+| GET | `/bookings/disabled-dates` | ❌ | Liste des dates désactivées (ordre `date ASC`). |
+| POST | `/bookings/disabled-dates` | ✅ | Désactive une date. 409 si déjà désactivée. |
+| DELETE | `/bookings/disabled-dates/:id` | ✅ | Réactive une date (suppression de l'entrée). |
+
+**Validation conflit serveur** : différence clé vs Contact. Le `BookingsService.create` fait 2 vérifs avant l'insert :
+1. `SELECT FROM disabled_date WHERE date = ?` — si match, throw 409
+2. `SELECT FROM booking WHERE date = ?` puis loop JS pour vérifier le chevauchement (`a.startMin < b.endMin && b.startMin < a.endMin`)
+
+L'helper de chevauchement (`bookings.utils.ts`) est testé indépendamment (6 tests purs sur `parseTimeToMinutes` et `slotsOverlap`).
+
+**Templates** :
+- `src/bookings/mail-templates/booking-notification.html` — admin notification (variables `{{name}}`, `{{email}}`, `{{phone}}`, `{{date}}`, `{{duration}}`, `{{subject}}`, `{{message}}`)
+- `src/bookings/mail-templates/booking-confirmation.html` — visitor confirmation (variables `{{name}}`, `{{date}}`, `{{duration}}`, `{{subject}}`)
+
+**Configuration** :
+- Réutilise `CONTACT_EMAIL` (sous-projet Contact) comme destinataire des notifications admin — pas de nouvelle env var.
+- Réutilise `parsePagination` (`src/common/`) — 2ème consommateur du helper (validé).
+- Réutilise `isUniqueViolation` (`src/projects/projects.utils`) pour le check disabled-date doublon.
+
+**Pas de validation business hours / future-date côté serveur** : frontend gardien (heures de bureau, créneaux disponibles, refus dates passées). Le serveur fait juste le check de conflit dur (disabled + overlap).
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-bookings-design.md`](docs/superpowers/specs/2026-04-26-bookings-design.md).
+
 ## Migration depuis le backend Hono
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
@@ -453,8 +492,8 @@ Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant 
 6. ✅ Avatar Profile (`POST /profile/avatar` + transformation key→URL en sortie API, cohérent Projects)
 7. ✅ Mailer (MailerModule @Global + Mailpit local + nodemailer)
 8. ✅ Contact (6 endpoints + 2 templates + throttling 5/60s, premier consumer Mailer)
-9. **Bookings** *(prochain)* (réservations + slots + 2 templates qui consomment Mailer)
-10. CV (upload S3 + download)
+9. ✅ Bookings (7 endpoints + 2 templates + validation conflit serveur, 2ème consumer Mailer)
+10. **CV** *(prochain)* (upload S3 + download — 3ème consumer S3)
 11. Analytics (page views + agrégats)
 
 La DB du NestJS est **isolée** de celle du Hono (port 55432 vs port d'origine). Aucune sync de données pendant la migration. La copie des données réelles sera traitée à la fin.
