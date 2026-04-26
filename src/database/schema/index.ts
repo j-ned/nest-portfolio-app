@@ -10,6 +10,7 @@ import * as servicePricing from './service-pricing';
 import * as projects from './projects';
 import * as contactMessages from './contact-messages';
 import * as bookings from './bookings';
+import * as cvFiles from './cv-files';
 
 export * from './users';
 export * from './profile';
@@ -22,6 +23,7 @@ export * from './service-pricing';
 export * from './projects';
 export * from './contact-messages';
 export * from './bookings';
+export * from './cv-files';
 
 export const schema = {
   ...users,
@@ -35,4 +37,5 @@ export const schema = {
   ...projects,
   ...contactMessages,
   ...bookings,
+  ...cvFiles,
 } as const;
