@@ -301,6 +301,31 @@ Module CRUD admin pour les projets affichés sur le portfolio. Premier consommat
 
 **Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-projects-design.md`](docs/superpowers/specs/2026-04-26-projects-design.md).
 
+## Avatar Profile
+
+Endpoint d'upload de l'avatar pour le singleton Profile. Deuxième consommateur du `StorageModule` après Projects, applique le même pattern de lifecycle S3 actif. Le sous-projet a aussi rendu cohérent la transformation `key → URL S3 publique` côté API : `findOne()` du Profile et `findAll()`/`findById()`/`uploadImage()` des Projects retournent désormais une URL S3 complète dans le champ image, pas une key brute.
+
+**1 nouvel endpoint** :
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| POST | `/profile/avatar` | ✅ | Upload multipart (`file`, max 5MB, `image/webp\|jpeg\|png\|avif`). Retourne la Profile complète avec `avatarUrl` transformée en URL S3 publique. |
+
+**Suppression de l'avatar** : pas d'endpoint dédié. Passer par `PATCH /profile` body `{ avatarUrl: null }` (cohérent avec le pattern Projects' `image: null`).
+
+**Lifecycle S3** : key = `avatar/avatar.<ext>`. L'upload écrit S3, met à jour la DB, puis supprime l'ancienne clé si l'extension a changé (ordre upload → DB → cleanup pour ne jamais laisser une référence DB cassée). PATCH `avatarUrl: null` fait DB write puis S3 delete (même philosophie).
+
+**Validation** :
+- `@Equals(null)` sur `avatarUrl` dans `UpdateProfileDto` : interdit toute valeur non-null. Pour set un avatar, l'admin **doit** passer par `POST /profile/avatar`. Pour le retirer, `{ avatarUrl: null }`.
+- Whitelist MIME stricte (pas de SVG → pas de surface XSS).
+
+**API surface — transformation key↔URL** :
+- DB stocke la key S3 brute (`avatar/avatar.webp`).
+- API retourne l'URL S3 publique complète via `getPublicUrl()`. Le frontend reçoit une URL prête à coller dans `<img src>`.
+- Le helper privé `findOneRaw` (pour Profile) et `findByIdRaw` (pour Projects) retournent la row sans transformation, pour les usages internes (cleanup S3).
+
+**Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-avatar-profile-design.md`](docs/superpowers/specs/2026-04-26-avatar-profile-design.md).
+
 ## Migration depuis le backend Hono
 
 Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant la construction de ce NestJS. Le portage se fait par sous-projets indépendants (un spec et un plan par sous-projet) :
@@ -310,8 +335,8 @@ Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant 
 3. ✅ Profile public (Profile, Hero, SocialLinks, Diplomas, Technologies, Expertises, ServicePricing)
 4. ✅ S3 Storage (StorageModule + MinIO local + Garage prod)
 5. ✅ Projects (CRUD + upload image qui consomme S3 Storage)
-6. **Avatar Profile** *(prochain)* (`POST /profile/avatar` qui consomme S3 Storage)
-7. Contact (messages + mailer)
+6. ✅ Avatar Profile (`POST /profile/avatar` + transformation key→URL en sortie API, cohérent Projects)
+7. **Contact** *(prochain)* (messages + mailer)
 8. Bookings (réservations + slots + mail)
 9. CV (upload S3 + download)
 10. Analytics (page views + agrégats)
