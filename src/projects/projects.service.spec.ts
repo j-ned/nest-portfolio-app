@@ -216,6 +216,18 @@ describe('ProjectsService', () => {
       await service.remove(current.id);
       expect(storage.delete).not.toHaveBeenCalled();
     });
+
+    it('ne touche pas S3 si le delete DB échoue', async () => {
+      const current = mkProject({ image: 'projects/some-id.webp' });
+      db.limit.mockResolvedValueOnce([current]);
+      db.delete.mockImplementationOnce(() => {
+        throw new Error('DB connection lost');
+      });
+      await expect(service.remove(current.id)).rejects.toThrow(
+        'DB connection lost',
+      );
+      expect(storage.delete).not.toHaveBeenCalled();
+    });
   });
 
   describe('uploadImage', () => {

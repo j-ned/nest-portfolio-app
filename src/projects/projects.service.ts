@@ -108,10 +108,10 @@ export class ProjectsService {
 
   async remove(id: string): Promise<void> {
     const current = await this.findById(id);
+    await this.db.delete(projects).where(eq(projects.id, id));
     if (current.image) {
       await this.storage.delete(ProjectsService.BUCKET, current.image);
     }
-    await this.db.delete(projects).where(eq(projects.id, id));
   }
 
   async uploadImage(
