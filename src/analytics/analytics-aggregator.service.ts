@@ -88,8 +88,8 @@ export class AnalyticsAggregatorService {
           .select({
             value: sql<number>`(SELECT COUNT(*) FROM (
             SELECT ${pageView.sessionHash} FROM ${pageView}
-            WHERE ${pageView.createdAt} >= ${start}
-              AND ${pageView.createdAt} < ${end}
+            WHERE ${pageView.createdAt} >= ${sql.raw(`'${start.toISOString()}'`)}::timestamptz
+              AND ${pageView.createdAt} < ${sql.raw(`'${end.toISOString()}'`)}::timestamptz
             GROUP BY ${pageView.sessionHash}
             HAVING COUNT(*) = 1
           ) AS bounced)`,
