@@ -22,6 +22,13 @@
       "when": 1777193759263,
       "tag": "0002_mighty_the_watchers",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777216843255,
+      "tag": "0003_talented_havok",
+      "breakpoints": true
     }
   ]
 }

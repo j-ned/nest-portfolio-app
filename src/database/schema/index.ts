@@ -8,6 +8,7 @@ import * as technologies from './technologies';
 import * as expertises from './expertises';
 import * as servicePricing from './service-pricing';
 import * as projects from './projects';
+import * as contactMessages from './contact-messages';
 
 export * from './users';
 export * from './profile';
@@ -18,6 +19,7 @@ export * from './technologies';
 export * from './expertises';
 export * from './service-pricing';
 export * from './projects';
+export * from './contact-messages';
 
 export const schema = {
   ...users,
@@ -29,4 +31,5 @@ export const schema = {
   ...expertises,
   ...servicePricing,
   ...projects,
+  ...contactMessages,
 } as const;
