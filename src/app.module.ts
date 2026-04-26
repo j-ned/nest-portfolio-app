@@ -22,6 +22,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { ContactModule } from './contact/contact.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { CvModule } from './cv/cv.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -75,6 +77,8 @@ import { CvModule } from './cv/cv.module';
     ContactModule,
     BookingsModule,
     CvModule,
+    ScheduleModule.forRoot(),
+    AnalyticsModule,
   ],
   providers: [
     {
