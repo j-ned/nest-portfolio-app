@@ -39,8 +39,8 @@ Après ce sous-projet, le pattern "key en DB, URL en API" sera homogène entre P
 **Correctif Projects (rétroactif, dans le même sous-projet)** :
 - **`ProjectsService.findAll()` et `findById()`** : map `image` → URL publique via `getPublicUrl()` quand `image !== ''`.
 - Helper privé **`findByIdRaw`** : pour les usages internes (`update`, `remove`, `uploadImage`) nécessitant la key brute.
-- **`uploadImage`** garde son shape de réponse `{ image, url }` (pas de breaking change ; le shape était déjà non-uniforme et fait sens pour ce cas — le client a besoin de l'URL immédiate post-upload).
-- Ajustement des tests `findAll`/`findById` qui assertent la valeur de `image`.
+- **`uploadImage`** : shape de réponse changé pour cohérence — retourne désormais la `Project` complète (avec `image` transformée en URL). Le frontend lit `result.image` pour l'URL d'affichage immédiat (au lieu de `result.url`). Breaking change mineur, validé en e2e dans la passe d'implémentation.
+- Ajustement des tests `findAll`/`findById`/`uploadImage` qui assertent la valeur de `image`.
 
 ### Explicitement exclus
 
@@ -417,16 +417,17 @@ private toResponse(p: Project): Project {
 }
 ```
 
-`update`, `remove`, `uploadImage` doivent appeler `findByIdRaw` à la place de `findById` (pour récupérer la key brute et pouvoir la passer à `storage.delete`). Le `return` de `update` doit aussi passer par `toResponse` (pour rester cohérent : le client reçoit une URL, pas une key).
+`update`, `remove`, `uploadImage` doivent appeler `findByIdRaw` à la place de `findById` (pour récupérer la key brute et pouvoir la passer à `storage.delete`). Les `return` de `update` et `uploadImage` doivent passer par `toResponse` (pour rester cohérent : le client reçoit une URL, pas une key).
 
-`uploadImage` garde son shape de retour `{ image: '<key>', url: '<public-url>' }` — pas de breaking change. Le client peut continuer à se référer à l'URL pour l'affichage immédiat, et ignorer la key.
+**`uploadImage` shape change** : passe de `{ image: '<key>', url: '<public-url>' }` à la `Project` complète transformée (avec `image` = URL S3). Cohérent avec `uploadAvatar` qui retourne la `Profile` complète. Le client lit `result.image` pour l'URL post-upload (au lieu de `result.url`). À documenter dans le README.
 
 ### Tests Projects à ajuster
 
 Dans `src/projects/projects.service.spec.ts` :
 - Les tests `findAll` qui asserent les rows entières doivent désormais comparer la version transformée (avec `image` en URL). Solution simple : le mock de `storage.getPublicUrl` retourne `'https://example.test/url'`, et les tests comparent `result[0].image === 'https://example.test/url'` quand `image` non vide, sinon `''`.
 - Idem pour `findById`.
-- `update`, `remove`, `uploadImage` : pas de changement (utilisent `findByIdRaw` interne, dont les mocks de `db.limit.mockResolvedValueOnce([current])` continuent de fonctionner).
+- `update`, `remove` : utilisent `findByIdRaw` interne. Mocks `db.limit.mockResolvedValueOnce([current])` continuent de fonctionner. La `update` retourne désormais une `Project` transformée → ajuster les tests qui assertent l'égalité (le `image` dans le retour est l'URL, pas la key).
+- `uploadImage` : retourne désormais une `Project` complète transformée. Tests à ajuster : remplacer les `expect(result.image).toBe('projects/<id>.webp')` + `expect(result.url).toBe('https://example.test/url')` par `expect(result.image).toBe('https://example.test/url')` (et vérifier les autres champs Project).
 - Au moins un test nouveau : `findById` retourne `image: ''` quand `image` DB est `''` (vérifie le branchement conditionnel de `toResponse`).
 
 ## 12. Tests Avatar
