@@ -1,0 +1,46 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build output
+dist
+coverage
+.nyc_output
+
+# Tests (rebuilt si besoin, jamais copiés dans l'image)
+test
+**/*.spec.ts
+**/*.test.ts
+
+# Local dev infra
+compose.yaml
+scripts
+
+# Env (jamais dans l'image — injecté par Dokploy)
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea
+.vscode
+.history
+
+# Docs
+docs
+*.md
+!README.md
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Logs / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Claude / superpowers
+.claude
+.remember
