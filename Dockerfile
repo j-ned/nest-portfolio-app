@@ -25,8 +25,9 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
-# drizzle-kit + dotenv sont devDeps mais requis runtime pour `pnpm db:migrate`
-RUN pnpm add drizzle-kit dotenv
+# drizzle-kit + dotenv requis runtime pour `pnpm db:migrate`
+# tsx requis pour `pnpm db:change-password` et autres scripts admin
+RUN pnpm add drizzle-kit dotenv tsx
 
 # =============================================================================
 # Stage 3 — runner : image minimale, non-root, tini PID 1
@@ -44,6 +45,10 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle
 COPY drizzle.config.ts ./
+# Scripts admin réutilisables (change-password, etc.) + sources schema requises par les scripts
+COPY scripts ./scripts
+COPY src/database/schema ./src/database/schema
+COPY tsconfig.json ./
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -q -O /dev/null http://localhost:3000/api/health || exit 1
