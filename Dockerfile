@@ -45,8 +45,6 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle
 COPY drizzle.config.ts ./
-# Scripts admin réutilisables (change-password, etc.) + sources schema requises par les scripts
-COPY scripts ./scripts
 COPY src/database/schema ./src/database/schema
 COPY tsconfig.json ./
 
