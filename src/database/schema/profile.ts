@@ -10,6 +10,11 @@ export const profile = pgTable('profile', {
   avatarUrl: text('avatar_url').notNull().default(''),
   isAvailable: boolean('is_available').notNull().default(true),
   availabilityMessage: text('availability_message').notNull().default(''),
+  bioTitle: text('bio_title').notNull().default(''),
+  bioParagraphs: text('bio_paragraphs')
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

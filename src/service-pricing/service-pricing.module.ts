@@ -7,5 +7,6 @@ import { ServicePricingService } from './service-pricing.service';
   imports: [AuthModule],
   controllers: [ServicePricingController],
   providers: [ServicePricingService],
+  exports: [ServicePricingService],
 })
 export class ServicePricingModule {}
