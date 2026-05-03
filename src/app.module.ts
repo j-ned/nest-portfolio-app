@@ -9,6 +9,8 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { ProfileModule } from './profile/profile.module';
 import { HeroModule } from './hero/hero.module';
+import { BiographyModule } from './biography/biography.module';
+import { HighlightsModule } from './highlights/highlights.module';
 import { SocialLinksModule } from './social-links/social-links.module';
 import { DiplomasModule } from './diplomas/diplomas.module';
 import { TechnologiesModule } from './technologies/technologies.module';
@@ -24,6 +26,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { CvModule } from './cv/cv.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { HomeBundleModule } from './home-bundle/home-bundle.module';
 
 @Module({
   imports: [
@@ -47,7 +50,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
             : undefined,
           redact: ['req.headers.authorization', 'req.headers.cookie'],
           autoLogging: {
-            ignore: (req: { url?: string }) => req.url === '/health',
+            ignore: (req: { url?: string }) => req.url === '/api/health',
           },
           customProps: () => ({ context: 'HTTP' }),
           serializers: {
@@ -65,6 +68,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
     AuthModule,
     ProfileModule,
     HeroModule,
+    BiographyModule,
+    HighlightsModule,
     SocialLinksModule,
     DiplomasModule,
     TechnologiesModule,
@@ -79,6 +84,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     CvModule,
     ScheduleModule.forRoot(),
     AnalyticsModule,
+    HomeBundleModule,
   ],
   providers: [
     {

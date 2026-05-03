@@ -7,5 +7,6 @@ import { HeroService } from './hero.service';
   imports: [AuthModule],
   controllers: [HeroController],
   providers: [HeroService],
+  exports: [HeroService],
 })
 export class HeroModule {}

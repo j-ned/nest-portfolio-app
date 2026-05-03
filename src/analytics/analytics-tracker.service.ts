@@ -46,17 +46,16 @@ export class AnalyticsTrackerService {
       // 4. Géoloc IP
       const country = geoip.lookup(ip)?.country ?? null;
 
-      // 5. Branch : page-view vs custom event
-      if (dto.eventType) {
-        await this.insertCustomEvent(dto, sessionHash);
-      } else {
+      // 5. Branch : page-view vs custom event (via dto.type)
+      if (dto.type === 'page_view' || dto.type === 'page_duration') {
         await this.upsertPageView(dto, sessionHash, browser, os, country);
+      } else {
+        await this.insertCustomEvent(dto, sessionHash);
       }
     } catch (err) {
-      this.logger.error(
-        `track failed: ${(err as Error).message}`,
-        (err as Error).stack,
-      );
+      const e = err as Error & { cause?: Error };
+      const causeMsg = e.cause?.message ? ` | cause: ${e.cause.message}` : '';
+      this.logger.error(`track failed: ${e.message}${causeMsg}`, e.stack);
     }
   }
 
@@ -76,7 +75,7 @@ export class AnalyticsTrackerService {
       .where(
         and(
           eq(pageView.sessionHash, sessionHash),
-          eq(pageView.url, dto.url),
+          eq(pageView.url, dto.url!),
           gte(pageView.createdAt, todayStart),
         ),
       )
@@ -96,7 +95,7 @@ export class AnalyticsTrackerService {
       .insert(pageView)
       .values({
         sessionHash,
-        url: dto.url,
+        url: dto.url!,
         referrer: dto.referrer ?? null,
         browser,
         os,
@@ -114,7 +113,7 @@ export class AnalyticsTrackerService {
       .insert(analyticsEvent)
       .values({
         sessionHash,
-        eventType: dto.eventType!,
+        eventType: dto.type,
         entityId: dto.entityId ?? null,
         entityTitle: dto.entityTitle ?? null,
         metadata: dto.metadata ?? null,

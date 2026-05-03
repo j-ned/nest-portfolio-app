@@ -41,7 +41,7 @@ describe('AnalyticsTrackerService', () => {
     it('skip silencieusement si UA est un bot', async () => {
       isbotMock.mockReturnValue(true);
       await service.track(
-        { url: '/' },
+        { type: 'page_view', url: '/test' },
         '1.2.3.4',
         'Googlebot/2.1 (+http://www.google.com/bot.html)',
       );
@@ -56,7 +56,7 @@ describe('AnalyticsTrackerService', () => {
       db.limit.mockResolvedValueOnce([]); // pas de row existante
       db.returning.mockResolvedValueOnce([{ id: 'new-pv' }]);
 
-      await service.track({ url: '/projects' }, '1.2.3.4', NORMAL_UA);
+      await service.track({ type: 'page_view', url: '/projects' }, '1.2.3.4', NORMAL_UA);
 
       expect(db.insert).toHaveBeenCalledTimes(1);
       expect(db.values).toHaveBeenCalledWith(
@@ -72,7 +72,7 @@ describe('AnalyticsTrackerService', () => {
       db.returning.mockResolvedValueOnce([{ id: 'existing-pv' }]);
 
       await service.track(
-        { url: '/projects', duration: 5 },
+        { type: 'page_duration', url: '/projects', duration: 5 },
         '1.2.3.4',
         NORMAL_UA,
       );
@@ -88,7 +88,7 @@ describe('AnalyticsTrackerService', () => {
       db.limit.mockResolvedValueOnce([]); // pas de match pour /home
       db.returning.mockResolvedValueOnce([{ id: 'pv' }]);
 
-      await service.track({ url: '/home' }, '1.2.3.4', NORMAL_UA);
+      await service.track({ type: 'page_view', url: '/home' }, '1.2.3.4', NORMAL_UA);
 
       expect(db.insert).toHaveBeenCalledTimes(1);
       expect(db.update).not.toHaveBeenCalled();
@@ -96,13 +96,12 @@ describe('AnalyticsTrackerService', () => {
   });
 
   describe('custom event', () => {
-    it("eventType='project_click' → INSERT analytics_event, pas page_view", async () => {
+    it("type='project_click' → INSERT analytics_event, pas page_view", async () => {
       db.returning.mockResolvedValueOnce([{ id: 'ev' }]);
 
       await service.track(
         {
-          url: '/projects/foo',
-          eventType: 'project_click',
+          type: 'project_click',
           entityId: 'foo-id',
           entityTitle: 'Foo Project',
           metadata: { source: 'card' },
@@ -123,6 +122,25 @@ describe('AnalyticsTrackerService', () => {
       // Pas de SELECT (page-view branch only)
       expect(db.select).not.toHaveBeenCalled();
     });
+
+    it("type='cv_download' sans url → INSERT analytics_event (url optionnel pour custom event)", async () => {
+      db.returning.mockResolvedValueOnce([{ id: 'ev-cv' }]);
+
+      await service.track(
+        { type: 'cv_download' },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+
+      expect(db.insert).toHaveBeenCalledTimes(1);
+      expect(db.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'cv_download',
+        }),
+      );
+      // Pas de SELECT (page-view branch only)
+      expect(db.select).not.toHaveBeenCalled();
+    });
   });
 
   describe('UA parsing fallback', () => {
@@ -130,7 +148,7 @@ describe('AnalyticsTrackerService', () => {
       db.limit.mockResolvedValueOnce([]);
       db.returning.mockResolvedValueOnce([{ id: 'pv' }]);
 
-      await service.track({ url: '/' }, '1.2.3.4', 'totally-unknown-ua');
+      await service.track({ type: 'page_view', url: '/test' }, '1.2.3.4', 'totally-unknown-ua');
 
       expect(db.values).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -147,7 +165,7 @@ describe('AnalyticsTrackerService', () => {
       db.limit.mockResolvedValueOnce([]);
       db.returning.mockResolvedValueOnce([{ id: 'pv' }]);
 
-      await service.track({ url: '/' }, '127.0.0.1', NORMAL_UA);
+      await service.track({ type: 'page_view', url: '/test' }, '127.0.0.1', NORMAL_UA);
 
       expect(db.values).toHaveBeenCalledWith(
         expect.objectContaining({ country: null }),
@@ -160,10 +178,10 @@ describe('AnalyticsTrackerService', () => {
       db.limit.mockResolvedValue([]);
       db.returning.mockResolvedValue([{ id: 'x' }]);
 
-      await service.track({ url: '/a' }, '1.2.3.4', NORMAL_UA);
+      await service.track({ type: 'page_view', url: '/a' }, '1.2.3.4', NORMAL_UA);
       const firstCall = db.values.mock.calls[0][0] as { sessionHash: string };
 
-      await service.track({ url: '/b' }, '1.2.3.4', NORMAL_UA);
+      await service.track({ type: 'page_view', url: '/b' }, '1.2.3.4', NORMAL_UA);
       const secondCall = db.values.mock.calls[1][0] as { sessionHash: string };
 
       expect(firstCall.sessionHash).toBe(secondCall.sessionHash);
@@ -174,12 +192,12 @@ describe('AnalyticsTrackerService', () => {
       db.limit.mockResolvedValue([]);
       db.returning.mockResolvedValue([{ id: 'x' }]);
 
-      await service.track({ url: '/a' }, '1.2.3.4', NORMAL_UA);
+      await service.track({ type: 'page_view', url: '/a' }, '1.2.3.4', NORMAL_UA);
       const day1Hash = (db.values.mock.calls[0][0] as { sessionHash: string })
         .sessionHash;
 
       jest.setSystemTime(new Date('2026-04-27T10:30:00Z')); // J+1
-      await service.track({ url: '/a' }, '1.2.3.4', NORMAL_UA);
+      await service.track({ type: 'page_view', url: '/a' }, '1.2.3.4', NORMAL_UA);
       const day2Hash = (db.values.mock.calls[1][0] as { sessionHash: string })
         .sessionHash;
 
@@ -194,7 +212,7 @@ describe('AnalyticsTrackerService', () => {
 
       // Ne doit PAS rejeter
       await expect(
-        service.track({ url: '/' }, '1.2.3.4', NORMAL_UA),
+        service.track({ type: 'page_view', url: '/test' }, '1.2.3.4', NORMAL_UA),
       ).resolves.toBeUndefined();
     });
   });
