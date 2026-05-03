@@ -32,7 +32,9 @@ export class TrackEventDto {
     description: 'Path de la page (requis pour page_view et page_duration)',
     maxLength: 2048,
   })
-  @ValidateIf((o: TrackEventDto) => o.type === 'page_view' || o.type === 'page_duration')
+  @ValidateIf(
+    (o: TrackEventDto) => o.type === 'page_view' || o.type === 'page_duration',
+  )
   @IsString()
   @MaxLength(2048)
   url?: string;
