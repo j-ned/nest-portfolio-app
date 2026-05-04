@@ -144,8 +144,7 @@ describe('StorageService', () => {
     });
 
     it('préserve les slashes dans la key (pas d’encodage)', () => {
-      expect(
-        service.getPublicUrl('portfolio-storage', 'avatar/avatar.webp'),
+      expect(service.getPublicUrl('portfolio-storage', 'avatar/avatar.webp')).toBe(
         '/storage/portfolio-storage/avatar/avatar.webp',
       );
     });
