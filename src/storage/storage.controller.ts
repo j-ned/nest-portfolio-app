@@ -7,6 +7,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { StorageService } from './storage.service';
 
@@ -17,6 +18,13 @@ import { StorageService } from './storage.service';
  */
 const PUBLIC_BUCKETS = new Set<string>(['portfolio-storage']);
 
+/**
+ * Le rate limit global (10 req/60s) ne s'applique pas ici : une page peut
+ * référencer N images, un dashboard admin avec une liste de projets en charge
+ * autant qu'il y a de rows. Le cache HTTP (24h max-age) absorbe les répétitions
+ * et Garage est local au VPS — pas de risque de coût externe en cas de spike.
+ */
+@SkipThrottle()
 @ApiTags('Storage')
 @Controller('storage')
 export class StorageController {
@@ -27,8 +35,14 @@ export class StorageController {
     summary:
       'Proxy public d’un objet S3 (Garage v2 ne supporte pas l’accès anonyme direct)',
   })
-  @ApiResponse({ status: 200, description: 'Stream binaire avec Content-Type d’origine' })
-  @ApiResponse({ status: 404, description: 'Bucket non public ou objet inexistant' })
+  @ApiResponse({
+    status: 200,
+    description: 'Stream binaire avec Content-Type d’origine',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Bucket non public ou objet inexistant',
+  })
   async getObject(
     @Param('bucket') bucket: string,
     @Param('splat') splat: string[],

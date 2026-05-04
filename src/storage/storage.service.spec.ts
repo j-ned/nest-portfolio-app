@@ -144,9 +144,11 @@ describe('StorageService', () => {
     });
 
     it('préserve les slashes dans la key (pas d’encodage)', () => {
-      expect(service.getPublicUrl('portfolio-storage', 'avatar/avatar.webp')).toBe(
-        '/storage/portfolio-storage/avatar/avatar.webp',
+      const url = service.getPublicUrl(
+        'portfolio-storage',
+        'avatar/avatar.webp',
       );
+      expect(url).toBe('/storage/portfolio-storage/avatar/avatar.webp');
     });
 
     it('ignore la config s3PublicUrl/s3Endpoint (proxy géré par le controller)', () => {
