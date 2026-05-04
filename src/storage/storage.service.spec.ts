@@ -57,11 +57,21 @@ describe('StorageService', () => {
   });
 
   describe('get', () => {
-    it('retourne le body en Buffer', async () => {
+    it('retourne { buffer, contentType } depuis la réponse S3', async () => {
       const stream = sdkStreamMixin(Readable.from(Buffer.from('content')));
+      s3Mock
+        .on(GetObjectCommand)
+        .resolves({ Body: stream as never, ContentType: 'image/webp' });
+      const result = await service.get('my-bucket', 'foo.txt');
+      expect(result.buffer.toString()).toBe('content');
+      expect(result.contentType).toBe('image/webp');
+    });
+
+    it('contentType fallback à application/octet-stream si absent', async () => {
+      const stream = sdkStreamMixin(Readable.from(Buffer.from('x')));
       s3Mock.on(GetObjectCommand).resolves({ Body: stream as never });
       const result = await service.get('my-bucket', 'foo.txt');
-      expect(result.toString()).toBe('content');
+      expect(result.contentType).toBe('application/octet-stream');
     });
 
     it('throw NotFoundException si NoSuchKey', async () => {
@@ -127,42 +137,26 @@ describe('StorageService', () => {
   });
 
   describe('getPublicUrl', () => {
-    it('construit URL avec S3_PUBLIC_URL + bucket + key encodé', () => {
+    it('retourne un chemin relatif /storage/{bucket}/{key} (proxy NestJS)', () => {
       expect(service.getPublicUrl('my-bucket', 'projects/foo.webp')).toBe(
-        'https://cdn.example.com/my-bucket/projects%2Ffoo.webp',
+        '/storage/my-bucket/projects/foo.webp',
       );
     });
 
-    it('strip trailing slash de S3_PUBLIC_URL', async () => {
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          StorageService,
-          { provide: S3_CLIENT, useValue: realClient },
-          {
-            provide: AppConfigService,
-            useValue: { s3PublicUrl: 'https://cdn.example.com/' },
-          },
-        ],
-      }).compile();
-      const localService = module.get(StorageService);
-      expect(localService.getPublicUrl('b', 'k')).toBe(
-        'https://cdn.example.com/b/k',
+    it('préserve les slashes dans la key (pas d’encodage)', () => {
+      expect(
+        service.getPublicUrl('portfolio-storage', 'avatar/avatar.webp'),
+        '/storage/portfolio-storage/avatar/avatar.webp',
       );
     });
 
-    it('fallback sur s3Endpoint si s3PublicUrl undefined', () => {
+    it('ignore la config s3PublicUrl/s3Endpoint (proxy géré par le controller)', () => {
       const cfgFallback = {
         s3PublicUrl: undefined,
         s3Endpoint: 'http://localhost:9000',
       } as AppConfigService;
       const localService = new StorageService(realClient, cfgFallback);
-      const url = localService.getPublicUrl(
-        'portfolio-storage',
-        'avatar/avatar.webp',
-      );
-      expect(url).toBe(
-        'http://localhost:9000/portfolio-storage/avatar%2Favatar.webp',
-      );
+      expect(localService.getPublicUrl('b', 'k')).toBe('/storage/b/k');
     });
   });
 });

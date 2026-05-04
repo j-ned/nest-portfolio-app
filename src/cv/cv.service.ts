@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
-import { cvFiles, type CvFile } from '../database/schema/cv-files';
+import { cvFiles, type CvFile } from '../database/schema';
 import { StorageService } from '../storage/storage.service';
 
 @Injectable()
@@ -66,7 +66,10 @@ export class CvService {
   async download(): Promise<{ buffer: Buffer; metadata: CvFile }> {
     const metadata = await this.findLatestMetadata();
     if (!metadata) throw new NotFoundException('No CV uploaded');
-    const buffer = await this.storage.get(CvService.BUCKET, metadata.fileKey);
+    const { buffer } = await this.storage.get(
+      CvService.BUCKET,
+      metadata.fileKey,
+    );
     return { buffer, metadata };
   }
 

@@ -34,7 +34,10 @@ export class StorageService {
     );
   }
 
-  async get(bucket: string, key: string): Promise<Buffer> {
+  async get(
+    bucket: string,
+    key: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
     try {
       const res = await this.s3.send(
         new GetObjectCommand({ Bucket: bucket, Key: key }),
@@ -44,7 +47,10 @@ export class StorageService {
           `S3 object ${bucket}/${key} has empty body`,
         );
       }
-      return Buffer.from(await res.Body.transformToByteArray());
+      return {
+        buffer: Buffer.from(await res.Body.transformToByteArray()),
+        contentType: res.ContentType ?? 'application/octet-stream',
+      };
     } catch (err: unknown) {
       if (err instanceof NoSuchKey) {
         throw new NotFoundException(`S3 object ${bucket}/${key} not found`);
@@ -69,11 +75,17 @@ export class StorageService {
     }));
   }
 
+  /**
+   * Retourne une URL publique servie par NestJS (proxy S3 via StorageController).
+   * Format: `/storage/{bucket}/{key}` — chemin relatif au préfixe `/api` global.
+   * Le frontend résout vers `${apiUrl}${path}` côté Angular.
+   *
+   * Pourquoi un proxy plutôt que l'URL S3 directe ? Garage v2 ne supporte pas
+   * l'accès anonyme via l'API S3 (« Garage does not support anonymous access yet »),
+   * donc les URLs `https://garage-s3.../bucket/key` retournent 403 depuis le browser.
+   * Le proxy NestJS détient les credentials et stream l'objet.
+   */
   getPublicUrl(bucket: string, key: string): string {
-    const base = (this.cfg.s3PublicUrl ?? this.cfg.s3Endpoint ?? '').replace(
-      /\/$/,
-      '',
-    );
-    return `${base}/${bucket}/${encodeURIComponent(key)}`;
+    return `/storage/${bucket}/${key}`;
   }
 }

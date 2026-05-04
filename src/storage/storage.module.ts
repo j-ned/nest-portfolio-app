@@ -4,6 +4,7 @@ import { S3Client } from '@aws-sdk/client-s3';
 import { AppConfigModule } from '../config/app-config.module';
 import { AppConfigService } from '../config/app-config.service';
 import { S3_CLIENT } from './s3.constants';
+import { StorageController } from './storage.controller';
 import { StorageService } from './storage.service';
 
 const s3ClientProvider: Provider = {
@@ -24,6 +25,7 @@ const s3ClientProvider: Provider = {
 @Global()
 @Module({
   imports: [AppConfigModule],
+  controllers: [StorageController],
   providers: [s3ClientProvider, StorageService],
   exports: [StorageService],
 })
