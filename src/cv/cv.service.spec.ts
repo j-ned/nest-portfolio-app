@@ -5,7 +5,7 @@ import { CvService } from './cv.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import { StorageService } from '../storage/storage.service';
-import type { CvFile } from '../database/schema/cv-files';
+import type { CvFile } from '../database/schema';
 
 describe('CvService', () => {
   let service: CvService;
@@ -121,7 +121,10 @@ describe('CvService', () => {
       const metadata = mkCvFile();
       db.limit.mockResolvedValueOnce([metadata]);
       const buffer = Buffer.from('pdf-bytes');
-      storage.get.mockResolvedValueOnce(buffer);
+      storage.get.mockResolvedValueOnce({
+        buffer,
+        contentType: 'application/pdf',
+      });
 
       const result = await service.download();
 
