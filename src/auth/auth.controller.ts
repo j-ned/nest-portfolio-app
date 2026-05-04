@@ -25,7 +25,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
 import { TwoFactorEnableDto } from './dto/two-factor-enable.dto';
 import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
-import type { User } from '../database/schema/users';
+import type { User } from '../database/schema';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -87,7 +87,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Logout (clears auth cookie)' })
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('token', { httpOnly: true, sameSite: 'lax', path: '/' });
+    res.clearCookie('token', {
+      httpOnly: true,
+      sameSite: 'lax',
+      domain: this.cfg.cookieDomain,
+      path: '/',
+    });
     return { ok: true };
   }
 
@@ -176,7 +181,7 @@ export class AuthController {
       httpOnly: true,
       secure: this.cfg.isProduction,
       sameSite: 'lax',
-
+      domain: this.cfg.cookieDomain,
       maxAge: (ms as unknown as (s: string) => number)(this.cfg.jwtExpiresIn),
       path: '/',
     });
