@@ -15,9 +15,9 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
-import ms from 'ms';
 import { AuthService } from './auth.service';
 import { AppConfigService } from '../config/app-config.service';
+import { parseDurationMs } from '../common/utils';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import { LoginDto } from './dto/login.dto';
@@ -182,7 +182,7 @@ export class AuthController {
       secure: this.cfg.isProduction,
       sameSite: 'lax',
       domain: this.cfg.cookieDomain,
-      maxAge: (ms as unknown as (s: string) => number)(this.cfg.jwtExpiresIn),
+      maxAge: parseDurationMs(this.cfg.jwtExpiresIn),
       path: '/',
     });
   }

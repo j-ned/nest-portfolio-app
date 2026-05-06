@@ -1,12 +1,6 @@
-import {
-  pgTable,
-  uuid,
-  text,
-  integer,
-  timestamp,
-  index,
-} from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { timestamps } from '../../common/utils';
 
 export const HIGHLIGHT_SECTIONS = ['profile', 'home'] as const;
 export type HighlightSection = (typeof HIGHLIGHT_SECTIONS)[number];
@@ -25,12 +19,7 @@ export const highlight = pgTable(
       .notNull()
       .default('profile'),
     order: integer('order').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    ...timestamps(),
   },
   (table) => [
     index('idx_highlight_section').on(table.section),

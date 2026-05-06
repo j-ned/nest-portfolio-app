@@ -1,13 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InternalServerErrorException } from '@nestjs/common';
-import { HomeBundleService } from './home-bundle.service';
+import { HomeBundleController } from './home-bundle.controller';
 import { HeroService } from '../hero/hero.service';
 import { HighlightsService } from '../highlights/highlights.service';
 import { ServicePricingService } from '../service-pricing/service-pricing.service';
 import { ProjectsService } from '../projects/projects.service';
 
-describe('HomeBundleService', () => {
-  let service: HomeBundleService;
+describe('HomeBundleController', () => {
+  let controller: HomeBundleController;
   let hero: { findOne: jest.Mock };
   let highlights: { findAll: jest.Mock };
   let servicePricing: { findAll: jest.Mock };
@@ -20,41 +20,22 @@ describe('HomeBundleService', () => {
     projects = { findAll: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
+      controllers: [HomeBundleController],
       providers: [
-        HomeBundleService,
         { provide: HeroService, useValue: hero },
         { provide: HighlightsService, useValue: highlights },
         { provide: ServicePricingService, useValue: servicePricing },
         { provide: ProjectsService, useValue: projects },
       ],
     }).compile();
-    service = module.get(HomeBundleService);
+
+    controller = module.get(HomeBundleController);
   });
 
-  it('getBundle() retourne {hero, highlights, services, featuredProjects} en parallèle', async () => {
+  it('getBundle() returns aggregated payload from the four services in parallel', async () => {
     const heroData = { id: 'h1', name: 'Julien' };
-    const highlightsData = [
-      {
-        id: 'hl1',
-        title: 'Hi',
-        description: 'Desc',
-        icon: 'star',
-        section: 'home',
-        order: 0,
-      },
-    ];
-    const servicesData = [
-      {
-        id: 'sp1',
-        title: 'Web',
-        price: '100',
-        description: 'D',
-        features: [],
-        highlighted: false,
-        enabled: true,
-        order: 0,
-      },
-    ];
+    const highlightsData = [{ id: 'hl1', title: 'X' }];
+    const servicesData = [{ id: 'sp1', title: 'Web' }];
     const projectsData = [{ id: 'p1', title: 'Project 1', featured: true }];
 
     hero.findOne.mockResolvedValue(heroData);
@@ -62,7 +43,7 @@ describe('HomeBundleService', () => {
     servicePricing.findAll.mockResolvedValue(servicesData);
     projects.findAll.mockResolvedValue(projectsData);
 
-    const result = await service.getBundle();
+    const result = await controller.getBundle();
 
     expect(result).toEqual({
       hero: heroData,
@@ -74,7 +55,7 @@ describe('HomeBundleService', () => {
     expect(projects.findAll).toHaveBeenCalledWith({ featured: true });
   });
 
-  it('getBundle() retourne hero:null si HeroService.findOne throw', async () => {
+  it('getBundle() returns hero=null when HeroService.findOne throws', async () => {
     hero.findOne.mockRejectedValue(
       new InternalServerErrorException('Hero singleton missing'),
     );
@@ -82,7 +63,7 @@ describe('HomeBundleService', () => {
     servicePricing.findAll.mockResolvedValue([]);
     projects.findAll.mockResolvedValue([]);
 
-    const result = await service.getBundle();
+    const result = await controller.getBundle();
 
     expect(result.hero).toBeNull();
     expect(result.highlights).toEqual([]);
@@ -90,13 +71,13 @@ describe('HomeBundleService', () => {
     expect(result.featuredProjects).toEqual([]);
   });
 
-  it('getBundle() retourne arrays vides si tous les services retournent []', async () => {
+  it('getBundle() propagates an empty bundle when all services return []', async () => {
     hero.findOne.mockResolvedValue(null);
     highlights.findAll.mockResolvedValue([]);
     servicePricing.findAll.mockResolvedValue([]);
     projects.findAll.mockResolvedValue([]);
 
-    const result = await service.getBundle();
+    const result = await controller.getBundle();
 
     expect(result).toEqual({
       hero: null,

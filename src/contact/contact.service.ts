@@ -14,6 +14,7 @@ import {
   type PaginatedResult,
   type PaginationParams,
 } from '../common/pagination';
+import { fireAndForget } from '../common/utils';
 import { CreateContactMessageDto } from './dto/create-contact-message.dto';
 
 @Injectable()
@@ -29,16 +30,12 @@ export class ContactService {
 
   async create(dto: CreateContactMessageDto): Promise<ContactMessage> {
     const [row] = await this.db.insert(contactMessages).values(dto).returning();
-
-    // Fire-and-forget : la persistence est garantie, les mails sont best-effort.
-    // Si SMTP down, le message est en DB et l'admin pourra le voir dans son panel.
-    this.sendNotificationMails(row).catch((err: unknown) => {
-      this.logger.error(
-        `Failed to send contact mails for ${row.id}`,
-        err instanceof Error ? err.stack : String(err),
-      );
-    });
-
+    // Fire-and-forget : DB write garanti, mails best-effort (SMTP down → admin panel).
+    fireAndForget(
+      this.sendNotificationMails(row),
+      this.logger,
+      `Failed to send contact mails for ${row.id}`,
+    );
     return row;
   }
 

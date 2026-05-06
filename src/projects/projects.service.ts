@@ -3,7 +3,6 @@ import {
   Inject,
   Injectable,
   NotFoundException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { and, asc, desc, eq, type SQL } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
@@ -16,7 +15,7 @@ import {
 import { StorageService } from '../storage/storage.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
-import { isUniqueViolation, MIME_TO_EXT, slugify } from './projects.utils';
+import { isUniqueViolation, mimeToExt, slugify } from '../common/utils';
 
 @Injectable()
 export class ProjectsService {
@@ -113,14 +112,7 @@ export class ProjectsService {
 
   async uploadImage(id: string, file: Express.Multer.File): Promise<Project> {
     const current = await this.findByIdRaw(id);
-
-    const ext = MIME_TO_EXT[file.mimetype];
-    if (!ext) {
-      throw new UnprocessableEntityException(
-        `Unsupported file type: ${file.mimetype}`,
-      );
-    }
-    const newKey = `projects/${id}.${ext}`;
+    const newKey = `projects/${id}.${mimeToExt(file.mimetype)}`;
 
     // Ordre : upload → update DB → cleanup ancienne clé.
     // Si une étape échoue, on préfère un orphelin S3 (cleanup manuel possible)

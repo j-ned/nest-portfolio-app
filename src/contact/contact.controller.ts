@@ -21,10 +21,9 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AppConfigService } from '../config/app-config.service';
-import { parsePagination } from '../common/pagination';
+import { PaginationDto, parsePagination } from '../common/pagination';
 import { ContactService } from './contact.service';
 import { CreateContactMessageDto } from './dto/create-contact-message.dto';
-import { ListContactMessagesDto } from './dto/list-contact-messages.dto';
 
 @ApiTags('Contact')
 @Controller('contact')
@@ -65,7 +64,7 @@ export class ContactController {
   @ApiOperation({
     summary: 'List contact messages (admin, paginated, sorted createdAt DESC)',
   })
-  findAll(@Query() query: ListContactMessagesDto) {
+  findAll(@Query() query: PaginationDto) {
     return this.contact.findAll(parsePagination(query));
   }
 

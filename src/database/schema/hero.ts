@@ -1,5 +1,6 @@
-import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { timestamps } from '../../common/utils';
 
 export const hero = pgTable('hero', {
   id: uuid('id')
@@ -8,12 +9,7 @@ export const hero = pgTable('hero', {
   name: text('name').notNull().default(''),
   tagline: text('tagline').notNull().default(''),
   availability: text('availability').notNull().default(''),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  ...timestamps(),
 });
 
 export type Hero = typeof hero.$inferSelect;

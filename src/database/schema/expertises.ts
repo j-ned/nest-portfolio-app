@@ -1,12 +1,6 @@
-import {
-  pgTable,
-  uuid,
-  text,
-  timestamp,
-  index,
-  pgEnum,
-} from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, index, pgEnum } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { timestamps } from '../../common/utils';
 
 export const expertiseTypeEnum = pgEnum('expertise_type', ['offer', 'seek']);
 
@@ -19,12 +13,7 @@ export const expertises = pgTable(
     type: expertiseTypeEnum('type').notNull(),
     title: text('title').notNull(),
     description: text('description').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    ...timestamps(),
   },
   (t) => ({
     typeIdx: index('expertise_type_idx').on(t.type),

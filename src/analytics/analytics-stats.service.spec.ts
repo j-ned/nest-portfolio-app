@@ -21,20 +21,18 @@ describe('AnalyticsStatsService', () => {
   });
 
   describe('overview', () => {
-    it('agrège les 8 champs depuis page_view + analytics_event', async () => {
-      // 8 sub-queries en parallèle. Le mock builder retourne des terminators :
-      // - countDistinct sessionHash (visitors)        → [{ value: 100 }]
-      // - count(*) page_view (pageviews)              → [{ value: 250 }]
-      // - countDistinct sessionHash (sessions, dup)   → [{ value: 100 }]
-      // - bounces (subquery HAVING count=1)           → [{ value: 30 }]
-      // - sum(duration) totalDuration                 → [{ value: 12000 }]
-      // - count event_type='project_click'            → [{ value: 15 }]
-      // - count event_type='article_view'             → [{ value: 8 }]
-      // - count event_type='cv_download'              → [{ value: 5 }]
+    it('agrège les 7 champs depuis page_view + analytics_event', async () => {
+      // 7 sub-queries en parallèle (visitors == sessions, dédupliqué) :
+      // - countDistinct sessionHash (sessions/visitors) → [{ value: 100 }]
+      // - count(*) page_view (pageviews)               → [{ value: 250 }]
+      // - bounces (subquery HAVING count=1)            → [{ value: 30 }]
+      // - sum(duration) totalDuration                  → [{ value: 12000 }]
+      // - count event_type='project_click'             → [{ value: 15 }]
+      // - count event_type='article_view'              → [{ value: 8 }]
+      // - count event_type='cv_download'               → [{ value: 5 }]
       db.where
-        .mockResolvedValueOnce([{ value: 100 }]) // visitors
+        .mockResolvedValueOnce([{ value: 100 }]) // sessions/visitors
         .mockResolvedValueOnce([{ value: 250 }]) // pageviews
-        .mockResolvedValueOnce([{ value: 100 }]) // sessions
         .mockResolvedValueOnce([{ value: 30 }]) // bounces
         .mockResolvedValueOnce([{ value: 12000 }]) // totalDuration
         .mockResolvedValueOnce([{ value: 15 }]) // projectClicks
@@ -55,9 +53,8 @@ describe('AnalyticsStatsService', () => {
 
     it('bounceRate = 0 quand pas de sessions', async () => {
       db.where
-        .mockResolvedValueOnce([{ value: 0 }]) // visitors
+        .mockResolvedValueOnce([{ value: 0 }]) // sessions/visitors
         .mockResolvedValueOnce([{ value: 0 }]) // pageviews
-        .mockResolvedValueOnce([{ value: 0 }]) // sessions
         .mockResolvedValueOnce([{ value: 0 }]) // bounces
         .mockResolvedValueOnce([{ value: null }]) // totalDuration
         .mockResolvedValueOnce([{ value: 0 }])

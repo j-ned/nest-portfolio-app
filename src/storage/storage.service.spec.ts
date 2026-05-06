@@ -57,14 +57,25 @@ describe('StorageService', () => {
   });
 
   describe('get', () => {
-    it('retourne { buffer, contentType } depuis la réponse S3', async () => {
+    const collectStream = (s: Readable): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        s.on('data', (c: Buffer) => chunks.push(c));
+        s.on('end', () => resolve(Buffer.concat(chunks).toString()));
+        s.on('error', reject);
+      });
+
+    it('retourne { stream, contentType, contentLength } depuis la réponse S3', async () => {
       const stream = sdkStreamMixin(Readable.from(Buffer.from('content')));
-      s3Mock
-        .on(GetObjectCommand)
-        .resolves({ Body: stream as never, ContentType: 'image/webp' });
+      s3Mock.on(GetObjectCommand).resolves({
+        Body: stream as never,
+        ContentType: 'image/webp',
+        ContentLength: 7,
+      });
       const result = await service.get('my-bucket', 'foo.txt');
-      expect(result.buffer.toString()).toBe('content');
+      expect(await collectStream(result.stream)).toBe('content');
       expect(result.contentType).toBe('image/webp');
+      expect(result.contentLength).toBe(7);
     });
 
     it('contentType fallback à application/octet-stream si absent', async () => {
@@ -72,6 +83,7 @@ describe('StorageService', () => {
       s3Mock.on(GetObjectCommand).resolves({ Body: stream as never });
       const result = await service.get('my-bucket', 'foo.txt');
       expect(result.contentType).toBe('application/octet-stream');
+      expect(result.contentLength).toBe(0);
     });
 
     it('throw NotFoundException si NoSuchKey', async () => {

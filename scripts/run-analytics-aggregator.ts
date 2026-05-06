@@ -13,7 +13,7 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { AnalyticsAggregatorService } from '../src/analytics/analytics-aggregator.service';
-import { subDays } from 'date-fns';
+import { subDays } from '../src/common/utils';
 
 async function main(): Promise<void> {
   const arg = process.argv[2];

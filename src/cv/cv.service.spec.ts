@@ -55,11 +55,8 @@ describe('CvService', () => {
   });
 
   describe('upsert', () => {
-    it('INSERT si pas de CV existant : upload S3 + insert row', async () => {
+    it('upload S3 + INSERT ON CONFLICT DO UPDATE', async () => {
       const file = mkFile();
-      // SELECT.from.limit (no rows)
-      db.limit.mockResolvedValueOnce([]);
-      // INSERT.values.returning
       const created = mkCvFile();
       db.returning.mockResolvedValueOnce([created]);
 
@@ -74,25 +71,8 @@ describe('CvService', () => {
       expect(result).toEqual(created);
     });
 
-    it('UPDATE si CV existant : upload S3 + update row', async () => {
-      const file = mkFile({ originalname: 'Julien-CV-2026.pdf' });
-      const existing = mkCvFile();
-      db.limit.mockResolvedValueOnce([existing]);
-      const updated = mkCvFile({
-        fileName: 'Julien-CV-2026.pdf',
-        updatedAt: new Date('2026-05-01T00:00:00Z'),
-      });
-      db.returning.mockResolvedValueOnce([updated]);
-
-      const result = await service.upsert(file);
-
-      expect(storage.upload).toHaveBeenCalledTimes(1);
-      expect(result.fileName).toBe('Julien-CV-2026.pdf');
-    });
-
     it('utilise toujours la key fixe cv/cv.pdf', async () => {
       const file = mkFile();
-      db.limit.mockResolvedValueOnce([]);
       db.returning.mockResolvedValueOnce([mkCvFile()]);
 
       await service.upsert(file);
@@ -117,19 +97,21 @@ describe('CvService', () => {
   });
 
   describe('download', () => {
-    it('retourne { buffer, metadata } si CV existe', async () => {
+    it('retourne { stream, metadata } si CV existe', async () => {
       const metadata = mkCvFile();
       db.limit.mockResolvedValueOnce([metadata]);
-      const buffer = Buffer.from('pdf-bytes');
+      const { Readable } = await import('node:stream');
+      const stream = Readable.from(Buffer.from('pdf-bytes'));
       storage.get.mockResolvedValueOnce({
-        buffer,
+        stream,
         contentType: 'application/pdf',
+        contentLength: 9,
       });
 
       const result = await service.download();
 
       expect(result.metadata).toEqual(metadata);
-      expect(result.buffer).toEqual(buffer);
+      expect(result.stream).toBe(stream);
       expect(storage.get).toHaveBeenCalledWith(
         'portfolio-storage',
         'cv/cv.pdf',

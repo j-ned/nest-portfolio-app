@@ -54,12 +54,15 @@ export class StorageController {
     const key = Array.isArray(splat) ? splat.join('/') : String(splat);
     if (!key) throw new NotFoundException();
 
-    const { buffer, contentType } = await this.storage.get(bucket, key);
+    const { stream, contentType, contentLength } = await this.storage.get(
+      bucket,
+      key,
+    );
     res.set({
       'Content-Type': contentType,
-      'Content-Length': buffer.length.toString(),
+      'Content-Length': contentLength.toString(),
       'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
     });
-    return new StreamableFile(buffer);
+    return new StreamableFile(stream);
   }
 }
