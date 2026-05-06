@@ -26,7 +26,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { CvModule } from './cv/cv.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from './analytics/analytics.module';
-import { HomeBundleModule } from './home-bundle/home-bundle.module';
+import { HomeBundleController } from './home-bundle/home-bundle.controller';
 
 @Module({
   imports: [
@@ -84,8 +84,8 @@ import { HomeBundleModule } from './home-bundle/home-bundle.module';
     CvModule,
     ScheduleModule.forRoot(),
     AnalyticsModule,
-    HomeBundleModule,
   ],
+  controllers: [HomeBundleController],
   providers: [
     {
       provide: APP_GUARD,
