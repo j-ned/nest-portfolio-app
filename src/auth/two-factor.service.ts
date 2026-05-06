@@ -28,12 +28,9 @@ export class TwoFactorService {
   }
 
   generateBackupCodes(count = 10): string[] {
-    const codes: string[] = [];
-    while (codes.length < count) {
-      const code = this.randomCode();
-      if (!codes.includes(code)) codes.push(code);
-    }
-    return codes;
+    const codes = new Set<string>();
+    while (codes.size < count) codes.add(this.randomCode());
+    return [...codes];
   }
 
   async hashBackupCodes(codes: string[]): Promise<string[]> {

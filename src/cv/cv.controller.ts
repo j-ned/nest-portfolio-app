@@ -87,13 +87,13 @@ export class CvController {
   async download(
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { buffer, metadata } = await this.cv.download();
+    const { stream, metadata } = await this.cv.download();
     res.set({
       'Content-Type': metadata.mimeType,
       'Content-Disposition': `attachment; filename="${metadata.fileName}"`,
-      'Content-Length': buffer.length.toString(),
+      'Content-Length': metadata.fileSize.toString(),
     });
-    return new StreamableFile(buffer);
+    return new StreamableFile(stream);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import type { Readable } from 'node:stream';
 import { desc, eq } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
@@ -7,7 +8,6 @@ import { StorageService } from '../storage/storage.service';
 
 @Injectable()
 export class CvService {
-  private readonly logger = new Logger(CvService.name);
   private static readonly BUCKET = 'portfolio-storage';
   private static readonly KEY = 'cv/cv.pdf';
 
@@ -26,23 +26,7 @@ export class CvService {
       file.mimetype,
     );
 
-    const [existing] = await this.db.select().from(cvFiles).limit(1);
-
-    if (existing) {
-      const [updated] = await this.db
-        .update(cvFiles)
-        .set({
-          fileName: file.originalname,
-          fileSize: file.size,
-          mimeType: file.mimetype,
-          updatedAt: new Date(),
-        })
-        .where(eq(cvFiles.id, existing.id))
-        .returning();
-      return updated;
-    }
-
-    const [created] = await this.db
+    const [row] = await this.db
       .insert(cvFiles)
       .values({
         fileName: file.originalname,
@@ -50,8 +34,17 @@ export class CvService {
         fileSize: file.size,
         mimeType: file.mimetype,
       })
+      .onConflictDoUpdate({
+        target: cvFiles.fileKey,
+        set: {
+          fileName: file.originalname,
+          fileSize: file.size,
+          mimeType: file.mimetype,
+          updatedAt: new Date(),
+        },
+      })
       .returning();
-    return created;
+    return row;
   }
 
   async findLatestMetadata(): Promise<CvFile | null> {
@@ -63,14 +56,14 @@ export class CvService {
     return row ?? null;
   }
 
-  async download(): Promise<{ buffer: Buffer; metadata: CvFile }> {
+  async download(): Promise<{ stream: Readable; metadata: CvFile }> {
     const metadata = await this.findLatestMetadata();
     if (!metadata) throw new NotFoundException('No CV uploaded');
-    const { buffer } = await this.storage.get(
+    const { stream } = await this.storage.get(
       CvService.BUCKET,
       metadata.fileKey,
     );
-    return { buffer, metadata };
+    return { stream, metadata };
   }
 
   async remove(): Promise<void> {

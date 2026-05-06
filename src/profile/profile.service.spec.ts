@@ -19,6 +19,8 @@ describe('ProfileService', () => {
     avatarUrl: '',
     isAvailable: true,
     availabilityMessage: '',
+    bioTitle: '',
+    bioParagraphs: [],
     createdAt: new Date('2026-04-26T00:00:00Z'),
     updatedAt: new Date('2026-04-26T00:00:00Z'),
     ...overrides,

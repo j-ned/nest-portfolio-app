@@ -11,9 +11,7 @@ import {
   lt,
   lte,
   sql,
-  sum,
 } from 'drizzle-orm';
-import { format, subDays, subMinutes, startOfDay, endOfDay } from 'date-fns';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
 import {
@@ -21,6 +19,14 @@ import {
   analyticsEvent,
   dailyStat,
 } from '../database/schema/analytics';
+import {
+  endOfDay,
+  formatDate,
+  startOfDay,
+  subDays,
+  subMinutes,
+} from '../common/utils';
+import { computeAggregates } from './analytics-aggregates';
 import { DateRangeQueryDto, MetricsQueryDto } from './dto/date-range-query.dto';
 
 interface DateBounds {
@@ -36,113 +42,31 @@ export class AnalyticsStatsService {
 
   async overview(query: DateRangeQueryDto) {
     const { start, end } = this.bounds(query);
-
-    const [[vRow], [pvRow], [sRow], [bRow], [dRow], [pcRow], [avRow], [cdRow]] =
-      await Promise.all([
-        this.db
-          .select({ value: countDistinct(pageView.sessionHash) })
-          .from(pageView)
-          .where(
-            and(gte(pageView.createdAt, start), lt(pageView.createdAt, end)),
-          ),
-        this.db
-          .select({ value: count() })
-          .from(pageView)
-          .where(
-            and(gte(pageView.createdAt, start), lt(pageView.createdAt, end)),
-          ),
-        this.db
-          .select({ value: countDistinct(pageView.sessionHash) })
-          .from(pageView)
-          .where(
-            and(gte(pageView.createdAt, start), lt(pageView.createdAt, end)),
-          ),
-        this.db
-          .select({
-            value: sql<number>`(SELECT COUNT(*) FROM (
-            SELECT ${pageView.sessionHash} FROM ${pageView}
-            WHERE ${pageView.createdAt} >= ${sql.raw(`'${start.toISOString()}'`)}::timestamptz
-              AND ${pageView.createdAt} < ${sql.raw(`'${end.toISOString()}'`)}::timestamptz
-            GROUP BY ${pageView.sessionHash}
-            HAVING COUNT(*) = 1
-          ) AS bounced)`,
-          })
-          .from(pageView)
-          .where(
-            and(gte(pageView.createdAt, start), lt(pageView.createdAt, end)),
-          ),
-        this.db
-          .select({ value: sum(pageView.duration) })
-          .from(pageView)
-          .where(
-            and(gte(pageView.createdAt, start), lt(pageView.createdAt, end)),
-          ),
-        this.db
-          .select({ value: count() })
-          .from(analyticsEvent)
-          .where(
-            and(
-              eq(analyticsEvent.eventType, 'project_click'),
-              gte(analyticsEvent.createdAt, start),
-              lt(analyticsEvent.createdAt, end),
-            ),
-          ),
-        this.db
-          .select({ value: count() })
-          .from(analyticsEvent)
-          .where(
-            and(
-              eq(analyticsEvent.eventType, 'article_view'),
-              gte(analyticsEvent.createdAt, start),
-              lt(analyticsEvent.createdAt, end),
-            ),
-          ),
-        this.db
-          .select({ value: count() })
-          .from(analyticsEvent)
-          .where(
-            and(
-              eq(analyticsEvent.eventType, 'cv_download'),
-              gte(analyticsEvent.createdAt, start),
-              lt(analyticsEvent.createdAt, end),
-            ),
-          ),
-      ]);
-
-    const totalVisitors = Number(vRow?.value ?? 0);
-    const totalPageviews = Number(pvRow?.value ?? 0);
-    const totalSessions = Number(sRow?.value ?? 0);
-    const bounces = Number(bRow?.value ?? 0);
-    const totalDuration = Number(dRow?.value ?? 0);
-    const projectClicks = Number(pcRow?.value ?? 0);
-    const articleViews = Number(avRow?.value ?? 0);
-    const cvDownloads = Number(cdRow?.value ?? 0);
+    const a = await computeAggregates(this.db, start, end);
 
     const bounceRate =
-      totalSessions > 0
-        ? Math.round((bounces / totalSessions) * 10000) / 100
-        : 0;
+      a.sessions > 0 ? Math.round((a.bounces / a.sessions) * 10000) / 100 : 0;
     const avgDuration =
-      totalPageviews > 0 ? Math.round(totalDuration / totalPageviews) : 0;
+      a.pageviews > 0 ? Math.round(a.totalDuration / a.pageviews) : 0;
 
     return {
-      totalVisitors,
-      totalPageviews,
-      totalSessions,
+      totalVisitors: a.visitors,
+      totalPageviews: a.pageviews,
+      totalSessions: a.sessions,
       bounceRate,
       avgDuration,
-      projectClicks,
-      articleViews,
-      cvDownloads,
+      projectClicks: a.projectClicks,
+      articleViews: a.articleViews,
+      cvDownloads: a.cvDownloads,
     };
   }
 
   async chart(query: DateRangeQueryDto) {
     const { start, end, isTodayIncluded } = this.bounds(query);
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const today = formatDate(new Date());
 
-    const fromDateStr = format(start, 'yyyy-MM-dd');
-    const toDateStr = format(end, 'yyyy-MM-dd');
+    const fromDateStr = formatDate(start);
+    const toDateStr = formatDate(end);
 
     const whereClause = isTodayIncluded
       ? and(gte(dailyStat.date, fromDateStr), lt(dailyStat.date, today))
@@ -318,8 +242,8 @@ export class AnalyticsStatsService {
 
   private bounds(query: DateRangeQueryDto): DateBounds {
     const now = new Date();
-    const today = format(now, 'yyyy-MM-dd');
-    const fromStr = query.from ?? format(subDays(now, 30), 'yyyy-MM-dd');
+    const today = formatDate(now);
+    const fromStr = query.from ?? formatDate(subDays(now, 30));
     const toStr = query.to ?? today;
 
     const start = startOfDay(new Date(`${fromStr}T00:00:00Z`));

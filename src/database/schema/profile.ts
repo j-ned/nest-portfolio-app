@@ -1,5 +1,6 @@
-import { pgTable, uuid, text, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { timestamps } from '../../common/utils';
 
 export const profile = pgTable('profile', {
   id: uuid('id')
@@ -15,12 +16,7 @@ export const profile = pgTable('profile', {
     .array()
     .notNull()
     .default(sql`'{}'::text[]`),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  ...timestamps(),
 });
 
 export type Profile = typeof profile.$inferSelect;

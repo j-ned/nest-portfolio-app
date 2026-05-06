@@ -18,7 +18,7 @@ import {
 import { AppConfigService } from '../config/app-config.service';
 import { MailerService } from '../mailer/mailer.service';
 import { loadTemplate, renderTemplate } from '../mailer/mailer.utils';
-import { isUniqueViolation } from '../projects/projects.utils';
+import { fireAndForget, isUniqueViolation } from '../common/utils';
 import {
   type PaginatedResult,
   type PaginationParams,
@@ -70,12 +70,11 @@ export class BookingsService {
 
     // 3. Insert + fire-and-forget mails
     const [row] = await this.db.insert(bookings).values(dto).returning();
-    this.sendNotificationMails(row).catch((err: unknown) => {
-      this.logger.error(
-        `Failed to send booking mails for ${row.id}`,
-        err instanceof Error ? err.stack : String(err),
-      );
-    });
+    fireAndForget(
+      this.sendNotificationMails(row),
+      this.logger,
+      `Failed to send booking mails for ${row.id}`,
+    );
     return row;
   }
 

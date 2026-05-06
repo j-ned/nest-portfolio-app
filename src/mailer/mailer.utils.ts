@@ -13,6 +13,13 @@ export function renderTemplate(
   return result;
 }
 
+const templateCache = new Map<string, string>();
+
 export function loadTemplate(absolutePath: string): string {
-  return readFileSync(absolutePath, 'utf-8');
+  let cached = templateCache.get(absolutePath);
+  if (cached === undefined) {
+    cached = readFileSync(absolutePath, 'utf-8');
+    templateCache.set(absolutePath, cached);
+  }
+  return cached;
 }

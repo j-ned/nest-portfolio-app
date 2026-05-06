@@ -19,11 +19,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { parsePagination } from '../common/pagination';
+import { PaginationDto, parsePagination } from '../common/pagination';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateDisabledDateDto } from './dto/create-disabled-date.dto';
-import { ListBookingsDto } from './dto/list-bookings.dto';
 import { ListSlotsDto } from './dto/list-slots.dto';
 
 @ApiTags('Bookings')
@@ -55,7 +54,7 @@ export class BookingsController {
   @ApiOperation({
     summary: 'List bookings (admin, paginated, sorted createdAt DESC)',
   })
-  findAll(@Query() query: ListBookingsDto) {
+  findAll(@Query() query: PaginationDto) {
     return this.bookings.findAll(parsePagination(query));
   }
 

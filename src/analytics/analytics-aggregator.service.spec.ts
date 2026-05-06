@@ -25,14 +25,14 @@ describe('AnalyticsAggregatorService', () => {
     jest.clearAllMocks();
   });
 
-  // Helper : 8 mocks pour les 8 sub-queries de computeAggregates
+  // Helper : 7 mocks pour les 7 sub-queries de computeAggregates
+  // (visitors == sessions, dédupliqué — une seule countDistinct sur sessionHash)
   const mockAggregateValues = (
     overrides: Partial<Record<string, number>> = {},
   ) => {
     db.where
-      .mockResolvedValueOnce([{ value: overrides.visitors ?? 50 }])
-      .mockResolvedValueOnce([{ value: overrides.pageviews ?? 120 }])
       .mockResolvedValueOnce([{ value: overrides.sessions ?? 50 }])
+      .mockResolvedValueOnce([{ value: overrides.pageviews ?? 120 }])
       .mockResolvedValueOnce([{ value: overrides.bounces ?? 10 }])
       .mockResolvedValueOnce([{ value: overrides.totalDuration ?? 5000 }])
       .mockResolvedValueOnce([{ value: overrides.projectClicks ?? 8 }])
@@ -75,7 +75,7 @@ describe('AnalyticsAggregatorService', () => {
 
   describe('manualRun', () => {
     it('agrège la date passée (pas J-1)', async () => {
-      mockAggregateValues({ visitors: 200, pageviews: 500 });
+      mockAggregateValues({ sessions: 200, pageviews: 500 });
 
       await service.manualRun(new Date('2026-04-20T12:00:00Z'));
 

@@ -1,5 +1,6 @@
-import { pgTable, uuid, text, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { timestamps } from '../../common/utils';
 
 export const users = pgTable('users', {
   id: uuid('id')
@@ -10,12 +11,7 @@ export const users = pgTable('users', {
   isTwoFactorEnabled: boolean('is_two_factor_enabled').notNull().default(false),
   twoFactorSecret: text('two_factor_secret'),
   twoFactorBackupCodesHash: text('two_factor_backup_codes_hash').array(),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  ...timestamps(),
 });
 
 export type User = typeof users.$inferSelect;

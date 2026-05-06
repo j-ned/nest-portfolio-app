@@ -4,10 +4,10 @@ import {
   text,
   integer,
   boolean,
-  timestamp,
   index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { timestamps } from '../../common/utils';
 
 export const projects = pgTable(
   'project',
@@ -30,12 +30,7 @@ export const projects = pgTable(
     repoUrlBack: text('repo_url_back'),
     featured: boolean('featured').notNull().default(false),
     order: integer('order').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    ...timestamps(),
   },
   (t) => ({
     categoryIdx: index('project_category_idx').on(t.category),

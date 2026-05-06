@@ -2,7 +2,6 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
@@ -14,7 +13,7 @@ import {
 } from '../database/schema/profile';
 import { StorageService } from '../storage/storage.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { MIME_TO_EXT } from '../projects/projects.utils';
+import { mimeToExt } from '../common/utils';
 
 @Injectable()
 export class ProfileService {
@@ -57,14 +56,7 @@ export class ProfileService {
 
   async uploadAvatar(file: Express.Multer.File): Promise<Profile> {
     const current = await this.findOneRaw();
-
-    const ext = MIME_TO_EXT[file.mimetype];
-    if (!ext) {
-      throw new UnprocessableEntityException(
-        `Unsupported file type: ${file.mimetype}`,
-      );
-    }
-    const newKey = `avatar/avatar.${ext}`;
+    const newKey = `avatar/avatar.${mimeToExt(file.mimetype)}`;
 
     // Ordre : upload → update DB → cleanup ancienne clé.
     // Si une étape échoue, on préfère un orphelin S3 (cleanup manuel possible)

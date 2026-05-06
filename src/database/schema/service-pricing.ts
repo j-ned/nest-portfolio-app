@@ -4,10 +4,10 @@ import {
   text,
   integer,
   boolean,
-  timestamp,
   index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { timestamps } from '../../common/utils';
 
 export const servicePricing = pgTable(
   'service_pricing',
@@ -25,12 +25,7 @@ export const servicePricing = pgTable(
     highlighted: boolean('highlighted').notNull().default(false),
     enabled: boolean('enabled').notNull().default(true),
     order: integer('order').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    ...timestamps(),
   },
   (t) => ({
     orderIdx: index('service_pricing_order_idx').on(t.order),

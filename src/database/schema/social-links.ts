@@ -1,5 +1,6 @@
-import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { timestamps } from '../../common/utils';
 
 export const socialLinks = pgTable('social_link', {
   id: uuid('id')
@@ -8,12 +9,7 @@ export const socialLinks = pgTable('social_link', {
   icon: text('icon').notNull(),
   label: text('label').notNull(),
   href: text('href').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  ...timestamps(),
 });
 
 export type SocialLink = typeof socialLinks.$inferSelect;

@@ -7,9 +7,16 @@ import {
   ListObjectsV2Command,
   NoSuchKey,
 } from '@aws-sdk/client-s3';
+import type { Readable } from 'node:stream';
 import { AppConfigService } from '../config/app-config.service';
 import { S3_CLIENT } from './s3.constants';
 import type { S3Object } from './storage.types';
+
+export interface S3ObjectStream {
+  stream: Readable;
+  contentType: string;
+  contentLength: number;
+}
 
 @Injectable()
 export class StorageService {
@@ -34,10 +41,7 @@ export class StorageService {
     );
   }
 
-  async get(
-    bucket: string,
-    key: string,
-  ): Promise<{ buffer: Buffer; contentType: string }> {
+  async get(bucket: string, key: string): Promise<S3ObjectStream> {
     try {
       const res = await this.s3.send(
         new GetObjectCommand({ Bucket: bucket, Key: key }),
@@ -48,8 +52,9 @@ export class StorageService {
         );
       }
       return {
-        buffer: Buffer.from(await res.Body.transformToByteArray()),
+        stream: res.Body as Readable,
         contentType: res.ContentType ?? 'application/octet-stream',
+        contentLength: res.ContentLength ?? 0,
       };
     } catch (err: unknown) {
       if (err instanceof NoSuchKey) {
