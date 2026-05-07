@@ -5,6 +5,7 @@
 # =============================================================================
 FROM node:22-alpine AS builder
 RUN corepack enable \
+ && corepack prepare pnpm@10.33.2 --activate \
  && apk add --no-cache python3 make g++ libc6-compat
 WORKDIR /app
 
@@ -20,6 +21,7 @@ RUN pnpm build
 # =============================================================================
 FROM node:22-alpine AS prod-deps
 RUN corepack enable \
+ && corepack prepare pnpm@10.33.2 --activate \
  && apk add --no-cache python3 make g++ libc6-compat
 WORKDIR /app
 
@@ -34,6 +36,7 @@ RUN pnpm add drizzle-kit dotenv tsx
 # =============================================================================
 FROM node:22-alpine AS runner
 RUN corepack enable \
+ && corepack prepare pnpm@10.33.2 --activate \
  && apk add --no-cache libc6-compat tini wget
 WORKDIR /app
 
