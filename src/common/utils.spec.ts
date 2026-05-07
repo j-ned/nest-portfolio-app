@@ -1,5 +1,16 @@
 import { UnprocessableEntityException, Logger } from '@nestjs/common';
-import { isUniqueViolation, mimeToExt, slugify, fireAndForget, parseDurationMs, subDays, subMinutes, formatDate, startOfDay, endOfDay } from './utils';
+import {
+  isUniqueViolation,
+  mimeToExt,
+  slugify,
+  fireAndForget,
+  parseDurationMs,
+  subDays,
+  subMinutes,
+  formatDate,
+  startOfDay,
+  endOfDay,
+} from './utils';
 
 describe('slugify', () => {
   it('convertit en kebab-case lowercase', () => {
