@@ -25,7 +25,7 @@ export class DateRangeQueryDto {
   })
   @IsOptional()
   @IsDateString()
-  from?: string;
+  startDate?: string;
 
   @ApiPropertyOptional({
     format: 'date',
@@ -33,7 +33,7 @@ export class DateRangeQueryDto {
   })
   @IsOptional()
   @IsDateString()
-  to?: string;
+  endDate?: string;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
   @IsOptional()

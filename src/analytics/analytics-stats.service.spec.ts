@@ -41,9 +41,10 @@ describe('AnalyticsStatsService', () => {
 
       const result = await service.overview({});
 
-      expect(result.totalVisitors).toBe(100);
-      expect(result.totalPageviews).toBe(250);
-      expect(result.totalSessions).toBe(100);
+      expect(result.visitors).toBe(100);
+      expect(result.pageviews).toBe(250);
+      expect(result.sessions).toBe(100);
+      expect(result.bounces).toBe(30);
       expect(result.bounceRate).toBe(30); // 30/100 = 30%
       expect(result.avgDuration).toBe(48); // 12000/250 = 48
       expect(result.projectClicks).toBe(15);
@@ -76,11 +77,11 @@ describe('AnalyticsStatsService', () => {
       db.orderBy.mockResolvedValueOnce(rows);
 
       const result = await service.chart({
-        from: '2026-04-24',
-        to: '2026-04-25',
+        startDate: '2026-04-24',
+        endDate: '2026-04-25',
       });
 
-      expect(result.data).toEqual(rows);
+      expect(result).toEqual(rows);
     });
 
     it('si to=today, append une row live calculée depuis page_view', async () => {
@@ -94,12 +95,12 @@ describe('AnalyticsStatsService', () => {
         .mockResolvedValueOnce([{ value: 30 }]);
 
       const result = await service.chart({
-        from: '2026-04-25',
-        to: '2026-04-26', // today
+        startDate: '2026-04-25',
+        endDate: '2026-04-26', // today
       });
 
-      expect(result.data).toHaveLength(2);
-      expect(result.data[1]).toEqual({
+      expect(result).toHaveLength(2);
+      expect(result[1]).toEqual({
         date: '2026-04-26',
         visitors: 12,
         pageviews: 30,
@@ -110,15 +111,14 @@ describe('AnalyticsStatsService', () => {
   describe('metrics', () => {
     it('top N par type, exclut NULL', async () => {
       const rows = [
-        { value: '/home', count: 50 },
-        { value: '/projects', count: 30 },
+        { name: '/home', count: 50 },
+        { name: '/projects', count: 30 },
       ];
       db.limit.mockResolvedValueOnce(rows);
 
       const result = await service.metrics({ type: 'url', limit: 10 });
 
-      expect(result.type).toBe('url');
-      expect(result.data).toEqual(rows);
+      expect(result).toEqual(rows);
     });
 
     it('limit par défaut = 20', async () => {
@@ -157,18 +157,18 @@ describe('AnalyticsStatsService', () => {
 
       const result = await service.projects({ limit: 5 });
 
-      expect(result.data).toEqual(rows);
+      expect(result).toEqual(rows);
       expect(db.limit).toHaveBeenCalledWith(5);
     });
   });
 
   describe('cvDownloads', () => {
-    it('total + timeline 30 jours', async () => {
+    it('count + timeline 30 jours', async () => {
       // 2 queries : count(*) + groupBy date
-      // total: select.from.where (terminator)
+      // count: select.from.where (terminator)
       // timeline: select.from.where.groupBy.orderBy (terminator)
       db.where
-        .mockResolvedValueOnce([{ value: 42 }]) // total terminator (1st .where call)
+        .mockResolvedValueOnce([{ value: 42 }]) // count terminator (1st .where call)
         .mockReturnValueOnce(db); // timeline .where (2nd .where call, returns builder)
       db.orderBy.mockResolvedValueOnce([
         { date: '2026-04-25', count: 3 },
@@ -177,7 +177,7 @@ describe('AnalyticsStatsService', () => {
 
       const result = await service.cvDownloads({});
 
-      expect(result.total).toBe(42);
+      expect(result.count).toBe(42);
       expect(result.timeline).toHaveLength(2);
     });
   });
