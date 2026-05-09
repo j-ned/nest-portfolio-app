@@ -14,11 +14,7 @@ import {
 } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
-import {
-  pageView,
-  analyticsEvent,
-  dailyStat,
-} from '../database/schema/analytics';
+import { pageView, analyticsEvent, dailyStat } from '../database/schema';
 import {
   endOfDay,
   formatDate,
@@ -50,9 +46,10 @@ export class AnalyticsStatsService {
       a.pageviews > 0 ? Math.round(a.totalDuration / a.pageviews) : 0;
 
     return {
-      totalVisitors: a.visitors,
-      totalPageviews: a.pageviews,
-      totalSessions: a.sessions,
+      visitors: a.visitors,
+      pageviews: a.pageviews,
+      sessions: a.sessions,
+      bounces: a.bounces,
       bounceRate,
       avgDuration,
       projectClicks: a.projectClicks,
@@ -72,7 +69,7 @@ export class AnalyticsStatsService {
       ? and(gte(dailyStat.date, fromDateStr), lt(dailyStat.date, today))
       : and(gte(dailyStat.date, fromDateStr), lte(dailyStat.date, toDateStr));
 
-    const histRows = await this.db
+    const data = await this.db
       .select({
         date: dailyStat.date,
         visitors: dailyStat.visitors,
@@ -81,8 +78,6 @@ export class AnalyticsStatsService {
       .from(dailyStat)
       .where(whereClause)
       .orderBy(asc(dailyStat.date));
-
-    const data = histRows;
 
     if (isTodayIncluded && toDateStr === today) {
       const todayStart = startOfDay(new Date());
@@ -114,7 +109,7 @@ export class AnalyticsStatsService {
       });
     }
 
-    return { data };
+    return data;
   }
 
   async metrics(query: MetricsQueryDto) {
@@ -123,9 +118,9 @@ export class AnalyticsStatsService {
 
     const col = pageView[query.type as keyof typeof pageView] as never;
 
-    const rows = await this.db
+    return this.db
       .select({
-        value: col,
+        name: col,
         count: count(),
       })
       .from(pageView)
@@ -139,8 +134,6 @@ export class AnalyticsStatsService {
       .groupBy(col)
       .orderBy(desc(count()))
       .limit(limit);
-
-    return { type: query.type, data: rows };
   }
 
   async active() {
@@ -178,7 +171,7 @@ export class AnalyticsStatsService {
     const { start, end } = this.bounds(query);
     const limit = query.limit ?? 20;
 
-    const rows = await this.db
+    return this.db
       .select({
         entityId: analyticsEvent.entityId,
         entityTitle: analyticsEvent.entityTitle,
@@ -195,8 +188,6 @@ export class AnalyticsStatsService {
       .groupBy(analyticsEvent.entityId, analyticsEvent.entityTitle)
       .orderBy(desc(count()))
       .limit(limit);
-
-    return { data: rows };
   }
 
   async cvDownloads(query: DateRangeQueryDto) {
@@ -206,7 +197,7 @@ export class AnalyticsStatsService {
     const timelineEnd = endOfDay(new Date());
     const timelineStart = startOfDay(subDays(new Date(), 30));
 
-    const [[totalRow], timeline] = await Promise.all([
+    const [[countRow], timeline] = await Promise.all([
       this.db
         .select({ value: count() })
         .from(analyticsEvent)
@@ -235,7 +226,7 @@ export class AnalyticsStatsService {
     ]);
 
     return {
-      total: Number(totalRow?.value ?? 0),
+      count: Number(countRow?.value ?? 0),
       timeline,
     };
   }
@@ -243,8 +234,8 @@ export class AnalyticsStatsService {
   private bounds(query: DateRangeQueryDto): DateBounds {
     const now = new Date();
     const today = formatDate(now);
-    const fromStr = query.from ?? formatDate(subDays(now, 30));
-    const toStr = query.to ?? today;
+    const fromStr = query.startDate ?? formatDate(subDays(now, 30));
+    const toStr = query.endDate ?? today;
 
     const start = startOfDay(new Date(`${fromStr}T00:00:00Z`));
     const end = endOfDay(new Date(`${toStr}T00:00:00Z`));
