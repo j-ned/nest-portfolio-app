@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isIPv4, isIPv6 } from 'node:net';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, gte } from 'drizzle-orm';
 import { isbot } from 'isbot';
@@ -6,8 +7,41 @@ import geoip from 'geoip-lite';
 import { UAParser } from 'ua-parser-js';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
-import { pageView, analyticsEvent } from '../database/schema/analytics';
+import { pageView, analyticsEvent } from '../database/schema';
 import { TrackEventDto } from './dto/track-event.dto';
+
+// RFC1918 + loopback + link-local + IPv6 ULA. Strips ::ffff: IPv4-mapped prefix.
+export function isPrivateIp(raw: string): boolean {
+  if (!raw) return false;
+
+  const lower = raw.toLowerCase();
+  const ip = lower.startsWith('::ffff:') ? lower.slice(7) : lower;
+
+  if (isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number);
+    return (
+      a === 127 ||
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254)
+    );
+  }
+
+  if (isIPv6(ip)) {
+    return (
+      ip === '::1' ||
+      /^fe[89ab][0-9a-f]/.test(ip) || // fe80::/10 link-local
+      /^f[cd]/.test(ip) // fc00::/7 ULA
+    );
+  }
+
+  return false;
+}
+
+function isExcludedUrl(url: string): boolean {
+  return url === '/login' || url === '/admin' || url.startsWith('/admin/');
+}
 
 @Injectable()
 export class AnalyticsTrackerService {
@@ -26,13 +60,27 @@ export class AnalyticsTrackerService {
         return;
       }
 
-      // 2. Session hash déterministe par jour (UTC)
+      // 2. Private IP filter (dev/LAN traffic — loopback + RFC1918 + link-local + ULA)
+      if (isPrivateIp(ip)) {
+        return;
+      }
+
+      // 3. URL filter for page events (login + admin area)
+      if (
+        (dto.type === 'page_view' || dto.type === 'page_duration') &&
+        dto.url &&
+        isExcludedUrl(dto.url)
+      ) {
+        return;
+      }
+
+      // 4. Session hash déterministe par jour (UTC)
       const day = new Date().toISOString().slice(0, 10);
       const sessionHash = createHash('sha256')
         .update(`${ip}|${ua}|${day}`)
         .digest('hex');
 
-      // 3. UA parsing
+      // 5. UA parsing
       const parsed = new UAParser(ua).getResult();
       const browser =
         parsed.browser.name && parsed.browser.version
@@ -43,10 +91,10 @@ export class AnalyticsTrackerService {
           ? `${parsed.os.name} ${parsed.os.version}`
           : null;
 
-      // 4. Géoloc IP
+      // 6. Géoloc IP
       const country = geoip.lookup(ip)?.country ?? null;
 
-      // 5. Branch : page-view vs custom event (via dto.type)
+      // 7. Branch : page-view vs custom event (via dto.type)
       if (dto.type === 'page_view' || dto.type === 'page_duration') {
         await this.upsertPageView(dto, sessionHash, browser, os, country);
       } else {

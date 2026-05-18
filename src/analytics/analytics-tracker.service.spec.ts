@@ -168,20 +168,130 @@ describe('AnalyticsTrackerService', () => {
   });
 
   describe('géoloc fallback', () => {
-    it('IP locale → country null (pas crash)', async () => {
+    it('IP inconnue de geoip → country null (pas crash)', async () => {
       geoipLookup.mockReturnValue(null);
       db.limit.mockResolvedValueOnce([]);
       db.returning.mockResolvedValueOnce([{ id: 'pv' }]);
 
       await service.track(
         { type: 'page_view', url: '/test' },
-        '127.0.0.1',
+        '198.51.100.42',
         NORMAL_UA,
       );
 
       expect(db.values).toHaveBeenCalledWith(
         expect.objectContaining({ country: null }),
       );
+    });
+  });
+
+  describe('private IP filter', () => {
+    it.each([
+      // Loopback
+      ['127.0.0.1', 'IPv4 loopback'],
+      ['127.42.0.7', 'IPv4 loopback range 127/8'],
+      ['::1', 'IPv6 loopback'],
+      // IPv4-mapped IPv6
+      ['::ffff:127.0.0.1', 'IPv4-mapped loopback'],
+      ['::ffff:192.168.1.5', 'IPv4-mapped RFC1918'],
+      ['::ffff:10.0.0.1', 'IPv4-mapped 10/8'],
+      // RFC 1918
+      ['10.0.0.1', '10/8'],
+      ['10.255.255.254', '10/8 edge'],
+      ['172.16.0.1', '172.16/12 lower bound'],
+      ['172.20.5.5', '172.16/12 middle'],
+      ['172.31.255.254', '172.16/12 upper bound'],
+      ['192.168.0.1', '192.168/16'],
+      ['192.168.1.42', '192.168/16'],
+      // Link-local IPv4
+      ['169.254.1.1', '169.254/16 IPv4 link-local'],
+      // IPv6 link-local
+      ['fe80::1', 'IPv6 link-local fe80'],
+      ['febf::abcd', 'IPv6 link-local febf (upper bound)'],
+      // IPv6 ULA
+      ['fc00::1', 'IPv6 ULA fc00'],
+      ['fd12:3456::1', 'IPv6 ULA fd'],
+    ])('skip silencieusement si IP=%s (%s)', async (ip) => {
+      await service.track({ type: 'page_view', url: '/test' }, ip, NORMAL_UA);
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('skip aussi pour les custom events depuis IP privée', async () => {
+      await service.track({ type: 'cv_download' }, '192.168.1.10', NORMAL_UA);
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['8.8.8.8', 'Google DNS public'],
+      ['1.1.1.1', 'Cloudflare public'],
+      ['172.15.0.1', 'juste avant 172.16/12'],
+      ['172.32.0.1', 'juste après 172.31'],
+      ['169.253.1.1', 'juste avant 169.254/16'],
+      ['192.169.1.1', 'juste après 192.168/16'],
+      ['2606:4700:4700::1111', 'IPv6 public (Cloudflare)'],
+    ])('IP publique %s (%s) → tracking normal', async (ip) => {
+      db.limit.mockResolvedValueOnce([]);
+      db.returning.mockResolvedValueOnce([{ id: 'pv' }]);
+      await service.track({ type: 'page_view', url: '/test' }, ip, NORMAL_UA);
+      expect(db.insert).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('URL filter (login/admin)', () => {
+    it.each([
+      ['/login'],
+      ['/admin'],
+      ['/admin/'],
+      ['/admin/users'],
+      ['/admin/foo/bar'],
+    ])('skip page_view pour url=%s', async (url) => {
+      await service.track({ type: 'page_view', url }, '1.2.3.4', NORMAL_UA);
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('skip page_duration sur /admin/*', async () => {
+      await service.track(
+        { type: 'page_duration', url: '/admin/dashboard', duration: 10 },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('ne filtre PAS une url qui commence par /login… mais pas /login (ex: /logins)', async () => {
+      db.limit.mockResolvedValueOnce([]);
+      db.returning.mockResolvedValueOnce([{ id: 'pv' }]);
+      await service.track(
+        { type: 'page_view', url: '/logins' },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+      expect(db.insert).toHaveBeenCalledTimes(1);
+    });
+
+    it('ne filtre PAS /admin-public (préfixe seul ne suffit pas)', async () => {
+      db.limit.mockResolvedValueOnce([]);
+      db.returning.mockResolvedValueOnce([{ id: 'pv' }]);
+      await service.track(
+        { type: 'page_view', url: '/admin-public' },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+      expect(db.insert).toHaveBeenCalledTimes(1);
+    });
+
+    it('les custom events ne sont PAS filtrés par URL (pas de url chez eux)', async () => {
+      db.returning.mockResolvedValueOnce([{ id: 'ev' }]);
+      await service.track(
+        { type: 'project_click', entityId: 'x' },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+      expect(db.insert).toHaveBeenCalledTimes(1);
     });
   });
 
