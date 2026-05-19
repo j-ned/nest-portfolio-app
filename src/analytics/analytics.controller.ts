@@ -10,7 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -25,6 +25,7 @@ import { DateRangeQueryDto, MetricsQueryDto } from './dto/date-range-query.dto';
 
 @ApiTags('Analytics')
 @Controller('analytics')
+@SkipThrottle()
 export class AnalyticsController {
   constructor(
     private readonly tracker: AnalyticsTrackerService,
@@ -33,6 +34,7 @@ export class AnalyticsController {
 
   @Post('track')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @SkipThrottle({ default: false })
   @Throttle({ default: { limit: 10, ttl: 1000 } })
   @ApiOperation({
     summary: 'Track a page-view or custom event (public, fire-and-forget)',
