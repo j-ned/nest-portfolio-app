@@ -1,9 +1,4 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, type SQL } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
@@ -13,8 +8,10 @@ import {
   type Project,
 } from '../database/schema/projects';
 import { StorageService } from '../storage/storage.service';
+import { deleteS3IfExists } from '../storage/s3-utils';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { findByIdOrFail } from '../common/crud-helpers';
 import { isUniqueViolation, mimeToExt, slugify } from '../common/utils';
 
 @Injectable()
@@ -95,8 +92,12 @@ export class ProjectsService {
 
     // S3 cleanup APRÈS le write DB réussi : si le write échoue, on préfère
     // garder l'objet S3 (orphelin DB-cohérent) plutôt qu'une DB cassée.
-    if (image === null && current.image) {
-      await this.storage.delete(ProjectsService.BUCKET, current.image);
+    if (image === null) {
+      await deleteS3IfExists(
+        this.storage,
+        ProjectsService.BUCKET,
+        current.image,
+      );
     }
 
     return this.toResponse(row);
@@ -105,9 +106,7 @@ export class ProjectsService {
   async remove(id: string): Promise<void> {
     const current = await this.findByIdRaw(id);
     await this.db.delete(projects).where(eq(projects.id, id));
-    if (current.image) {
-      await this.storage.delete(ProjectsService.BUCKET, current.image);
-    }
+    await deleteS3IfExists(this.storage, ProjectsService.BUCKET, current.image);
   }
 
   async uploadImage(id: string, file: Express.Multer.File): Promise<Project> {
@@ -130,8 +129,12 @@ export class ProjectsService {
       .where(eq(projects.id, id))
       .returning();
 
-    if (current.image && current.image !== newKey) {
-      await this.storage.delete(ProjectsService.BUCKET, current.image);
+    if (current.image !== newKey) {
+      await deleteS3IfExists(
+        this.storage,
+        ProjectsService.BUCKET,
+        current.image,
+      );
     }
 
     return this.toResponse(row);
@@ -139,14 +142,8 @@ export class ProjectsService {
 
   // Helper privé : retourne la row brute (sans transformation URL).
   // Utilisé par toutes les opérations internes qui ont besoin de la key S3.
-  private async findByIdRaw(id: string): Promise<Project> {
-    const [row] = await this.db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
-    if (!row) throw new NotFoundException(`Project ${id} not found`);
-    return row;
+  private findByIdRaw(id: string): Promise<Project> {
+    return findByIdOrFail<Project>(this.db, projects, id, 'Project');
   }
 
   // Transforme la key DB en URL publique pour la sortie API.

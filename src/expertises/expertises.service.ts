@@ -7,6 +7,7 @@ import {
   type Expertise,
   type ExpertiseType,
 } from '../database/schema/expertises';
+import { findByIdOrFail } from '../common/crud-helpers';
 import { CreateExpertiseDto } from './dto/create-expertise.dto';
 import { UpdateExpertiseDto } from './dto/update-expertise.dto';
 
@@ -30,15 +31,8 @@ export class ExpertisesService {
       .orderBy(asc(expertises.createdAt));
   }
 
-  async findById(id: string): Promise<Expertise> {
-    const rows = await this.db
-      .select()
-      .from(expertises)
-      .where(eq(expertises.id, id))
-      .limit(1);
-    if (rows.length === 0)
-      throw new NotFoundException(`Expertise ${id} not found`);
-    return rows[0];
+  findById(id: string): Promise<Expertise> {
+    return findByIdOrFail<Expertise>(this.db, expertises, id, 'Expertise');
   }
 
   async create(

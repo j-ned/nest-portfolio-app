@@ -11,6 +11,7 @@ import {
   servicePricing,
   type ServicePricing,
 } from '../database/schema/service-pricing';
+import { findByIdOrFail } from '../common/crud-helpers';
 import { CreateServicePricingDto } from './dto/create-service-pricing.dto';
 import { UpdateServicePricingDto } from './dto/update-service-pricing.dto';
 import { ReorderServicePricingDto } from './dto/reorder-service-pricing.dto';
@@ -26,15 +27,13 @@ export class ServicePricingService {
       .orderBy(asc(servicePricing.order));
   }
 
-  async findById(id: string): Promise<ServicePricing> {
-    const rows = await this.db
-      .select()
-      .from(servicePricing)
-      .where(eq(servicePricing.id, id))
-      .limit(1);
-    if (rows.length === 0)
-      throw new NotFoundException(`ServicePricing ${id} not found`);
-    return rows[0];
+  findById(id: string): Promise<ServicePricing> {
+    return findByIdOrFail<ServicePricing>(
+      this.db,
+      servicePricing,
+      id,
+      'ServicePricing',
+    );
   }
 
   async create(dto: CreateServicePricingDto): Promise<ServicePricing> {

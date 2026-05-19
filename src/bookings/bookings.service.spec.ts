@@ -71,12 +71,12 @@ describe('BookingsService', () => {
     };
 
     it('insère un booking et retourne la row', async () => {
-      // 1) check disabled : select.from.where.limit chain
-      //    where() must return builder (for chaining to limit), limit() terminates
+      // 1) check disabled : select.from.where.limit chain, limit() terminates
       db.where.mockReturnValueOnce(db);
       db.limit.mockResolvedValueOnce([]);
-      // 2) check overlap : select.from.where chain, where() terminates with []
-      db.where.mockResolvedValueOnce([]);
+      // 2) check overlap : select.from.where.limit chain, limit() terminates with []
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([]);
       // 3) insert.values.returning : returning returns [created]
       const created = mkBooking();
       db.returning.mockResolvedValueOnce([created]);
@@ -94,21 +94,21 @@ describe('BookingsService', () => {
     });
 
     it('throw ConflictException si un slot existant chevauche', async () => {
-      // where() returns builder for chaining, limit() terminates with []
       db.where.mockReturnValueOnce(db);
       db.limit.mockResolvedValueOnce([]);
-      // Booking existant 13:30-14:30 chevauche notre 14:00-15:00
-      db.where.mockResolvedValueOnce([{ startTime: '13:30', duration: 60 }]);
+      // SQL filters overlap directly; mock returns a hit row → service throws.
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([{ id: 'existing-id' }]);
       await expect(service.create(dtoOk)).rejects.toThrow(ConflictException);
       expect(mailer.sendMail).not.toHaveBeenCalled();
     });
 
     it('autorise un slot adjacent (pas de chevauchement)', async () => {
-      // where() returns builder for chaining, limit() terminates with []
       db.where.mockReturnValueOnce(db);
       db.limit.mockResolvedValueOnce([]);
-      // Booking existant 13:00-14:00, notre 14:00-15:00 → adjacent
-      db.where.mockResolvedValueOnce([{ startTime: '13:00', duration: 60 }]);
+      // SQL filters adjacent slots out, so the overlap query returns []
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([]);
       const created = mkBooking();
       db.returning.mockResolvedValueOnce([created]);
       const result = await service.create(dtoOk);
@@ -116,11 +116,10 @@ describe('BookingsService', () => {
     });
 
     it('resolve quand même si MailerService.sendMail reject (fire-and-forget)', async () => {
-      // where() returns builder for chaining, limit() terminates with []
       db.where.mockReturnValueOnce(db);
       db.limit.mockResolvedValueOnce([]);
-      // sameDay check: where() terminates with []
-      db.where.mockResolvedValueOnce([]);
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([]);
       const created = mkBooking();
       db.returning.mockResolvedValueOnce([created]);
       mailer.sendMail.mockRejectedValue(new Error('SMTP down'));
@@ -130,11 +129,11 @@ describe('BookingsService', () => {
     it('appelle sendMail 2 fois en cas de succès', async () => {
       db.where.mockReturnValueOnce(db);
       db.limit.mockResolvedValueOnce([]);
-      db.where.mockResolvedValueOnce([]);
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([]);
       const created = mkBooking();
       db.returning.mockResolvedValueOnce([created]);
       await service.create(dtoOk);
-      // Drain microtask queue for fire-and-forget
       await new Promise((resolve) => setImmediate(resolve));
       expect(mailer.sendMail).toHaveBeenCalledTimes(2);
     });
@@ -142,7 +141,8 @@ describe('BookingsService', () => {
     it('envoie le mail admin à cfg.contactEmail avec le bon sujet', async () => {
       db.where.mockReturnValueOnce(db);
       db.limit.mockResolvedValueOnce([]);
-      db.where.mockResolvedValueOnce([]);
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([]);
       const created = mkBooking({ subject: 'Demande RDV' });
       db.returning.mockResolvedValueOnce([created]);
       await service.create({ ...dtoOk, subject: 'Demande RDV' });
@@ -159,7 +159,8 @@ describe('BookingsService', () => {
     it('envoie le mail confirmation à booking.email avec le bon sujet', async () => {
       db.where.mockReturnValueOnce(db);
       db.limit.mockResolvedValueOnce([]);
-      db.where.mockResolvedValueOnce([]);
+      db.where.mockReturnValueOnce(db);
+      db.limit.mockResolvedValueOnce([]);
       const created = mkBooking({ email: 'visitor@test.com' });
       db.returning.mockResolvedValueOnce([created]);
       await service.create({ ...dtoOk, email: 'visitor@test.com' });

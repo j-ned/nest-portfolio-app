@@ -22,22 +22,18 @@ describe('AnalyticsStatsService', () => {
 
   describe('overview', () => {
     it('agrège les 7 champs depuis page_view + analytics_event', async () => {
-      // 7 sub-queries en parallèle (visitors == sessions, dédupliqué) :
-      // - countDistinct sessionHash (sessions/visitors) → [{ value: 100 }]
-      // - count(*) page_view (pageviews)               → [{ value: 250 }]
-      // - bounces (subquery HAVING count=1)            → [{ value: 30 }]
-      // - sum(duration) totalDuration                  → [{ value: 12000 }]
-      // - count event_type='project_click'             → [{ value: 15 }]
-      // - count event_type='article_view'              → [{ value: 8 }]
-      // - count event_type='cv_download'               → [{ value: 5 }]
-      db.where
-        .mockResolvedValueOnce([{ value: 100 }]) // sessions/visitors
-        .mockResolvedValueOnce([{ value: 250 }]) // pageviews
-        .mockResolvedValueOnce([{ value: 30 }]) // bounces
-        .mockResolvedValueOnce([{ value: 12000 }]) // totalDuration
-        .mockResolvedValueOnce([{ value: 15 }]) // projectClicks
-        .mockResolvedValueOnce([{ value: 8 }]) // articleViews
-        .mockResolvedValueOnce([{ value: 5 }]); // cvDownloads
+      // 2 queries en parallèle : CTE sur page_view (db.execute) + select FILTER sur analytics_event
+      db.execute.mockResolvedValueOnce([
+        {
+          pageviews: 250,
+          total_duration: 12000,
+          sessions: 100,
+          bounces: 30,
+        },
+      ]);
+      db.where.mockResolvedValueOnce([
+        { projectClicks: 15, articleViews: 8, cvDownloads: 5 },
+      ]);
 
       const result = await service.overview({});
 
@@ -53,14 +49,12 @@ describe('AnalyticsStatsService', () => {
     });
 
     it('bounceRate = 0 quand pas de sessions', async () => {
-      db.where
-        .mockResolvedValueOnce([{ value: 0 }]) // sessions/visitors
-        .mockResolvedValueOnce([{ value: 0 }]) // pageviews
-        .mockResolvedValueOnce([{ value: 0 }]) // bounces
-        .mockResolvedValueOnce([{ value: null }]) // totalDuration
-        .mockResolvedValueOnce([{ value: 0 }])
-        .mockResolvedValueOnce([{ value: 0 }])
-        .mockResolvedValueOnce([{ value: 0 }]);
+      db.execute.mockResolvedValueOnce([
+        { pageviews: 0, total_duration: null, sessions: 0, bounces: 0 },
+      ]);
+      db.where.mockResolvedValueOnce([
+        { projectClicks: 0, articleViews: 0, cvDownloads: 0 },
+      ]);
 
       const result = await service.overview({});
       expect(result.bounceRate).toBe(0);

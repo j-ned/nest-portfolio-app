@@ -25,19 +25,26 @@ describe('AnalyticsAggregatorService', () => {
     jest.clearAllMocks();
   });
 
-  // Helper : 7 mocks pour les 7 sub-queries de computeAggregates
-  // (visitors == sessions, dédupliqué — une seule countDistinct sur sessionHash)
+  // 2 queries : un CTE sur pageView via db.execute(sql), un select sur analyticsEvent
+  // avec COUNT FILTER WHERE. visitors == sessions.
   const mockAggregateValues = (
     overrides: Partial<Record<string, number>> = {},
   ) => {
-    db.where
-      .mockResolvedValueOnce([{ value: overrides.sessions ?? 50 }])
-      .mockResolvedValueOnce([{ value: overrides.pageviews ?? 120 }])
-      .mockResolvedValueOnce([{ value: overrides.bounces ?? 10 }])
-      .mockResolvedValueOnce([{ value: overrides.totalDuration ?? 5000 }])
-      .mockResolvedValueOnce([{ value: overrides.projectClicks ?? 8 }])
-      .mockResolvedValueOnce([{ value: overrides.articleViews ?? 4 }])
-      .mockResolvedValueOnce([{ value: overrides.cvDownloads ?? 2 }]);
+    db.execute.mockResolvedValueOnce([
+      {
+        pageviews: overrides.pageviews ?? 120,
+        total_duration: overrides.totalDuration ?? 5000,
+        sessions: overrides.sessions ?? 50,
+        bounces: overrides.bounces ?? 10,
+      },
+    ]);
+    db.where.mockResolvedValueOnce([
+      {
+        projectClicks: overrides.projectClicks ?? 8,
+        articleViews: overrides.articleViews ?? 4,
+        cvDownloads: overrides.cvDownloads ?? 2,
+      },
+    ]);
   };
 
   describe('aggregateYesterday', () => {

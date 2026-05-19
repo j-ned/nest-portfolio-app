@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
 import { diplomas, type Diploma } from '../database/schema/diplomas';
+import { findByIdOrFail } from '../common/crud-helpers';
 import { CreateDiplomaDto } from './dto/create-diploma.dto';
 import { UpdateDiplomaDto } from './dto/update-diploma.dto';
 
@@ -14,15 +15,8 @@ export class DiplomasService {
     return this.db.select().from(diplomas).orderBy(asc(diplomas.createdAt));
   }
 
-  async findById(id: string): Promise<Diploma> {
-    const rows = await this.db
-      .select()
-      .from(diplomas)
-      .where(eq(diplomas.id, id))
-      .limit(1);
-    if (rows.length === 0)
-      throw new NotFoundException(`Diploma ${id} not found`);
-    return rows[0];
+  findById(id: string): Promise<Diploma> {
+    return findByIdOrFail<Diploma>(this.db, diplomas, id, 'Diploma');
   }
 
   async create(dto: CreateDiplomaDto): Promise<Diploma> {
