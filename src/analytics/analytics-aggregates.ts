@@ -1,7 +1,7 @@
 // noinspection SqlNoDataSourceInspection,SqlResolve
 import { and, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { Database } from '../database/drizzle.types';
-import { analyticsEvent, pageView } from '../database/schema/analytics';
+import { analyticsEvent, pageView } from '../database/schema';
 
 export interface DayAggregates {
   visitors: number;
@@ -26,6 +26,12 @@ export async function computeAggregates(
   start: Date,
   end: Date,
 ): Promise<DayAggregates> {
+  // postgres-js cannot bind a JS Date when it's interpolated inside a raw
+  // sql`` template (it works through Drizzle helpers like gte/lt, but not in
+  // a CTE we hand-craft). Pass ISO strings and let PG auto-cast to timestamptz.
+  const startIso = start.toISOString();
+  const endIso = end.toISOString();
+
   const [pageViewRows, eventRows] = await Promise.all([
     db.execute<PageViewAggregateRow>(sql`
       WITH session_counts AS (
@@ -34,8 +40,8 @@ export async function computeAggregates(
           COUNT(*) AS n,
           SUM(${pageView.duration}) AS dur
         FROM ${pageView}
-        WHERE ${pageView.createdAt} >= ${start}
-          AND ${pageView.createdAt} < ${end}
+        WHERE ${pageView.createdAt} >= ${startIso}
+          AND ${pageView.createdAt} < ${endIso}
         GROUP BY ${pageView.sessionHash}
       )
       SELECT
