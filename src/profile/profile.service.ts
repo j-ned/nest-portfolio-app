@@ -12,6 +12,7 @@ import {
   type Profile,
 } from '../database/schema/profile';
 import { StorageService } from '../storage/storage.service';
+import { deleteS3IfExists } from '../storage/s3-utils';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { mimeToExt } from '../common/utils';
 
@@ -47,8 +48,12 @@ export class ProfileService {
 
     // Cleanup S3 APRÈS le write DB réussi : si le write échoue, on préfère
     // garder l'objet S3 (orphelin DB-cohérent) plutôt qu'une DB cassée.
-    if (avatarUrl === null && current.avatarUrl) {
-      await this.storage.delete(ProfileService.BUCKET, current.avatarUrl);
+    if (avatarUrl === null) {
+      await deleteS3IfExists(
+        this.storage,
+        ProfileService.BUCKET,
+        current.avatarUrl,
+      );
     }
 
     return this.toResponse(row);
@@ -74,8 +79,12 @@ export class ProfileService {
       .where(eq(profile.id, current.id))
       .returning();
 
-    if (current.avatarUrl && current.avatarUrl !== newKey) {
-      await this.storage.delete(ProfileService.BUCKET, current.avatarUrl);
+    if (current.avatarUrl !== newKey) {
+      await deleteS3IfExists(
+        this.storage,
+        ProfileService.BUCKET,
+        current.avatarUrl,
+      );
     }
 
     return this.toResponse(row);

@@ -1,3 +1,4 @@
+// noinspection SqlNoDataSourceInspection,SqlResolve
 import { resolve } from 'node:path';
 import {
   ConflictException,
@@ -25,7 +26,7 @@ import {
 } from '../common/pagination';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateDisabledDateDto } from './dto/create-disabled-date.dto';
-import { slotsOverlap, toSlot } from './bookings.utils';
+import { parseTimeToMinutes } from './bookings.utils';
 
 @Injectable()
 export class BookingsService {
@@ -49,23 +50,28 @@ export class BookingsService {
       throw new ConflictException(`Date ${dto.date} is disabled for bookings`);
     }
 
-    // 2. Check no overlap with existing booking same date
-    const sameDay = await this.db
-      .select({
-        startTime: bookings.startTime,
-        duration: bookings.duration,
-      })
+    // 2. Check no overlap with existing booking same date.
+    // start_time is stored as "HH:MM" text; convert to minutes via SPLIT_PART
+    // so the comparison runs as a single indexed query on `booking_date_idx`.
+    const newStartMin = parseTimeToMinutes(dto.startTime);
+    const newEndMin = newStartMin + dto.duration;
+    const existingStartMin = sql<number>`(SPLIT_PART(${bookings.startTime}, ':', 1)::int * 60 + SPLIT_PART(${bookings.startTime}, ':', 2)::int)`;
+
+    const overlapping = await this.db
+      .select({ id: bookings.id })
       .from(bookings)
-      .where(eq(bookings.date, dto.date));
-    const newSlot = toSlot(dto.startTime, dto.duration);
-    for (const existing of sameDay) {
-      if (
-        slotsOverlap(newSlot, toSlot(existing.startTime, existing.duration))
-      ) {
-        throw new ConflictException(
-          `Time slot overlaps with an existing booking on ${dto.date}`,
-        );
-      }
+      .where(
+        and(
+          eq(bookings.date, dto.date),
+          sql`${existingStartMin} < ${newEndMin}`,
+          sql`${existingStartMin} + ${bookings.duration} > ${newStartMin}`,
+        ),
+      )
+      .limit(1);
+    if (overlapping.length > 0) {
+      throw new ConflictException(
+        `Time slot overlaps with an existing booking on ${dto.date}`,
+      );
     }
 
     // 3. Insert + fire-and-forget mails

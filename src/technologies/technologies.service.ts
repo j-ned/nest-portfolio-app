@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
 import { technologies, type Technology } from '../database/schema/technologies';
+import { findByIdOrFail } from '../common/crud-helpers';
 import { CreateTechnologyDto } from './dto/create-technology.dto';
 import { UpdateTechnologyDto } from './dto/update-technology.dto';
 
@@ -17,15 +18,8 @@ export class TechnologiesService {
       .orderBy(asc(technologies.createdAt));
   }
 
-  async findById(id: string): Promise<Technology> {
-    const rows = await this.db
-      .select()
-      .from(technologies)
-      .where(eq(technologies.id, id))
-      .limit(1);
-    if (rows.length === 0)
-      throw new NotFoundException(`Technology ${id} not found`);
-    return rows[0];
+  findById(id: string): Promise<Technology> {
+    return findByIdOrFail<Technology>(this.db, technologies, id, 'Technology');
   }
 
   async create(dto: CreateTechnologyDto): Promise<Technology> {
