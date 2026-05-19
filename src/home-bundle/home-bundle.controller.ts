@@ -16,7 +16,10 @@ export class HomeBundleController {
   ) {}
 
   @Get()
-  @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
+  // `no-cache` forces the browser/CDN to revalidate with the auto-generated
+  // ETag before serving. A match returns 304 (cheap, no body) so we keep the
+  // perf win without serving stale data after an admin edit.
+  @Header('Cache-Control', 'public, no-cache')
   @ApiOperation({
     summary:
       'Aggregate landing page data (hero + home-highlights + services + featured projects)',
