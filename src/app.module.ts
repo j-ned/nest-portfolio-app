@@ -9,7 +9,6 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { ProfileModule } from './profile/profile.module';
 import { HeroModule } from './hero/hero.module';
-import { BiographyModule } from './biography/biography.module';
 import { HighlightsModule } from './highlights/highlights.module';
 import { SocialLinksModule } from './social-links/social-links.module';
 import { DiplomasModule } from './diplomas/diplomas.module';
@@ -68,7 +67,6 @@ import { HomeBundleController } from './home-bundle/home-bundle.controller';
     AuthModule,
     ProfileModule,
     HeroModule,
-    BiographyModule,
     HighlightsModule,
     SocialLinksModule,
     DiplomasModule,
