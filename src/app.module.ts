@@ -20,7 +20,6 @@ import { ContactModule } from './contact/contact.module';
 import { CvModule } from './cv/cv.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from './analytics/analytics.module';
-import { HomeBundleController } from './home-bundle/home-bundle.controller';
 
 @Module({
   imports: [
@@ -73,7 +72,6 @@ import { HomeBundleController } from './home-bundle/home-bundle.controller';
     ScheduleModule.forRoot(),
     AnalyticsModule,
   ],
-  controllers: [HomeBundleController],
   providers: [
     {
       provide: APP_GUARD,

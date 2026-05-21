@@ -9,6 +9,5 @@ import { ProjectsService } from './projects.service';
   imports: [AuthModule, MulterModule.register(multerConfig(5))],
   controllers: [ProjectsController],
   providers: [ProjectsService],
-  exports: [ProjectsService],
 })
 export class ProjectsModule {}
