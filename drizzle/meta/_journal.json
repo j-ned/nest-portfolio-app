@@ -71,6 +71,13 @@
       "when": 1779388639281,
       "tag": "0009_brave_annihilus",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779391839846,
+      "tag": "0010_remarkable_dragon_lord",
+      "breakpoints": true
     }
   ]
 }
