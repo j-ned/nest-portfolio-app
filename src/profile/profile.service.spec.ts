@@ -5,7 +5,7 @@ import { ProfileService } from './profile.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import { StorageService } from '../storage/storage.service';
-import type { Profile } from '../database/schema/profile';
+import type { Profile } from '../database/schema';
 
 describe('ProfileService', () => {
   let service: ProfileService;
@@ -19,8 +19,6 @@ describe('ProfileService', () => {
     avatarUrl: '',
     isAvailable: true,
     availabilityMessage: '',
-    bioTitle: '',
-    bioParagraphs: [],
     createdAt: new Date('2026-04-26T00:00:00Z'),
     updatedAt: new Date('2026-04-26T00:00:00Z'),
     ...overrides,
@@ -71,56 +69,6 @@ describe('ProfileService', () => {
       await expect(service.findOne()).rejects.toThrow(
         InternalServerErrorException,
       );
-    });
-  });
-
-  describe('update', () => {
-    it("met à jour les champs simples et retourne Profile avec avatarUrl ''", async () => {
-      const existing = mkProfile({ avatarUrl: '' });
-      const updated = mkProfile({
-        displayName: 'Julien',
-        location: 'Lyon',
-        avatarUrl: '',
-      });
-      db.limit.mockResolvedValueOnce([existing]);
-      db.returning.mockResolvedValueOnce([updated]);
-      const result = await service.update({
-        displayName: 'Julien',
-        location: 'Lyon',
-      });
-      expect(result.displayName).toBe('Julien');
-      expect(result.avatarUrl).toBe('');
-    });
-
-    it('avatarUrl: null + key existante → DB write puis storage.delete', async () => {
-      const existing = mkProfile({ avatarUrl: 'avatar/avatar.webp' });
-      const updated = mkProfile({ avatarUrl: '' });
-      db.limit.mockResolvedValueOnce([existing]);
-      db.returning.mockResolvedValueOnce([updated]);
-      await service.update({ avatarUrl: null });
-      expect(storage.delete).toHaveBeenCalledWith(
-        'portfolio-storage',
-        'avatar/avatar.webp',
-      );
-    });
-
-    it('avatarUrl: null + pas de key → DB write, pas de delete S3', async () => {
-      const existing = mkProfile({ avatarUrl: '' });
-      const updated = mkProfile({ avatarUrl: '' });
-      db.limit.mockResolvedValueOnce([existing]);
-      db.returning.mockResolvedValueOnce([updated]);
-      await service.update({ avatarUrl: null });
-      expect(storage.delete).not.toHaveBeenCalled();
-    });
-
-    it('ne touche pas S3 si le write DB échoue (avatarUrl: null)', async () => {
-      const existing = mkProfile({ avatarUrl: 'avatar/avatar.webp' });
-      db.limit.mockResolvedValueOnce([existing]);
-      db.returning.mockRejectedValueOnce(new Error('DB connection lost'));
-      await expect(service.update({ avatarUrl: null })).rejects.toThrow(
-        'DB connection lost',
-      );
-      expect(storage.delete).not.toHaveBeenCalled();
     });
   });
 

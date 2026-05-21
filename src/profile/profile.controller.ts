@@ -1,12 +1,10 @@
 import {
-  Body,
   Controller,
   FileTypeValidator,
   Get,
   HttpStatus,
   MaxFileSizeValidator,
   ParseFilePipe,
-  Patch,
   Post,
   UploadedFile,
   UseGuards,
@@ -23,7 +21,6 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ProfileService } from './profile.service';
-import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @ApiTags('Profile')
 @Controller('profile')
@@ -35,16 +32,6 @@ export class ProfileController {
   @ApiResponse({ status: 200, description: 'Profile' })
   findOne() {
     return this.profile.findOne();
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Patch()
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update the profile (admin)' })
-  @ApiResponse({ status: 200, description: 'Profile updated' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  update(@Body() dto: UpdateProfileDto) {
-    return this.profile.update(dto);
   }
 
   @UseGuards(JwtAuthGuard)

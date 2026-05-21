@@ -6,14 +6,9 @@ import {
 import { eq } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
-import {
-  profile,
-  type NewProfile,
-  type Profile,
-} from '../database/schema/profile';
+import { profile, type Profile } from '../database/schema';
 import { StorageService } from '../storage/storage.service';
 import { deleteS3IfExists } from '../storage/s3-utils';
-import { UpdateProfileDto } from './dto/update-profile.dto';
 import { mimeToExt } from '../common/utils';
 
 @Injectable()
@@ -27,35 +22,6 @@ export class ProfileService {
 
   async findOne(): Promise<Profile> {
     const row = await this.findOneRaw();
-    return this.toResponse(row);
-  }
-
-  async update(dto: UpdateProfileDto): Promise<Profile> {
-    const current = await this.findOneRaw();
-
-    // avatarUrl extrait du spread : il ne peut être que null ou undefined côté DTO,
-    // mais on ne veut jamais qu'il soit propagé tel quel dans le patch DB
-    // (la column est NOT NULL DEFAULT '').
-    const { avatarUrl, ...rest } = dto;
-    const patch: Partial<NewProfile> = { ...rest, updatedAt: new Date() };
-    if (avatarUrl === null) patch.avatarUrl = '';
-
-    const [row] = await this.db
-      .update(profile)
-      .set(patch)
-      .where(eq(profile.id, current.id))
-      .returning();
-
-    // Cleanup S3 APRÈS le write DB réussi : si le write échoue, on préfère
-    // garder l'objet S3 (orphelin DB-cohérent) plutôt qu'une DB cassée.
-    if (avatarUrl === null) {
-      await deleteS3IfExists(
-        this.storage,
-        ProfileService.BUCKET,
-        current.avatarUrl,
-      );
-    }
-
     return this.toResponse(row);
   }
 
