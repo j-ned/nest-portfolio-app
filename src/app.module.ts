@@ -8,7 +8,6 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { ProfileModule } from './profile/profile.module';
-import { ServicePricingModule } from './service-pricing/service-pricing.module';
 import { StorageModule } from './storage/storage.module';
 import { ProjectsModule } from './projects/projects.module';
 import { MailerModule } from './mailer/mailer.module';
@@ -58,7 +57,6 @@ import { AnalyticsModule } from './analytics/analytics.module';
     HealthModule,
     AuthModule,
     ProfileModule,
-    ServicePricingModule,
     StorageModule,
     ProjectsModule,
     MailerModule,
