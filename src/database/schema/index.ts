@@ -5,7 +5,6 @@ import * as hero from './hero';
 import * as servicePricing from './service-pricing';
 import * as projects from './projects';
 import * as contactMessages from './contact-messages';
-import * as bookings from './bookings';
 import * as cvFiles from './cv-files';
 import * as analytics from './analytics';
 import * as highlight from './highlight';
@@ -16,7 +15,6 @@ export * from './hero';
 export * from './service-pricing';
 export * from './projects';
 export * from './contact-messages';
-export * from './bookings';
 export * from './cv-files';
 export * from './analytics';
 export * from './highlight';
@@ -28,7 +26,6 @@ export const schema = {
   ...servicePricing,
   ...projects,
   ...contactMessages,
-  ...bookings,
   ...cvFiles,
   ...analytics,
   ...highlight,
