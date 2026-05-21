@@ -64,6 +64,13 @@
       "when": 1777822427775,
       "tag": "0008_giant_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779388639281,
+      "tag": "0009_brave_annihilus",
+      "breakpoints": true
     }
   ]
 }
