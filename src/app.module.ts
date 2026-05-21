@@ -10,7 +10,6 @@ import { AuthModule } from './auth/auth.module';
 import { ProfileModule } from './profile/profile.module';
 import { HeroModule } from './hero/hero.module';
 import { HighlightsModule } from './highlights/highlights.module';
-import { ExpertisesModule } from './expertises/expertises.module';
 import { ServicePricingModule } from './service-pricing/service-pricing.module';
 import { StorageModule } from './storage/storage.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -65,7 +64,6 @@ import { HomeBundleController } from './home-bundle/home-bundle.controller';
     ProfileModule,
     HeroModule,
     HighlightsModule,
-    ExpertisesModule,
     ServicePricingModule,
     StorageModule,
     ProjectsModule,
