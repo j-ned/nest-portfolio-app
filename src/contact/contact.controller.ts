@@ -20,7 +20,6 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AppConfigService } from '../config/app-config.service';
 import { PaginationDto, parsePagination } from '../common/pagination';
 import { ContactService } from './contact.service';
 import { CreateContactMessageDto } from './dto/create-contact-message.dto';
@@ -28,22 +27,7 @@ import { CreateContactMessageDto } from './dto/create-contact-message.dto';
 @ApiTags('Contact')
 @Controller('contact')
 export class ContactController {
-  constructor(
-    private readonly contact: ContactService,
-    private readonly cfg: AppConfigService,
-  ) {}
-
-  @Get('info')
-  @ApiOperation({
-    summary: 'Get public contact info from env (email, phone, location)',
-  })
-  getInfo() {
-    return {
-      email: this.cfg.contactEmail,
-      phone: this.cfg.contactPhone,
-      location: this.cfg.contactLocation,
-    };
-  }
+  constructor(private readonly contact: ContactService) {}
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('messages')
