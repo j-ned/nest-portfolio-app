@@ -11,7 +11,6 @@ import { ProfileModule } from './profile/profile.module';
 import { HeroModule } from './hero/hero.module';
 import { HighlightsModule } from './highlights/highlights.module';
 import { SocialLinksModule } from './social-links/social-links.module';
-import { DiplomasModule } from './diplomas/diplomas.module';
 import { TechnologiesModule } from './technologies/technologies.module';
 import { ExpertisesModule } from './expertises/expertises.module';
 import { ServicePricingModule } from './service-pricing/service-pricing.module';
@@ -69,7 +68,6 @@ import { HomeBundleController } from './home-bundle/home-bundle.controller';
     HeroModule,
     HighlightsModule,
     SocialLinksModule,
-    DiplomasModule,
     TechnologiesModule,
     ExpertisesModule,
     ServicePricingModule,
