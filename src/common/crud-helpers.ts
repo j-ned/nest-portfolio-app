@@ -8,8 +8,7 @@ import type { Database } from '../database/drizzle.types';
  * Replaces the recurring pattern:
  *   select().from(t).where(eq(t.id, id)).limit(1) → throw if empty.
  *
- * Does NOT cover tables with compound lookup keys (e.g. highlight scoped by
- * section) — those keep their custom findOne.
+ * Does NOT cover tables with compound lookup keys — those keep their custom findOne.
  */
 export async function findByIdOrFail<TRow>(
   db: Database,
