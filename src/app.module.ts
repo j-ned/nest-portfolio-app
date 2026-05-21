@@ -17,7 +17,6 @@ import { MailerModule } from './mailer/mailer.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ContactModule } from './contact/contact.module';
-import { BookingsModule } from './bookings/bookings.module';
 import { CvModule } from './cv/cv.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from './analytics/analytics.module';
@@ -70,7 +69,6 @@ import { HomeBundleController } from './home-bundle/home-bundle.controller';
     MailerModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
     ContactModule,
-    BookingsModule,
     CvModule,
     ScheduleModule.forRoot(),
     AnalyticsModule,
