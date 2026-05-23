@@ -65,15 +65,22 @@ import { AnalyticsModule } from './analytics/analytics.module';
             logMethod(args, method, level) {
               if (level >= 50) {
                 const [first, second] = args as [unknown, string?];
-                const msg =
-                  typeof first === 'string' ? first : (second ?? 'pino-log');
-                Sentry.captureMessage(msg, {
-                  level: level >= 50 ? 'error' : 'warning',
-                  extra:
-                    typeof first === 'object' && first !== null
-                      ? { context: first }
-                      : undefined,
-                });
+                const ctx =
+                  typeof first === 'object' && first !== null
+                    ? (first as Record<string, unknown>)
+                    : undefined;
+                // Skip if an exception is attached: SentryGlobalFilter +
+                // @SentryExceptionCaptured already capture it with stack trace.
+                const alreadyCapturedAsException =
+                  ctx !== undefined && 'err' in ctx;
+                if (!alreadyCapturedAsException) {
+                  const msg =
+                    typeof first === 'string' ? first : (second ?? 'pino-log');
+                  Sentry.captureMessage(msg, {
+                    level: level >= 50 ? 'error' : 'warning',
+                    extra: ctx ? { context: ctx } : undefined,
+                  });
+                }
               }
               method.apply(this, args);
             },
