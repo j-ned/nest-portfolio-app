@@ -61,6 +61,11 @@ export const envSchema = z.object({
   CONTACT_EMAIL: z.string().email(),
   CONTACT_PHONE: z.string().min(1),
   CONTACT_LOCATION: z.string().min(1),
+
+  // Observability (Sentry) — all optional, empty DSN keeps Sentry disabled
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_RELEASE: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
