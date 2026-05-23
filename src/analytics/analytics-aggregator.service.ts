@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/nestjs';
 import { lt } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
@@ -18,6 +19,12 @@ export class AnalyticsAggregatorService {
 
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
+  @Sentry.SentryCron('analytics-aggregate-yesterday', {
+    schedule: { type: 'crontab', value: '0 0 * * *' },
+    timezone: 'UTC',
+    checkinMargin: 5,
+    maxRuntime: 30,
+  })
   @Cron('0 0 * * *', { timeZone: 'UTC' })
   async aggregateYesterday(): Promise<void> {
     const yesterday = subDays(new Date(), 1);
