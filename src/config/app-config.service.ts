@@ -91,4 +91,11 @@ export class AppConfigService {
   get contactLocation() {
     return this.config.get('CONTACT_LOCATION', { infer: true });
   }
+
+  get sentryRelease() {
+    return this.config.get('SENTRY_RELEASE', { infer: true });
+  }
+  get sentryFrontendDsn() {
+    return this.config.get('SENTRY_FRONTEND_DSN', { infer: true });
+  }
 }

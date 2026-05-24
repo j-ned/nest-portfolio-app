@@ -66,6 +66,9 @@ export const envSchema = z.object({
   SENTRY_DSN: z.string().url().optional(),
   SENTRY_RELEASE: z.string().optional(),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).optional(),
+  // Browser DSN exposed via GET /api/config (separate Sentry project from backend).
+  // Public by design (ships in the browser bundle once fetched).
+  SENTRY_FRONTEND_DSN: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

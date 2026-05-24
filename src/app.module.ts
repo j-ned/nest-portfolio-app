@@ -18,6 +18,7 @@ import { ContactModule } from './contact/contact.module';
 import { CvModule } from './cv/cv.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { RuntimeConfigModule } from './runtime-config/runtime-config.module';
 
 @Module({
   imports: [
@@ -99,6 +100,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     CvModule,
     ScheduleModule.forRoot(),
     AnalyticsModule,
+    RuntimeConfigModule,
   ],
   providers: [
     {
