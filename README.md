@@ -215,7 +215,7 @@ Module d'infrastructure pour le stockage d'objets S3-compatible. Utilisé par le
 **Stack** :
 - Lib : `@aws-sdk/client-s3` v3
 - Dev local : container MinIO (S3-compatible) sur ports 9000 (API) + 9001 (console)
-- Prod : Garage sur VPS (interopérable, mêmes APIs)
+- Prod : Cloudflare R2 (S3-compatible, egress gratuit)
 
 **Quickstart S3 (en plus du DB) :**
 
@@ -259,19 +259,19 @@ export class ProjectsService {
 
 **`StorageModule` est `@Global`** : `StorageService` est injectable directement, pas besoin d'`imports: [StorageModule]` dans les feature modules.
 
-**Configuration prod (Garage VPS)** :
+**Configuration prod (Cloudflare R2)** :
 
-Sur ton VPS Garage, créer le bucket `portfolio-storage` (ou un nom différent par convention si tu veux la segmentation par feature) et mettre à jour `.env` prod :
+Sur le dashboard Cloudflare R2, créer le bucket `portfolio-storage` puis générer un API Token R2 (Read & Write). Mettre à jour `.env` prod :
 
 ```bash
-S3_ENDPOINT=https://garage-s3.j-ned.dev
-S3_REGION=garage
-S3_ACCESS_KEY=<...>
-S3_SECRET_KEY=<...>
-S3_PUBLIC_URL=https://garage-s3.j-ned.dev      # ou un CDN devant
+S3_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
+S3_REGION=auto
+S3_ACCESS_KEY=<R2 Access Key ID>
+S3_SECRET_KEY=<R2 Secret Access Key>
+# S3_PUBLIC_URL non requis : on sert via le proxy NestJS /storage/:bucket/*.
 ```
 
-Le bucket Garage doit être configuré en **anonymous-read** (commande `garage bucket allow ...`) et avec **CORS public** si le frontend tape directement (pas via nginx proxy). Cf. doc Garage.
+Les fichiers publics sont servis par le proxy NestJS `/storage/:bucket/*` (le bucket R2 reste privé). Pour bypasser le proxy à terme, configurer un Custom Domain R2 (nécessite que le DNS du domaine soit géré par Cloudflare) et exposer `S3_PUBLIC_URL=https://media.example.com`, puis adapter `StorageService.getPublicUrl()`.
 
 **Voir le spec complet** : [`docs/superpowers/specs/2026-04-25-s3-storage-design.md`](docs/superpowers/specs/2026-04-25-s3-storage-design.md).
 
@@ -556,7 +556,7 @@ Le backend Hono actuel (`../angular-portfolio-app/backend`) reste actif pendant 
 1. ✅ Fondations
 2. ✅ Auth (Users + JWT + 2FA + backup codes)
 3. ✅ Profile public (Profile, Hero, SocialLinks, Diplomas, Technologies, Expertises, ServicePricing)
-4. ✅ S3 Storage (StorageModule + MinIO local + Garage prod)
+4. ✅ S3 Storage (StorageModule + MinIO local + R2 prod)
 5. ✅ Projects (CRUD + upload image qui consomme S3 Storage)
 6. ✅ Avatar Profile (`POST /profile/avatar` + transformation key→URL en sortie API, cohérent Projects)
 7. ✅ Mailer (MailerModule @Global + Mailpit local + nodemailer)

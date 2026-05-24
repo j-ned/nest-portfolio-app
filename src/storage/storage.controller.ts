@@ -21,8 +21,8 @@ const PUBLIC_BUCKETS = new Set<string>(['portfolio-storage']);
 /**
  * Le rate limit global (10 req/60s) ne s'applique pas ici : une page peut
  * référencer N images, un dashboard admin avec une liste de projets en charge
- * autant qu'il y a de rows. Le cache HTTP (24h max-age) absorbe les répétitions
- * et Garage est local au VPS — pas de risque de coût externe en cas de spike.
+ * autant qu'il y a de rows. Le cache HTTP (24h max-age) absorbe les répétitions.
+ * R2 Class B (read) free tier = 1M req/mois, largement couvert pour un portfolio.
  */
 @SkipThrottle()
 @ApiTags('Storage')
@@ -33,7 +33,7 @@ export class StorageController {
   @Get(':bucket/*splat')
   @ApiOperation({
     summary:
-      'Proxy public d’un objet S3 (Garage v2 ne supporte pas l’accès anonyme direct)',
+      'Proxy public d’un objet S3 (R2 derrière, custom domain non encore configuré)',
   })
   @ApiResponse({
     status: 200,

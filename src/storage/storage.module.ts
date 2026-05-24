@@ -18,7 +18,7 @@ const s3ClientProvider: Provider = {
         accessKeyId: cfg.s3AccessKey,
         secretAccessKey: cfg.s3SecretKey,
       },
-      forcePathStyle: true, // requis pour MinIO et Garage
+      forcePathStyle: true, // requis pour MinIO local ; R2 accepte path-style aussi
     }),
 };
 

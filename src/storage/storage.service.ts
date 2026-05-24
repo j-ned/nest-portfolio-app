@@ -85,10 +85,10 @@ export class StorageService {
    * Format: `/storage/{bucket}/{key}` — chemin relatif au préfixe `/api` global.
    * Le frontend résout vers `${apiUrl}${path}` côté Angular.
    *
-   * Pourquoi un proxy plutôt que l'URL S3 directe ? Garage v2 ne supporte pas
-   * l'accès anonyme via l'API S3 (« Garage does not support anonymous access yet »),
-   * donc les URLs `https://garage-s3.../bucket/key` retournent 403 depuis le browser.
-   * Le proxy NestJS détient les credentials et stream l'objet.
+   * Pourquoi un proxy plutôt qu'une URL S3 directe ? R2 supporte l'accès anonyme
+   * via Public Buckets ou Custom Domain, mais le Custom Domain exige que le DNS
+   * soit géré par Cloudflare — ce n'est pas (encore) notre cas. En attendant,
+   * le proxy NestJS détient les credentials et stream l'objet.
    */
   getPublicUrl(bucket: string, key: string): string {
     return `/storage/${bucket}/${key}`;
