@@ -82,16 +82,6 @@ export class AppConfigService {
     return this.config.get('SMTP_FROM', { infer: true });
   }
 
-  get contactEmail() {
-    return this.config.get('CONTACT_EMAIL', { infer: true });
-  }
-  get contactPhone() {
-    return this.config.get('CONTACT_PHONE', { infer: true });
-  }
-  get contactLocation() {
-    return this.config.get('CONTACT_LOCATION', { infer: true });
-  }
-
   get sentryRelease() {
     return this.config.get('SENTRY_RELEASE', { infer: true });
   }

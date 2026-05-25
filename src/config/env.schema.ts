@@ -57,11 +57,6 @@ export const envSchema = z.object({
   SMTP_PASS: z.string().min(1),
   SMTP_FROM: z.string().email(),
 
-  // Contact
-  CONTACT_EMAIL: z.string().email(),
-  CONTACT_PHONE: z.string().min(1),
-  CONTACT_LOCATION: z.string().min(1),
-
   // Observability (Sentry) — all optional, empty DSN keeps Sentry disabled
   SENTRY_DSN: z.string().url().optional(),
   SENTRY_RELEASE: z.string().optional(),

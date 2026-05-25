@@ -405,11 +405,10 @@ Module métier pour le formulaire de contact public et la gestion admin des mess
 
 **Schéma** : table `contact_message` (uuid + 6 cols + 3 indexes : `read`, `createdAt`, composite `read+createdAt`).
 
-**6 endpoints sous `/contact`** :
+**5 endpoints sous `/contact`** :
 
 | Méthode | Chemin | Auth | Rôle |
 |---|---|---|---|
-| GET | `/contact/info` | ❌ | Retourne `{ email, phone, location }` depuis env vars (`CONTACT_*`). |
 | POST | `/contact/messages` | ❌ | Soumission publique du formulaire. **Throttle 5/60s par IP**. Insère en DB + envoie 2 mails fire-and-forget (notification admin + confirmation visiteur). Retourne 201 avec la row. |
 | GET | `/contact/messages` | ✅ | Liste paginée (`?page&limit`, defaults 1/10, max limit 100), tri `createdAt DESC`. |
 | GET | `/contact/messages/unread-count` | ✅ | Compteur de messages non-lus. |
@@ -421,7 +420,7 @@ Module métier pour le formulaire de contact public et la gestion admin des mess
 **Stratégie mails** : fire-and-forget après `db.insert`. Le visiteur reçoit 201 dès que la persistence est garantie. Les 2 mails partent en arrière-plan. En cas d'échec SMTP (3 retries du `MailerService` épuisés), l'erreur est loggée mais le visiteur ne voit rien — le message reste en DB pour consultation admin.
 
 **Templates** :
-- `src/contact/mail-templates/contact-notification.html` — envoyé à `CONTACT_EMAIL` (admin)
+- `src/contact/mail-templates/contact-notification.html` — envoyé au destinataire admin (constante `CONTACT_RECIPIENT` dans `src/contact/contact.service.ts`)
 - `src/contact/mail-templates/contact-confirmation.html` — envoyé à l'email du visiteur
 
 Variables : `{{name}}`, `{{email}}`, `{{subject}}`, `{{message}}`.
@@ -431,13 +430,7 @@ Variables : `{{name}}`, `{{email}}`, `{{subject}}`, `{{message}}`.
 
 **Configuration prod** :
 
-```bash
-CONTACT_EMAIL=admin@nedellec-julien.fr  # destinataire des notifications
-CONTACT_PHONE=+33 6 00 00 00 00
-CONTACT_LOCATION=Lyon, France
-```
-
-Le `SMTP_FROM` (sous-projet Mailer) reste l'expéditeur — souvent identique à `CONTACT_EMAIL` mais conceptuellement distinct.
+Le destinataire des notifications admin est codé en dur (`CONTACT_RECIPIENT` dans `src/contact/contact.service.ts`) — aucune env var `CONTACT_*`. Le `SMTP_FROM` (sous-projet Mailer) reste l'expéditeur, conceptuellement distinct du destinataire.
 
 **Voir le spec complet** : [`docs/superpowers/specs/2026-04-26-contact-design.md`](docs/superpowers/specs/2026-04-26-contact-design.md).
 
@@ -472,7 +465,7 @@ L'helper de chevauchement (`bookings.utils.ts`) est testé indépendamment (6 te
 - `src/bookings/mail-templates/booking-confirmation.html` — visitor confirmation (variables `{{name}}`, `{{date}}`, `{{duration}}`, `{{subject}}`)
 
 **Configuration** :
-- Réutilise `CONTACT_EMAIL` (sous-projet Contact) comme destinataire des notifications admin — pas de nouvelle env var.
+- Réutilise le destinataire admin codé en dur (`CONTACT_RECIPIENT`, sous-projet Contact) comme destinataire des notifications admin — pas d'env var dédiée.
 - Réutilise `parsePagination` (`src/common/`) — 2ème consommateur du helper (validé).
 - Réutilise `isUniqueViolation` (`src/projects/projects.utils`) pour le check disabled-date doublon.
 
