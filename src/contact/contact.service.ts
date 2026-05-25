@@ -6,8 +6,7 @@ import type { Database } from '../database/drizzle.types';
 import {
   contactMessages,
   type ContactMessage,
-} from '../database/schema/contact-messages';
-import { AppConfigService } from '../config/app-config.service';
+} from '../database/schema';
 import { MailerService } from '../mailer/mailer.service';
 import { loadTemplate, renderTemplate } from '../mailer/mailer.utils';
 import {
@@ -17,6 +16,8 @@ import {
 import { fireAndForget } from '../common/utils';
 import { CreateContactMessageDto } from './dto/create-contact-message.dto';
 
+const CONTACT_RECIPIENT = 'contact@nedellec-julien.fr';
+
 @Injectable()
 export class ContactService {
   private readonly logger = new Logger(ContactService.name);
@@ -24,7 +25,6 @@ export class ContactService {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
-    private readonly cfg: AppConfigService,
     private readonly mailer: MailerService,
   ) {}
 
@@ -104,7 +104,7 @@ export class ContactService {
     };
     await Promise.all([
       this.mailer.sendMail({
-        to: this.cfg.contactEmail,
+        to: CONTACT_RECIPIENT,
         subject: `Nouveau message de contact: ${msg.subject}`,
         html: renderTemplate(adminTpl, variables),
       }),

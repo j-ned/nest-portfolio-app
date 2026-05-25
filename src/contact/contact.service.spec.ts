@@ -4,14 +4,12 @@ import { NotFoundException } from '@nestjs/common';
 import { ContactService } from './contact.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
-import { AppConfigService } from '../config/app-config.service';
 import { MailerService } from '../mailer/mailer.service';
-import type { ContactMessage } from '../database/schema/contact-messages';
+import type { ContactMessage } from '../database/schema';
 
 describe('ContactService', () => {
   let service: ContactService;
   let db: ReturnType<typeof createMockDb>;
-  let cfg: { contactEmail: string };
   let mailer: jest.Mocked<MailerService>;
 
   const mkMessage = (
@@ -29,7 +27,6 @@ describe('ContactService', () => {
 
   beforeEach(async () => {
     db = createMockDb();
-    cfg = { contactEmail: 'admin@test.local' };
     mailer = {
       sendMail: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<MailerService>;
@@ -38,10 +35,6 @@ describe('ContactService', () => {
       providers: [
         ContactService,
         { provide: DRIZZLE, useValue: db },
-        {
-          provide: AppConfigService,
-          useValue: cfg,
-        },
         { provide: MailerService, useValue: mailer },
       ],
     }).compile();
@@ -94,7 +87,7 @@ describe('ContactService', () => {
       expect(mailer.sendMail).toHaveBeenCalledTimes(2);
     });
 
-    it('envoie le mail admin à cfg.contactEmail avec sujet "Nouveau message de contact: <subject>"', async () => {
+    it('envoie le mail admin au destinataire fixe avec sujet "Nouveau message de contact: <subject>"', async () => {
       const created = mkMessage({ subject: 'Demande de devis' });
       db.returning.mockResolvedValueOnce([created]);
       await service.create({
@@ -105,7 +98,7 @@ describe('ContactService', () => {
       });
       await new Promise((resolve) => setImmediate(resolve));
       const adminCall = mailer.sendMail.mock.calls.find(
-        (call) => call[0].to === 'admin@test.local',
+        (call) => call[0].to === 'contact@nedellec-julien.fr',
       );
       expect(adminCall).toBeDefined();
       expect(adminCall![0].subject).toBe(

@@ -12,9 +12,6 @@ describe('validateEnv', () => {
     SMTP_USER: 'mailpit',
     SMTP_PASS: 'mailpit',
     SMTP_FROM: 'noreply@test.local',
-    CONTACT_EMAIL: 'admin@test.local',
-    CONTACT_PHONE: '+33 6 00 00 00 00',
-    CONTACT_LOCATION: 'Lyon, France',
   };
 
   it('parse une env valide minimaliste avec défauts', () => {
@@ -166,23 +163,5 @@ describe('validateEnv', () => {
     expect(() =>
       validateEnv({ ...baseValid, SMTP_FROM: 'not-an-email' }),
     ).toThrow(/SMTP_FROM/);
-  });
-
-  it('rejette CONTACT_EMAIL si pas un email valide', () => {
-    expect(() =>
-      validateEnv({ ...baseValid, CONTACT_EMAIL: 'not-an-email' }),
-    ).toThrow(/CONTACT_EMAIL/);
-  });
-
-  it('rejette CONTACT_PHONE vide', () => {
-    expect(() => validateEnv({ ...baseValid, CONTACT_PHONE: '' })).toThrow(
-      /CONTACT_PHONE/,
-    );
-  });
-
-  it('rejette CONTACT_LOCATION vide', () => {
-    expect(() => validateEnv({ ...baseValid, CONTACT_LOCATION: '' })).toThrow(
-      /CONTACT_LOCATION/,
-    );
   });
 });
