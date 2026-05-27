@@ -121,19 +121,6 @@ describe('validateEnv', () => {
     );
   });
 
-  it('utilise S3_PUBLIC_URL = S3_ENDPOINT par défaut', () => {
-    const result = validateEnv(baseValid);
-    expect(result.S3_PUBLIC_URL).toBe('http://localhost:9000');
-  });
-
-  it('respecte S3_PUBLIC_URL explicite', () => {
-    const result = validateEnv({
-      ...baseValid,
-      S3_PUBLIC_URL: 'https://cdn.example.com',
-    });
-    expect(result.S3_PUBLIC_URL).toBe('https://cdn.example.com');
-  });
-
   it('défaut SMTP_PORT à 587', () => {
     const result = validateEnv(baseValid);
     expect(result.SMTP_PORT).toBe(587);

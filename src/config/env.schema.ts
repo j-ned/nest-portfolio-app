@@ -23,7 +23,7 @@ export const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   /**
    * Domaine du cookie d'auth. Utiliser un point devant pour partager entre subdomains
-   * (ex: `.j-ned.dev` couvre `j-ned.dev` ET `api.j-ned.dev`). Sans cette valeur le cookie
+   * (ex: `.nedellec-julien.fr` couvre `nedellec-julien.fr` ET `api.nedellec-julien.fr`). Sans cette valeur le cookie
    * n'est valide que pour l'origine exacte de l'API, ce qui peut être bloqué par les
    * browsers en mode strict (Firefox Total Cookie Protection, Chrome 3rd-party isolation).
    * En dev local laisser vide → cookie attaché à `localhost`.
@@ -44,7 +44,6 @@ export const envSchema = z.object({
   S3_REGION: z.string().min(1),
   S3_ACCESS_KEY: z.string().min(4),
   S3_SECRET_KEY: z.string().min(8),
-  S3_PUBLIC_URL: z.string().url().optional(),
 
   // Mailer (SMTP)
   SMTP_HOST: z.string().min(1),

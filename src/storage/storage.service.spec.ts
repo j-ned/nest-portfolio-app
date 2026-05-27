@@ -28,7 +28,7 @@ describe('StorageService', () => {
         { provide: S3_CLIENT, useValue: realClient },
         {
           provide: AppConfigService,
-          useValue: { s3PublicUrl: 'https://cdn.example.com' },
+          useValue: {},
         },
       ],
     }).compile();
@@ -163,9 +163,8 @@ describe('StorageService', () => {
       expect(url).toBe('/storage/portfolio-storage/avatar/avatar.webp');
     });
 
-    it('ignore la config s3PublicUrl/s3Endpoint (proxy géré par le controller)', () => {
+    it('ignore la config s3Endpoint (proxy géré par le controller)', () => {
       const cfgFallback = {
-        s3PublicUrl: undefined,
         s3Endpoint: 'http://localhost:9000',
       } as AppConfigService;
       const localService = new StorageService(realClient, cfgFallback);
