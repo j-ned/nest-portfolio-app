@@ -13,6 +13,5 @@ export function validateEnv(raw: Record<string, unknown>) {
     LOG_LEVEL:
       result.data.LOG_LEVEL ??
       (result.data.NODE_ENV === 'development' ? 'debug' : 'info'),
-    S3_PUBLIC_URL: result.data.S3_PUBLIC_URL ?? result.data.S3_ENDPOINT,
   };
 }

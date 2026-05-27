@@ -59,9 +59,6 @@ export class AppConfigService {
   get s3SecretKey() {
     return this.config.get('S3_SECRET_KEY', { infer: true });
   }
-  get s3PublicUrl() {
-    return this.config.get('S3_PUBLIC_URL', { infer: true });
-  }
 
   get smtpHost() {
     return this.config.get('SMTP_HOST', { infer: true });
