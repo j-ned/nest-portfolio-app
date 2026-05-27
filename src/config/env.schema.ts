@@ -39,6 +39,21 @@ export const envSchema = z.object({
     .optional(),
   TOTP_APP_NAME: z.string().default('J-Ned Portfolio'),
 
+  /**
+   * Origines autorisées par CORS (requêtes credentials), séparées par des virgules.
+   * Prod: `https://nedellec-julien.fr,https://www.nedellec-julien.fr`.
+   * Dev local: `http://localhost:4200` (défaut).
+   */
+  CORS_ORIGINS: z
+    .string()
+    .default('http://localhost:4200')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+    ),
+
   // S3 Storage
   S3_ENDPOINT: z.string().url(),
   S3_REGION: z.string().min(1),

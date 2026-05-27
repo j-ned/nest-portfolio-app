@@ -46,6 +46,9 @@ export class AppConfigService {
   get totpAppName() {
     return this.config.get('TOTP_APP_NAME', { infer: true });
   }
+  get corsOrigins() {
+    return this.config.get('CORS_ORIGINS', { infer: true });
+  }
 
   get s3Endpoint() {
     return this.config.get('S3_ENDPOINT', { infer: true });
