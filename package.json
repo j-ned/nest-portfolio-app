@@ -42,7 +42,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1037.0",
+    "@aws-sdk/client-s3": "^3.1055.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
@@ -81,7 +81,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
-    "@smithy/util-stream": "^4.5.25",
+    "@smithy/util-stream": "^4.6.5",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/geoip-lite": "^1.4.4",
