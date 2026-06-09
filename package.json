@@ -53,7 +53,7 @@
     "@nestjs/swagger": "^11.4.1",
     "@nestjs/throttler": "^6.5.0",
     "@sentry/nestjs": "^10.53.1",
-    "@sentry/profiling-node": "^10.53.1",
+    "@sentry/profiling-node": "^10.57.0",
     "argon2": "^0.44.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
