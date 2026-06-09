@@ -63,7 +63,7 @@
     "isbot": "^5.1.39",
     "multer": "^2.1.1",
     "nestjs-pino": "^4.6.1",
-    "nodemailer": "^8.0.6",
+    "nodemailer": "^8.0.10",
     "otplib": "^13.4.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
