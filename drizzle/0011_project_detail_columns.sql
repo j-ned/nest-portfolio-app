@@ -1,0 +1,2 @@
+ALTER TABLE "project" ADD COLUMN "tech_choices" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "project" ADD COLUMN "architecture_decisions" jsonb DEFAULT '[]'::jsonb NOT NULL;
