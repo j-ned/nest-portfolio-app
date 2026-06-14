@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -11,7 +12,10 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
+import { ArchitectureDecisionDto } from './architecture-decision.dto';
+import { TechChoiceDto } from './tech-choice.dto';
 
 export class CreateProjectDto {
   @ApiProperty({ maxLength: 200 })
@@ -63,6 +67,22 @@ export class CreateProjectDto {
   @ValidateIf((_, v) => v !== null)
   @IsUrl()
   repoUrlBack?: string | null;
+
+  @ApiPropertyOptional({ type: [TechChoiceDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => TechChoiceDto)
+  techChoices?: TechChoiceDto[];
+
+  @ApiPropertyOptional({ type: [ArchitectureDecisionDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => ArchitectureDecisionDto)
+  architectureDecisions?: ArchitectureDecisionDto[];
 
   @ApiPropertyOptional({ default: false })
   @IsOptional()
