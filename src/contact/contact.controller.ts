@@ -61,6 +61,14 @@ export class ContactController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Patch('messages/mark-all-read')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mark all unread messages as read (admin)' })
+  markAllRead() {
+    return this.contact.markAllRead();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('messages/:id/read')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Mark a message as read (admin)' })
