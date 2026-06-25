@@ -5,7 +5,7 @@ import { ContactService } from './contact.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import { MailerService } from '../mailer/mailer.service';
-import type { ContactMessage } from '../database/schema';
+import { contactMessages, type ContactMessage } from '../database/schema';
 
 describe('ContactService', () => {
   let service: ContactService;
@@ -188,6 +188,40 @@ describe('ContactService', () => {
     it('throw NotFoundException si id absent', async () => {
       db.returning.mockResolvedValueOnce([]);
       await expect(service.markRead('nope')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('markAllRead', () => {
+    it('retourne { count: N } = nb de lignes passées de non-lu à lu', async () => {
+      // Given : 3 messages non-lus en base (terminator .returning → rows affectées)
+      db.returning.mockResolvedValueOnce([
+        { id: 'a' },
+        { id: 'b' },
+        { id: 'c' },
+      ]);
+      // When
+      const result = await service.markAllRead();
+      // Then
+      expect(result).toEqual({ count: 3 });
+    });
+
+    it('retourne { count: 0 } quand aucun message non-lu', async () => {
+      // Given : aucune ligne affectée
+      db.returning.mockResolvedValueOnce([]);
+      // When
+      const result = await service.markAllRead();
+      // Then
+      expect(result).toEqual({ count: 0 });
+    });
+
+    it('mute read: true (set) et cible la table contactMessages (update)', async () => {
+      // Given
+      db.returning.mockResolvedValueOnce([{ id: 'a' }]);
+      // When
+      await service.markAllRead();
+      // Then : intention de mutation et de table
+      expect(db.update).toHaveBeenCalledWith(contactMessages);
+      expect(db.set).toHaveBeenCalledWith({ read: true });
     });
   });
 
