@@ -9,13 +9,13 @@ import type { ArgumentsHost } from '@nestjs/common';
 import { SentryExceptionCaptured } from '@sentry/nestjs';
 import type { Request, Response } from 'express';
 
-interface ErrorPayload {
+type ErrorPayload = {
   statusCode: number;
   error: string;
   message: string | string[];
   path: string;
   timestamp: string;
-}
+};
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {

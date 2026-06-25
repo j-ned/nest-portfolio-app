@@ -4,19 +4,17 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
-  ListObjectsV2Command,
   NoSuchKey,
 } from '@aws-sdk/client-s3';
 import type { Readable } from 'node:stream';
 import { AppConfigService } from '../config/app-config.service';
 import { S3_CLIENT } from './s3.constants';
-import type { S3Object } from './storage.types';
 
-export interface S3ObjectStream {
+export type S3ObjectStream = {
   stream: Readable;
   contentType: string;
   contentLength: number;
-}
+};
 
 @Injectable()
 export class StorageService {
@@ -67,17 +65,6 @@ export class StorageService {
   async delete(bucket: string, key: string): Promise<void> {
     // S3 DeleteObject est idempotent : pas d'erreur si la clé n'existe pas.
     await this.s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
-  }
-
-  async list(bucket: string, prefix?: string): Promise<S3Object[]> {
-    const res = await this.s3.send(
-      new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }),
-    );
-    return (res.Contents ?? []).map((o) => ({
-      key: o.Key!,
-      size: o.Size ?? 0,
-      lastModified: o.LastModified ?? new Date(0),
-    }));
   }
 
   /**

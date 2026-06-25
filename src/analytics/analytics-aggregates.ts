@@ -3,7 +3,7 @@ import { and, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { Database } from '../database/drizzle.types';
 import { analyticsEvent, pageView } from '../database/schema';
 
-export interface DayAggregates {
+export type DayAggregates = {
   visitors: number;
   pageviews: number;
   sessions: number;
@@ -12,7 +12,7 @@ export interface DayAggregates {
   projectClicks: number;
   articleViews: number;
   cvDownloads: number;
-}
+};
 
 type PageViewAggregateRow = {
   pageviews: number;
