@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
-import { JwtModule, type JwtModuleOptions } from '@nestjs/jwt';
+import {
+  JwtModule,
+  type JwtModuleOptions,
+  type JwtSignOptions,
+} from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AppConfigModule } from '../config/app-config.module';
 import { AppConfigService } from '../config/app-config.service';
@@ -23,8 +27,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
       useFactory: (cfg: AppConfigService): JwtModuleOptions => ({
         secret: cfg.jwtSecret,
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        signOptions: { expiresIn: cfg.jwtExpiresIn as any },
+        signOptions: { expiresIn: cfg.jwtExpiresIn as NonNullable<JwtSignOptions['expiresIn']> },
       }),
     }),
   ],

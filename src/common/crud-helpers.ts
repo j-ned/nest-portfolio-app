@@ -4,10 +4,6 @@ import type { Database } from '../database/drizzle.types';
 
 /**
  * Fetches a single row by primary key or throws NotFoundException.
- *
- * Replaces the recurring pattern:
- *   select().from(t).where(eq(t.id, id)).limit(1) → throw if empty.
- *
  * Does NOT cover tables with compound lookup keys — those keep their custom findOne.
  */
 export async function findByIdOrFail<TRow>(

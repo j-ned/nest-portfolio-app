@@ -25,12 +25,12 @@ import {
 import { computeAggregates } from './analytics-aggregates';
 import { DateRangeQueryDto, MetricsQueryDto } from './dto/date-range-query.dto';
 
-interface DateBounds {
+type DateBounds = {
   start: Date;
   end: Date;
   toDateStr: string;
   isTodayIncluded: boolean;
-}
+};
 
 @Injectable()
 export class AnalyticsStatsService {
