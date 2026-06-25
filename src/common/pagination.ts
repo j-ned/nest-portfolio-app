@@ -19,18 +19,18 @@ export class PaginationDto {
   limit?: number;
 }
 
-export interface PaginationParams {
+export type PaginationParams = {
   page: number;
   limit: number;
   offset: number;
-}
+};
 
-export interface PaginatedResult<T> {
+export type PaginatedResult<T> = {
   data: T[];
   total: number;
   page: number;
   limit: number;
-}
+};
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;

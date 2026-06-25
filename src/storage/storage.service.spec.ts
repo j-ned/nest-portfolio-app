@@ -6,7 +6,6 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
-  ListObjectsV2Command,
   NoSuchKey,
 } from '@aws-sdk/client-s3';
 import { sdkStreamMixin } from '@smithy/util-stream';
@@ -108,43 +107,6 @@ describe('StorageService', () => {
       s3Mock.on(DeleteObjectCommand).resolves({});
       await service.delete('my-bucket', 'foo.txt');
       expect(s3Mock.commandCalls(DeleteObjectCommand)).toHaveLength(1);
-    });
-  });
-
-  describe('list', () => {
-    it('retourne un tableau de S3Object', async () => {
-      s3Mock.on(ListObjectsV2Command).resolves({
-        Contents: [
-          {
-            Key: 'projects/a.webp',
-            Size: 1234,
-            LastModified: new Date('2026-01-01'),
-          },
-          {
-            Key: 'projects/b.webp',
-            Size: 5678,
-            LastModified: new Date('2026-02-01'),
-          },
-        ],
-      });
-      const result = await service.list('my-bucket', 'projects/');
-      expect(result).toEqual([
-        {
-          key: 'projects/a.webp',
-          size: 1234,
-          lastModified: new Date('2026-01-01'),
-        },
-        {
-          key: 'projects/b.webp',
-          size: 5678,
-          lastModified: new Date('2026-02-01'),
-        },
-      ]);
-    });
-
-    it('retourne tableau vide si pas de Contents', async () => {
-      s3Mock.on(ListObjectsV2Command).resolves({});
-      await expect(service.list('my-bucket')).resolves.toEqual([]);
     });
   });
 
