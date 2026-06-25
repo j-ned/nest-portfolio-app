@@ -3,10 +3,7 @@ import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { desc, eq, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
-import {
-  contactMessages,
-  type ContactMessage,
-} from '../database/schema';
+import { contactMessages, type ContactMessage } from '../database/schema';
 import { MailerService } from '../mailer/mailer.service';
 import { loadTemplate, renderTemplate } from '../mailer/mailer.utils';
 import {
@@ -77,6 +74,15 @@ export class ContactService {
       .returning();
     if (!row) throw new NotFoundException(`Contact message ${id} not found`);
     return row;
+  }
+
+  async markAllRead(): Promise<{ count: number }> {
+    const rows = await this.db
+      .update(contactMessages)
+      .set({ read: true })
+      .where(eq(contactMessages.read, false))
+      .returning({ id: contactMessages.id });
+    return { count: rows.length };
   }
 
   async remove(id: string): Promise<void> {
