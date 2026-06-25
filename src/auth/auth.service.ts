@@ -8,18 +8,18 @@ import { UsersService } from '../users/users.service';
 import { PasswordService } from './password.service';
 import { TwoFactorService } from './two-factor.service';
 import { AppConfigService } from '../config/app-config.service';
-import type { User } from '../database/schema/users';
+import type { User } from '../database/schema';
 import type { JwtPayload } from './jwt-payload.interface';
 
 export type LoginResult =
   | { kind: 'authenticated'; token: string; user: PublicUser }
   | { kind: 'challenge'; challengeToken: string };
 
-export interface PublicUser {
+export type PublicUser = {
   id: string;
   email: string;
   isTwoFactorEnabled: boolean;
-}
+};
 
 function publicUser(u: User): PublicUser {
   return { id: u.id, email: u.email, isTwoFactorEnabled: u.isTwoFactorEnabled };

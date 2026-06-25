@@ -5,11 +5,11 @@ import { MAIL_TRANSPORTER } from './mailer.constants';
 
 const MAX_RETRIES = 3;
 
-export interface SendMailOptions {
+export type SendMailOptions = {
   to: string;
   subject: string;
   html: string;
-}
+};
 
 @Injectable()
 export class MailerService {

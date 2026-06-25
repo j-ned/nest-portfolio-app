@@ -35,8 +35,6 @@ export class AuthController {
     private readonly cfg: AppConfigService,
   ) {}
 
-  // ===== Public endpoints (no JwtAuthGuard) =====
-
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -78,8 +76,6 @@ export class AuthController {
     this.setAuthCookie(res, result.token);
     return { user: result.user };
   }
-
-  // ===== Protected endpoints =====
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
@@ -173,8 +169,6 @@ export class AuthController {
   ) {
     return this.auth.regenerateBackupCodes(user, dto.password);
   }
-
-  // ===== Helpers =====
 
   private setAuthCookie(res: Response, token: string): void {
     res.cookie('token', token, {
