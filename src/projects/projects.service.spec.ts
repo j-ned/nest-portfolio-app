@@ -20,6 +20,8 @@ describe('ProjectsService', () => {
     tags: [],
     description: 'Description',
     image: '',
+    techChoices: [],
+    architectureDecisions: [],
     liveUrl: null,
     repoUrl: null,
     repoUrlFront: null,
@@ -162,6 +164,30 @@ describe('ProjectsService', () => {
           description: 'desc',
         }),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('transmet techChoices/architectureDecisions à l’insert DB', async () => {
+      const techChoices = [{ techno: 'NestJS', why: 'modulaire' }];
+      const architectureDecisions = [
+        { decision: 'hexagonale', rationale: 'testable' },
+      ];
+      db.returning.mockResolvedValueOnce([
+        mkProject({ techChoices, architectureDecisions }),
+      ]);
+
+      const result = await service.create({
+        title: 'Mon site',
+        category: 'web',
+        description: 'Desc',
+        techChoices,
+        architectureDecisions,
+      } as never);
+
+      expect(db.values).toHaveBeenCalledWith(
+        expect.objectContaining({ techChoices, architectureDecisions }),
+      );
+      expect(result.techChoices).toEqual(techChoices);
+      expect(result.architectureDecisions).toEqual(architectureDecisions);
     });
   });
 

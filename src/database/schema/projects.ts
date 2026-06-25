@@ -4,10 +4,14 @@ import {
   text,
   integer,
   boolean,
+  jsonb,
   index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { timestamps } from '../../common/utils';
+
+export type TechChoice = { techno: string; why: string };
+export type ArchitectureDecision = { decision: string; rationale: string };
 
 export const projects = pgTable(
   'project',
@@ -24,6 +28,14 @@ export const projects = pgTable(
       .default(sql`ARRAY[]::text[]`),
     description: text('description').notNull(),
     image: text('image').notNull().default(''),
+    techChoices: jsonb('tech_choices')
+      .$type<TechChoice[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    architectureDecisions: jsonb('architecture_decisions')
+      .$type<ArchitectureDecision[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     liveUrl: text('live_url'),
     repoUrl: text('repo_url'),
     repoUrlFront: text('repo_url_front'),
