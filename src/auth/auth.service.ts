@@ -7,7 +7,6 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { PasswordService } from './password.service';
 import { TwoFactorService } from './two-factor.service';
-import { AppConfigService } from '../config/app-config.service';
 import type { User } from '../database/schema';
 import type { JwtPayload } from './jwt-payload.interface';
 
@@ -32,8 +31,6 @@ export class AuthService {
     private readonly password: PasswordService,
     private readonly twoFactor: TwoFactorService,
     private readonly jwt: JwtService,
-
-    private readonly cfg: AppConfigService,
   ) {}
 
   async login(email: string, plainPassword: string): Promise<LoginResult> {
@@ -50,7 +47,10 @@ export class AuthService {
       return { kind: 'challenge', challengeToken };
     }
 
-    const token = this.jwt.sign({ sub: user.id });
+    const token = this.jwt.sign({
+      sub: user.id,
+      tokenVersion: user.tokenVersion,
+    });
     return { kind: 'authenticated', token, user: publicUser(user) };
   }
 
@@ -87,7 +87,10 @@ export class AuthService {
       throw new UnauthorizedException('Either code or backupCode is required');
     }
 
-    const token = this.jwt.sign({ sub: user.id });
+    const token = this.jwt.sign({
+      sub: user.id,
+      tokenVersion: user.tokenVersion,
+    });
     return { token, user: publicUser(user) };
   }
 

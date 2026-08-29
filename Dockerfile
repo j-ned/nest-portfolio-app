@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
 # =============================================================================
-# Stage 1 — builder : install full deps + compile NestJS
+# Stage 1 - builder : install full deps + compile NestJS
 # =============================================================================
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 RUN corepack enable \
  && corepack prepare pnpm@10.33.2 --activate \
  && apk add --no-cache python3 make g++ libc6-compat
@@ -17,9 +17,9 @@ COPY src ./src
 RUN pnpm build
 
 # =============================================================================
-# Stage 2 — prod-deps : install prod deps + drizzle-kit (runtime migrations)
+# Stage 2 - prod-deps : install prod deps + drizzle-kit (runtime migrations)
 # =============================================================================
-FROM node:22-alpine AS prod-deps
+FROM node:24-alpine AS prod-deps
 RUN corepack enable \
  && corepack prepare pnpm@10.33.2 --activate \
  && apk add --no-cache python3 make g++ libc6-compat
@@ -32,9 +32,9 @@ RUN pnpm install --frozen-lockfile --prod
 RUN pnpm add drizzle-kit dotenv tsx
 
 # =============================================================================
-# Stage 3 — runner : image minimale, non-root, tini PID 1
+# Stage 3 - runner : image minimale, non-root, tini PID 1
 # =============================================================================
-FROM node:22-alpine AS runner
+FROM node:24-alpine AS runner
 RUN corepack enable \
  && corepack prepare pnpm@10.33.2 --activate \
  && apk add --no-cache libc6-compat tini wget

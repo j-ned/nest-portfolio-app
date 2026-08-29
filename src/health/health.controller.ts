@@ -26,7 +26,7 @@ export class HealthController {
       dbStatus = 'up';
       dbLatencyMs = Date.now() - start;
     } catch {
-      // status:'degraded' renvoyé en 200 plutôt que 503 — distingue
+      // status:'degraded' renvoyé en 200 plutôt que 503 - distingue
       // "app vivante / DB plantée" d'un service injoignable.
     }
     return {

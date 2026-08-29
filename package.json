@@ -8,8 +8,7 @@
   "packageManager": "pnpm@10.33.2",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "argon2",
-      "@sentry-internal/node-cpu-profiler"
+      "argon2"
     ],
     "ignoredBuiltDependencies": [
       "@nestjs/core",
@@ -34,7 +33,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/database/seeds/admin.seed.ts",
+    "db:change-password": "tsx src/database/scripts/change-password.ts",
     "db:studio": "drizzle-kit studio",
+    "mail:up": "podman compose up -d mailpit",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -53,7 +54,6 @@
     "@nestjs/swagger": "^11.4.1",
     "@nestjs/throttler": "^6.5.0",
     "@sentry/nestjs": "^10.53.1",
-    "@sentry/profiling-node": "^10.53.1",
     "argon2": "^0.44.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",

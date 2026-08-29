@@ -4,7 +4,7 @@ import type { Database } from '../database/drizzle.types';
 
 /**
  * Fetches a single row by primary key or throws NotFoundException.
- * Does NOT cover tables with compound lookup keys — those keep their custom findOne.
+ * Does NOT cover tables with compound lookup keys - those keep their custom findOne.
  */
 export async function findByIdOrFail<TRow>(
   db: Database,

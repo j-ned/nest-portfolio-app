@@ -50,7 +50,7 @@ export class AnalyticsTrackerService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   /**
-   * Track une page-view ou un custom event. Ne throw JAMAIS — toute erreur
+   * Track une page-view ou un custom event. Ne throw JAMAIS - toute erreur
    * interne est loggée et avalée pour ne pas bloquer le client.
    */
   async track(dto: TrackEventDto, ip: string, ua: string): Promise<void> {

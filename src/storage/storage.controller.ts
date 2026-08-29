@@ -33,11 +33,11 @@ export class StorageController {
   @Get(':bucket/*splat')
   @ApiOperation({
     summary:
-      'Proxy public d’un objet S3 (R2 derrière, custom domain non encore configuré)',
+      "Proxy public d'un objet S3 (R2 derrière, custom domain non encore configuré)",
   })
   @ApiResponse({
     status: 200,
-    description: 'Stream binaire avec Content-Type d’origine',
+    description: "Stream binaire avec Content-Type d'origine",
   })
   @ApiResponse({
     status: 404,

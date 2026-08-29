@@ -71,7 +71,7 @@ export const envSchema = z.object({
   SMTP_PASS: z.string().min(1),
   SMTP_FROM: z.string().email(),
 
-  // Observability (Sentry) — all optional, empty DSN keeps Sentry disabled
+  // Observability (Sentry) - all optional, empty DSN keeps Sentry disabled
   SENTRY_DSN: z.string().url().optional(),
   SENTRY_RELEASE: z.string().optional(),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).optional(),

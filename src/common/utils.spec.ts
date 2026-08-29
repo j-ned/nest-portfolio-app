@@ -118,6 +118,8 @@ describe('fireAndForget', () => {
     const logger = new Logger('test');
     const errorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
 
+    // Rejet volontairement non-Error : on teste ici le fallback String(err) de fireAndForget.
+    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
     fireAndForget(Promise.reject('plain-string'), logger, 'context-Z');
     await new Promise((r) => setImmediate(r));
 

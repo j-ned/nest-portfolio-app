@@ -23,7 +23,7 @@ describe('renderTemplate', () => {
 
   it('préserve les caractères spéciaux $ dans les valeurs', () => {
     // String form of replaceAll interprets $-sequences ($&, $$, $1, etc.).
-    // The function form (used in renderTemplate) disables that — verify here.
+    // The function form (used in renderTemplate) disables that - verify here.
     expect(renderTemplate('Prix: {{amount}}', { amount: '$100' })).toBe(
       'Prix: $100',
     );

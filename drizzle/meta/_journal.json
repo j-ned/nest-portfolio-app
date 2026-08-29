@@ -85,6 +85,13 @@
       "when": 1781439575603,
       "tag": "0011_project_detail_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788007669088,
+      "tag": "0012_lazy_brood",
+      "breakpoints": true
     }
   ]
 }
