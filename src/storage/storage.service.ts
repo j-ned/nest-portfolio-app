@@ -3,11 +3,11 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  type GetObjectCommandOutput,
   DeleteObjectCommand,
   NoSuchKey,
 } from '@aws-sdk/client-s3';
 import type { Readable } from 'node:stream';
-import { AppConfigService } from '../config/app-config.service';
 import { S3_CLIENT } from './s3.constants';
 
 export type S3ObjectStream = {
@@ -18,10 +18,7 @@ export type S3ObjectStream = {
 
 @Injectable()
 export class StorageService {
-  constructor(
-    @Inject(S3_CLIENT) private readonly s3: S3Client,
-    private readonly cfg: AppConfigService,
-  ) {}
+  constructor(@Inject(S3_CLIENT) private readonly s3: S3Client) {}
 
   async upload(
     bucket: string,
@@ -40,26 +37,25 @@ export class StorageService {
   }
 
   async get(bucket: string, key: string): Promise<S3ObjectStream> {
+    let res: GetObjectCommandOutput;
     try {
-      const res = await this.s3.send(
+      res = await this.s3.send(
         new GetObjectCommand({ Bucket: bucket, Key: key }),
       );
-      if (!res.Body) {
-        throw new NotFoundException(
-          `S3 object ${bucket}/${key} has empty body`,
-        );
-      }
-      return {
-        stream: res.Body as Readable,
-        contentType: res.ContentType ?? 'application/octet-stream',
-        contentLength: res.ContentLength ?? 0,
-      };
     } catch (err: unknown) {
       if (err instanceof NoSuchKey) {
         throw new NotFoundException(`S3 object ${bucket}/${key} not found`);
       }
       throw err;
     }
+    if (!res.Body) {
+      throw new NotFoundException(`S3 object ${bucket}/${key} has empty body`);
+    }
+    return {
+      stream: res.Body as Readable,
+      contentType: res.ContentType ?? 'application/octet-stream',
+      contentLength: res.ContentLength ?? 0,
+    };
   }
 
   async delete(bucket: string, key: string): Promise<void> {
@@ -69,12 +65,12 @@ export class StorageService {
 
   /**
    * Retourne une URL publique servie par NestJS (proxy S3 via StorageController).
-   * Format: `/storage/{bucket}/{key}` — chemin relatif au préfixe `/api` global.
+   * Format: `/storage/{bucket}/{key}` - chemin relatif au préfixe `/api` global.
    * Le frontend résout vers `${apiUrl}${path}` côté Angular.
    *
    * Pourquoi un proxy plutôt qu'une URL S3 directe ? R2 supporte l'accès anonyme
    * via Public Buckets ou Custom Domain, mais le Custom Domain exige que le DNS
-   * soit géré par Cloudflare — ce n'est pas (encore) notre cas. En attendant,
+   * soit géré par Cloudflare - ce n'est pas (encore) notre cas. En attendant,
    * le proxy NestJS détient les credentials et stream l'objet.
    */
   getPublicUrl(bucket: string, key: string): string {

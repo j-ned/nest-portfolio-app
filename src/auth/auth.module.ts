@@ -26,8 +26,12 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 
       useFactory: (cfg: AppConfigService): JwtModuleOptions => ({
         secret: cfg.jwtSecret,
-
-        signOptions: { expiresIn: cfg.jwtExpiresIn as NonNullable<JwtSignOptions['expiresIn']> },
+        signOptions: {
+          algorithm: 'HS256',
+          expiresIn: cfg.jwtExpiresIn as NonNullable<
+            JwtSignOptions['expiresIn']
+          >,
+        },
       }),
     }),
   ],

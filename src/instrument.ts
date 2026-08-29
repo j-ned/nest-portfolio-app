@@ -1,8 +1,7 @@
-// Loaded BEFORE NestFactory.create — preload .env manually since @nestjs/config
+// Loaded BEFORE NestFactory.create - preload .env manually since @nestjs/config
 // hasn't run yet at this point.
 import 'dotenv/config';
 import * as Sentry from '@sentry/nestjs';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 const dsn = process.env.SENTRY_DSN;
 
@@ -15,7 +14,6 @@ if (dsn) {
     release: process.env.SENTRY_RELEASE,
     sendDefaultPii: false,
     integrations: [
-      nodeProfilingIntegration(),
       Sentry.httpIntegration({
         ignoreIncomingRequests: (url) => url.startsWith('/api/health'),
       }),
@@ -25,7 +23,6 @@ if (dsn) {
       : isProduction
         ? 0.2
         : 1.0,
-    profilesSampleRate: 1.0,
     ignoreErrors: ['ThrottlerException'],
     beforeSend(event) {
       if (event.request) {

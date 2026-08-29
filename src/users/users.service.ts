@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
-import { users, type User } from '../database/schema/users';
+import { users, type User } from '../database/schema';
 
 @Injectable()
 export class UsersService {
@@ -29,7 +29,11 @@ export class UsersService {
   async updatePassword(id: string, passwordHash: string): Promise<void> {
     await this.db
       .update(users)
-      .set({ passwordHash, updatedAt: new Date() })
+      .set({
+        passwordHash,
+        tokenVersion: sql`${users.tokenVersion} + 1`,
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, id));
   }
 
@@ -46,6 +50,7 @@ export class UsersService {
       .set({
         isTwoFactorEnabled: true,
         twoFactorBackupCodesHash: backupCodesHash,
+        tokenVersion: sql`${users.tokenVersion} + 1`,
         updatedAt: new Date(),
       })
       .where(eq(users.id, id));
@@ -58,6 +63,7 @@ export class UsersService {
         isTwoFactorEnabled: false,
         twoFactorSecret: null,
         twoFactorBackupCodesHash: null,
+        tokenVersion: sql`${users.tokenVersion} + 1`,
         updatedAt: new Date(),
       })
       .where(eq(users.id, id));

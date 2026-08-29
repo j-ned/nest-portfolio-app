@@ -6,8 +6,7 @@ import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { PasswordService } from './password.service';
 import { TwoFactorService } from './two-factor.service';
-import { AppConfigService } from '../config/app-config.service';
-import type { User } from '../database/schema/users';
+import type { User } from '../database/schema';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -23,6 +22,7 @@ describe('AuthService', () => {
     isTwoFactorEnabled: false,
     twoFactorSecret: null,
     twoFactorBackupCodesHash: null,
+    tokenVersion: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -70,7 +70,6 @@ describe('AuthService', () => {
             verify: jest.fn(),
           },
         },
-        { provide: AppConfigService, useValue: { jwtExpiresIn: '7d' } },
       ],
     }).compile();
 
@@ -94,7 +93,10 @@ describe('AuthService', () => {
         token: 'jwt-token-final',
         user: { id: user.id, email: user.email, isTwoFactorEnabled: false },
       });
-      expect(jwt.sign).toHaveBeenCalledWith({ sub: user.id });
+      expect(jwt.sign).toHaveBeenCalledWith({
+        sub: user.id,
+        tokenVersion: user.tokenVersion,
+      });
     });
 
     it('retourne un challengeToken quand 2FA enabled', async () => {

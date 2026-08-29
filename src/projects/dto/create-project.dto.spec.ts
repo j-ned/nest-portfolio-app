@@ -4,17 +4,19 @@ import { CreateProjectDto } from './create-project.dto';
 
 const base = { title: 'T', category: 'Web', description: 'D' };
 
-describe('CreateProjectDto — techChoices / architectureDecisions', () => {
+describe('CreateProjectDto - techChoices / architectureDecisions', () => {
   it('accepte des listes valides', async () => {
     const dto = plainToInstance(CreateProjectDto, {
       ...base,
       techChoices: [{ techno: 'NestJS', why: 'modulaire' }],
-      architectureDecisions: [{ decision: 'hexagonale', rationale: 'testable' }],
+      architectureDecisions: [
+        { decision: 'hexagonale', rationale: 'testable' },
+      ],
     });
     expect(await validate(dto)).toHaveLength(0);
   });
 
-  it('accepte l’absence des deux champs (optionnels)', async () => {
+  it("accepte l'absence des deux champs (optionnels)", async () => {
     const dto = plainToInstance(CreateProjectDto, { ...base });
     expect(await validate(dto)).toHaveLength(0);
   });

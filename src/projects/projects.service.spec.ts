@@ -5,7 +5,7 @@ import { ProjectsService } from './projects.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import { StorageService } from '../storage/storage.service';
-import type { Project } from '../database/schema/projects';
+import type { Project } from '../database/schema';
 
 describe('ProjectsService', () => {
   let service: ProjectsService;
@@ -166,7 +166,7 @@ describe('ProjectsService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('transmet techChoices/architectureDecisions à l’insert DB', async () => {
+    it("transmet techChoices/architectureDecisions à l'insert DB", async () => {
       const techChoices = [{ techno: 'NestJS', why: 'modulaire' }];
       const architectureDecisions = [
         { decision: 'hexagonale', rationale: 'testable' },
@@ -181,7 +181,7 @@ describe('ProjectsService', () => {
         description: 'Desc',
         techChoices,
         architectureDecisions,
-      } as never);
+      });
 
       expect(db.values).toHaveBeenCalledWith(
         expect.objectContaining({ techChoices, architectureDecisions }),

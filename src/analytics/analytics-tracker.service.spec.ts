@@ -262,7 +262,7 @@ describe('AnalyticsTrackerService', () => {
       expect(db.insert).not.toHaveBeenCalled();
     });
 
-    it('ne filtre PAS une url qui commence par /login… mais pas /login (ex: /logins)', async () => {
+    it('ne filtre PAS une url qui commence par /login... mais pas /login (ex: /logins)', async () => {
       db.limit.mockResolvedValueOnce([]);
       db.returning.mockResolvedValueOnce([{ id: 'pv' }]);
       await service.track(

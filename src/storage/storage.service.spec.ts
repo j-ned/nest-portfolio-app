@@ -12,7 +12,6 @@ import { sdkStreamMixin } from '@smithy/util-stream';
 import { Readable } from 'node:stream';
 import { StorageService } from './storage.service';
 import { S3_CLIENT } from './s3.constants';
-import { AppConfigService } from '../config/app-config.service';
 
 describe('StorageService', () => {
   let service: StorageService;
@@ -22,14 +21,7 @@ describe('StorageService', () => {
   beforeEach(async () => {
     s3Mock.reset();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        StorageService,
-        { provide: S3_CLIENT, useValue: realClient },
-        {
-          provide: AppConfigService,
-          useValue: {},
-        },
-      ],
+      providers: [StorageService, { provide: S3_CLIENT, useValue: realClient }],
     }).compile();
     service = module.get(StorageService);
   });
@@ -117,20 +109,12 @@ describe('StorageService', () => {
       );
     });
 
-    it('préserve les slashes dans la key (pas d’encodage)', () => {
+    it("préserve les slashes dans la key (pas d'encodage)", () => {
       const url = service.getPublicUrl(
         'portfolio-storage',
         'avatar/avatar.webp',
       );
       expect(url).toBe('/storage/portfolio-storage/avatar/avatar.webp');
-    });
-
-    it('ignore la config s3Endpoint (proxy géré par le controller)', () => {
-      const cfgFallback = {
-        s3Endpoint: 'http://localhost:9000',
-      } as AppConfigService;
-      const localService = new StorageService(realClient, cfgFallback);
-      expect(localService.getPublicUrl('b', 'k')).toBe('/storage/b/k');
     });
   });
 });

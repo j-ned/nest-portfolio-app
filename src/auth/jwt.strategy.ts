@@ -4,7 +4,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Request } from 'express';
 import { AppConfigService } from '../config/app-config.service';
 import { UsersService } from '../users/users.service';
-import type { User } from '../database/schema/users';
+import type { User } from '../database/schema';
 import type { JwtPayload } from './jwt-payload.interface';
 
 @Injectable()
@@ -21,6 +21,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ]),
       ignoreExpiration: false,
       secretOrKey: cfg.jwtSecret,
+      algorithms: ['HS256'],
     });
   }
 
@@ -33,6 +34,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const user = await this.users.findById(payload.sub);
     if (!user) {
       throw new UnauthorizedException('User no longer exists');
+    }
+    if (payload.tokenVersion !== user.tokenVersion) {
+      throw new UnauthorizedException('Token revoked');
     }
     return user;
   }
