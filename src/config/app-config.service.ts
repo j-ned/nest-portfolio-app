@@ -50,6 +50,10 @@ export class AppConfigService {
     return this.config.get('CORS_ORIGINS', { infer: true });
   }
 
+  get dokployDeployWebhookUrl() {
+    return this.config.get('DOKPLOY_DEPLOY_WEBHOOK_URL', { infer: true });
+  }
+
   get s3Endpoint() {
     return this.config.get('S3_ENDPOINT', { infer: true });
   }
