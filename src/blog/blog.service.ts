@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
 import {
@@ -58,16 +58,12 @@ export class BlogService {
     const rows = await this.db
       .select()
       .from(blogPosts)
-      .where(eq(blogPosts.slug, slug))
+      .where(this.publishedSlugFilter(slug))
       .limit(1);
     if (rows.length === 0) {
       throw new NotFoundException(`Blog post "${slug}" not found`);
     }
     return this.toResponse(rows[0]);
-  }
-
-  async findById(id: string): Promise<BlogPost> {
-    return this.toResponse(await this.findByIdRaw(id));
   }
 
   async create(dto: CreateBlogPostDto): Promise<BlogPost> {
@@ -98,12 +94,24 @@ export class BlogService {
     // qu'il soit propagé tel quel dans le patch DB (colonne NOT NULL DEFAULT '').
     const { coverImage, ...rest } = dto;
     const patch: Partial<NewBlogPost> = { ...rest, updatedAt: new Date() };
-    if (dto.title !== undefined) patch.slug = slugify(dto.title);
+    // Le slug EST l'URL publique (et la clé du thread Giscus, mappé sur le
+    // pathname) : une fois l'article publié, on le fige - un titre édité
+    // après coup ne doit plus casser les liens entrants/le thread existant.
+    if (dto.title !== undefined && current.publishedAt === null) {
+      patch.slug = slugify(dto.title);
+    }
     if (coverImage === null) patch.coverImage = '';
 
     const isPublishing =
       dto.status === 'published' && current.status !== 'published';
     if (isPublishing) patch.publishedAt = new Date();
+
+    // Rebuild Dokploy dès que le patch change ce qui doit être visible sur le
+    // site statique : passage en published (transition ou simple édition de
+    // contenu déjà publié), ou dépublication (published -> draft).
+    const newStatus = dto.status ?? current.status;
+    const shouldDeploy =
+      newStatus === 'published' || current.status === 'published';
 
     let row: BlogPost;
     try {
@@ -130,7 +138,7 @@ export class BlogService {
         current.coverImage,
       );
     }
-    if (isPublishing) this.triggerDeploy();
+    if (shouldDeploy) this.triggerDeploy();
 
     return this.toResponse(row);
   }
@@ -143,6 +151,8 @@ export class BlogService {
       BlogService.BUCKET,
       current.coverImage,
     );
+    // Un article publié disparaît du site statique seulement après rebuild.
+    if (current.status === 'published') this.triggerDeploy();
   }
 
   async uploadCoverImage(
@@ -181,11 +191,13 @@ export class BlogService {
 
   async like(slug: string): Promise<{ likesCount: number }> {
     // Incrément atomique côté DB (pas de read-then-write applicatif) pour
-    // éviter une race condition entre deux likes concurrents.
+    // éviter une race condition entre deux likes concurrents. Le filtre
+    // status='published' est appliqué dans la même requête (plutôt qu'un
+    // find préalable) pour ne pas sacrifier cette atomicité.
     const [row] = await this.db
       .update(blogPosts)
       .set({ likesCount: sql`${blogPosts.likesCount} + 1` })
-      .where(eq(blogPosts.slug, slug))
+      .where(this.publishedSlugFilter(slug))
       .returning();
     if (!row) throw new NotFoundException(`Blog post "${slug}" not found`);
     return { likesCount: row.likesCount };
@@ -197,6 +209,13 @@ export class BlogService {
     return findByIdOrFail<BlogPost>(this.db, blogPosts, id, 'Blog post');
   }
 
+  // Filtre partagé slug + status='published' : un draft (ou un post
+  // dépublié) doit 404 exactement comme un slug inexistant, aussi bien en
+  // lecture (findBySlug) qu'en écriture (like).
+  private publishedSlugFilter(slug: string) {
+    return and(eq(blogPosts.slug, slug), eq(blogPosts.status, 'published'));
+  }
+
   // Publier un article déclenche un rebuild : les pages /blog sont prerendered
   // au build (pas de SSR par requête en prod, cf. spec), donc rien n'est
   // visible tant que le site n'a pas été reconstruit et redéployé.
@@ -204,7 +223,13 @@ export class BlogService {
     const url = this.config.dokployDeployWebhookUrl;
     if (!url) return;
     fireAndForget(
-      fetch(url, { method: 'POST' }),
+      fetch(url, { method: 'POST', signal: AbortSignal.timeout(5_000) }).then(
+        (res) => {
+          if (!res.ok) {
+            throw new Error(`Dokploy webhook responded ${res.status}`);
+          }
+        },
+      ),
       this.logger,
       'dokploy-deploy-webhook',
     );

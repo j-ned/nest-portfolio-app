@@ -39,13 +39,14 @@ Modules importés dans `AppModule` (`src/app.module.ts`), dans l'ordre :
 7. **`AuthModule`** - users, JWT, 2FA TOTP.
 8. **`StorageModule`** (`@Global`) - `StorageService` (S3) + `StorageController` (proxy public).
 9. **`ProjectsModule`** - CRUD projets + upload image.
-10. **`MailerModule`** (`@Global`) - `MailerService` (SMTP).
-11. **`ThrottlerModule`** (global, `APP_GUARD`) - 10 req/60s par défaut, overridable par endpoint via `@Throttle()`.
-12. **`ContactModule`** - formulaire de contact public + gestion admin.
-13. **`ScheduleModule`** (`@nestjs/schedule`) - support des `@Cron()`.
-14. **`CvModule`** - upload/download du CV.
-15. **`AnalyticsModule`** - tracking + stats + rollup cron.
-16. **`RuntimeConfigModule`** - `GET /api/config`.
+10. **`BlogModule`** - CRUD admin des articles de blog + endpoints publics (liste/détail/like). Déclenche le webhook `DOKPLOY_DEPLOY_WEBHOOK_URL` pour rebuild le site statique quand le contenu publié change.
+11. **`MailerModule`** (`@Global`) - `MailerService` (SMTP).
+12. **`ThrottlerModule`** (global, `APP_GUARD`) - 10 req/60s par défaut, overridable par endpoint via `@Throttle()`.
+13. **`ContactModule`** - formulaire de contact public + gestion admin.
+14. **`ScheduleModule`** (`@nestjs/schedule`) - support des `@Cron()`.
+15. **`CvModule`** - upload/download du CV.
+16. **`AnalyticsModule`** - tracking + stats + rollup cron.
+17. **`RuntimeConfigModule`** - `GET /api/config`.
 
 Les modules `@Global` (`DatabaseModule`, `StorageModule`, `MailerModule`, `LoggerModule`) sont injectables partout sans import explicite.
 
@@ -66,6 +67,7 @@ Toute la config passe par les variables d'env, validées au boot par Zod (`src/c
 | `ADMIN_INITIAL_PASSWORD`    | string, 12+ chars                                  | _(optionnel)_                | Requis uniquement pour `pnpm db:seed`                                                           |
 | `TOTP_APP_NAME`             | string                                             | `J-Ned Portfolio`            | Nom affiché dans l'app authenticator                                                            |
 | `CORS_ORIGINS`              | CSV                                                | `http://localhost:4200`      | Origines autorisées (credentials)                                                               |
+| `DOKPLOY_DEPLOY_WEBHOOK_URL` | URL                                                | _(optionnel)_                 | Webhook de rebuild Dokploy du site statique, appelé fire-and-forget par `BlogModule` (vide = no-op) |
 | `S3_ENDPOINT`               | URL                                                | _(requis)_                   | Endpoint S3-compatible (MinIO/R2)                                                               |
 | `S3_REGION`                 | string                                             | _(requis)_                   | Région S3                                                                                       |
 | `S3_ACCESS_KEY`             | string, 4+ chars                                   | _(requis)_                   | Access key S3                                                                                   |
@@ -94,7 +96,7 @@ PostgreSQL 17-alpine dans un container Podman/Docker dédié (`portfolio-nest-db
 
 ### Schéma actuel (`src/database/schema/`)
 
-5 tables, une par module métier réellement implémenté : `users`, `project`, `contact_message`, `cv_file`, plus les tables analytics (`page_view`, `analytics_event`, `daily_stat`).
+5 tables, une par module métier réellement implémenté : `users`, `project`, `contact_message`, `cv_file`, `blog_post`, plus les tables analytics (`page_view`, `analytics_event`, `daily_stat`).
 
 ### Workflow migrations
 
@@ -254,6 +256,29 @@ CRUD admin des projets affichés sur le portfolio.
 
 **Lifecycle S3** : key = `projects/<id>.<ext>`. Ordre upload → update DB → cleanup ancienne clé (jamais l'inverse, pour ne jamais laisser une référence DB cassée). Les réponses API exposent une URL proxy (`getPublicUrl`), jamais la key S3 brute.
 
+## Blog
+
+CRUD admin des articles de blog + endpoints publics de consultation/like. Le site public consomme les articles au build (pages `/blog` prerendered, pas de SSR par requête) - toute mutation qui change ce qui doit être visible déclenche donc un rebuild Dokploy.
+
+**Schéma** : table `blog_post` (uuid, `slug` unique, `excerpt`, `contentMarkdown`, `coverImage` (key S3), `tags` (array), `status: 'draft' | 'published'`, `likesCount`, `publishedAt`).
+
+**8 endpoints sous `/api/blog/posts`** :
+
+| Méthode | Chemin                   | Auth | Rôle                                                                                                                                            |
+| ------- | ------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET     | `/blog/posts`            | ❌   | Liste publique des articles publiés, triés par `publishedAt DESC`.                                                                             |
+| GET     | `/blog/posts/admin`      | ✅   | Liste complète (drafts inclus), triée par `createdAt DESC`.                                                                                     |
+| GET     | `/blog/posts/:slug`      | ❌   | Détail public d'un article **publié**. 404 sur un slug draft/dépublié/inconnu (pas de fuite de contenu non publié).                            |
+| POST    | `/blog/posts`            | ✅   | Crée. Slug auto-généré depuis `title`. 409 si collision de slug.                                                                                |
+| PATCH   | `/blog/posts/:id`        | ✅   | Met à jour. Slug **figé** une fois l'article publié (ne se re-génère plus au changement de titre - casserait l'URL publique/le thread Giscus). `coverImage: null` supprime l'image S3.  |
+| DELETE  | `/blog/posts/:id`        | ✅   | Supprime l'article + son image S3.                                                                                                             |
+| POST    | `/blog/posts/:id/image`  | ✅   | Upload multipart (`file`, max 5MB, MIME whitelist `image/webp\|jpeg\|png\|avif`).                                                              |
+| POST    | `/blog/posts/:slug/like` | ❌   | Incrémente le compteur de likes d'un article **publié** (public, pas d'auth). 404 sur un slug draft/dépublié/inconnu.                          |
+
+**Lifecycle S3** : identique à Projects (key `blog/<id>.<ext>`, ordre upload → update DB → cleanup ancienne clé).
+
+**Rebuild Dokploy** : `DOKPLOY_DEPLOY_WEBHOOK_URL` (optionnel, no-op si absent) est appelé fire-and-forget (`fetch` avec timeout 5s ; réponse non-2xx ou timeout loggés en erreur) à chaque mutation qui change le rendu du site public - publication (création ou transition draft→published), édition d'un article déjà publié, dépublication, ou suppression d'un article publié. **Setup manuel requis** : créer un webhook de rebuild dans le dashboard Dokploy de l'app statique du portfolio, puis coller son URL dans `DOKPLOY_DEPLOY_WEBHOOK_URL`.
+
 ## Mailer
 
 Module d'infrastructure SMTP (`nodemailer`), consommé par Contact.
@@ -358,7 +383,7 @@ Collecte de page-views/events custom du portfolio public + agrégation quotidien
 
 ## État réel
 
-Modules réellement présents et livrés : Fondations, Auth, S3 Storage, Projects, Mailer, Contact, CV, Analytics, Runtime Config.
+Modules réellement présents et livrés : Fondations, Auth, S3 Storage, Projects, Blog, Mailer, Contact, CV, Analytics, Runtime Config.
 
 ## Licence
 
