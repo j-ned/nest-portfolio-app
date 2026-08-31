@@ -1,11 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
 import { BlogService } from './blog.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import { StorageService } from '../storage/storage.service';
 import { AppConfigService } from '../config/app-config.service';
-import type { BlogPost } from '../database/schema/blog-posts';
+import {
+  blogPosts,
+  type BlogPost,
+  type NewBlogPost,
+} from '../database/schema/blog-posts';
 
 describe('BlogService', () => {
   let service: BlogService;
@@ -75,6 +80,21 @@ describe('BlogService', () => {
       const result = await service.findBySlug('mon-article');
       expect(result.coverImage).toBe('https://example.test/url');
     });
+
+    it('lève NotFoundException pour un slug draft - un brouillon 404 exactement comme un slug inconnu', async () => {
+      // La requête filtre désormais status='published' : un draft ne remonte
+      // aucune ligne, même si le slug existe bien en DB.
+      db.limit.mockResolvedValueOnce([]);
+      await expect(service.findBySlug('un-brouillon')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(db.where).toHaveBeenCalledWith(
+        and(
+          eq(blogPosts.slug, 'un-brouillon'),
+          eq(blogPosts.status, 'published'),
+        ),
+      );
+    });
   });
 
   describe('create', () => {
@@ -104,8 +124,8 @@ describe('BlogService', () => {
     });
   });
 
-  describe('update — passage en published déclenche le webhook Dokploy', () => {
-    it('appelle fetch sur le webhook si configuré et le nouveau statut est published', async () => {
+  describe('update — rebuild Dokploy quand le rendu du site public change', () => {
+    it('appelle fetch sur le webhook si configuré et le nouveau statut est published (transition draft → published)', async () => {
       const fetchSpy = jest
         .spyOn(global, 'fetch')
         .mockResolvedValue(new Response(null, { status: 200 }));
@@ -120,7 +140,7 @@ describe('BlogService', () => {
 
       expect(fetchSpy).toHaveBeenCalledWith(
         'https://dokploy.example.test/webhook/abc',
-        { method: 'POST' },
+        expect.objectContaining({ method: 'POST' }),
       );
       fetchSpy.mockRestore();
     });
@@ -138,6 +158,158 @@ describe('BlogService', () => {
       expect(fetchSpy).not.toHaveBeenCalled();
       fetchSpy.mockRestore();
     });
+
+    it("appelle fetch quand on édite le contenu d'un article déjà publié, sans toucher au statut (fix : l'ancien latch draft→published bloquait ce cas)", async () => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response(null, { status: 200 }));
+      config.dokployDeployWebhookUrl =
+        'https://dokploy.example.test/webhook/abc';
+      db.limit.mockResolvedValueOnce([
+        mkPost({ status: 'published', publishedAt: new Date('2026-01-01') }),
+      ]); // findByIdRaw
+      db.returning.mockResolvedValueOnce([mkPost({ status: 'published' })]);
+
+      await service.update('11111111-1111-1111-1111-111111111111', {
+        excerpt: 'Résumé corrigé',
+      });
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://dokploy.example.test/webhook/abc',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      fetchSpy.mockRestore();
+    });
+
+    it('appelle fetch lors de la dépublication (published → draft)', async () => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response(null, { status: 200 }));
+      config.dokployDeployWebhookUrl =
+        'https://dokploy.example.test/webhook/abc';
+      db.limit.mockResolvedValueOnce([
+        mkPost({ status: 'published', publishedAt: new Date('2026-01-01') }),
+      ]);
+      db.returning.mockResolvedValueOnce([mkPost({ status: 'draft' })]);
+
+      await service.update('11111111-1111-1111-1111-111111111111', {
+        status: 'draft',
+      });
+
+      expect(fetchSpy).toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it("n'appelle pas fetch quand on édite un draft sans le publier", async () => {
+      const fetchSpy = jest.spyOn(global, 'fetch');
+      config.dokployDeployWebhookUrl =
+        'https://dokploy.example.test/webhook/abc';
+      db.limit.mockResolvedValueOnce([mkPost({ status: 'draft' })]);
+      db.returning.mockResolvedValueOnce([mkPost({ status: 'draft' })]);
+
+      await service.update('11111111-1111-1111-1111-111111111111', {
+        excerpt: 'x',
+      });
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('log une erreur (sans throw) si le webhook Dokploy répond avec un statut non-ok', async () => {
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response(null, { status: 500 }));
+      config.dokployDeployWebhookUrl =
+        'https://dokploy.example.test/webhook/abc';
+      db.limit.mockResolvedValueOnce([mkPost({ status: 'draft' })]);
+      db.returning.mockResolvedValueOnce([mkPost({ status: 'published' })]);
+
+      await service.update('11111111-1111-1111-1111-111111111111', {
+        status: 'published',
+      });
+      // fireAndForget attache le .catch en microtask : laisser la promesse
+      // rejetée se propager avant d'assertionner le log.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        'dokploy-deploy-webhook',
+        expect.stringContaining('Dokploy webhook responded 500'),
+      );
+      errorSpy.mockRestore();
+      fetchSpy.mockRestore();
+    });
+  });
+
+  describe('update — gel du slug après publication', () => {
+    it("ne régénère pas le slug quand on édite le titre d'un article déjà publié", async () => {
+      db.limit.mockResolvedValueOnce([
+        mkPost({
+          status: 'published',
+          publishedAt: new Date('2026-01-01'),
+          slug: 'ancien-slug',
+        }),
+      ]);
+      db.returning.mockResolvedValueOnce([
+        mkPost({ status: 'published', slug: 'ancien-slug' }),
+      ]);
+
+      await service.update('11111111-1111-1111-1111-111111111111', {
+        title: 'Nouveau titre qui pourrait re-slugifier',
+      });
+
+      const calls = db.set.mock.calls as Array<[Partial<NewBlogPost>]>;
+      expect(calls[0][0].slug).toBeUndefined();
+    });
+
+    it("régénère le slug quand on édite le titre d'un article jamais publié (draft)", async () => {
+      db.limit.mockResolvedValueOnce([
+        mkPost({ status: 'draft', publishedAt: null, slug: 'ancien-slug' }),
+      ]);
+      db.returning.mockResolvedValueOnce([
+        mkPost({ status: 'draft', slug: 'nouveau-titre' }),
+      ]);
+
+      await service.update('11111111-1111-1111-1111-111111111111', {
+        title: 'Nouveau titre',
+      });
+
+      const calls = db.set.mock.calls as Array<[Partial<NewBlogPost>]>;
+      expect(calls[0][0].slug).toBe('nouveau-titre');
+    });
+  });
+
+  describe('remove — rebuild Dokploy si l’article supprimé était publié', () => {
+    it("appelle fetch si l'article supprimé était publié", async () => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response(null, { status: 200 }));
+      config.dokployDeployWebhookUrl =
+        'https://dokploy.example.test/webhook/abc';
+      db.limit.mockResolvedValueOnce([mkPost({ status: 'published' })]); // findByIdRaw
+
+      await service.remove('11111111-1111-1111-1111-111111111111');
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://dokploy.example.test/webhook/abc',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      fetchSpy.mockRestore();
+    });
+
+    it("n'appelle pas fetch si l'article supprimé était un draft", async () => {
+      const fetchSpy = jest.spyOn(global, 'fetch');
+      config.dokployDeployWebhookUrl =
+        'https://dokploy.example.test/webhook/abc';
+      db.limit.mockResolvedValueOnce([mkPost({ status: 'draft' })]);
+
+      await service.remove('11111111-1111-1111-1111-111111111111');
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
   });
 
   describe('like', () => {
@@ -145,6 +317,21 @@ describe('BlogService', () => {
       db.returning.mockResolvedValueOnce([mkPost({ likesCount: 4 })]);
       const result = await service.like('mon-article');
       expect(result).toEqual({ likesCount: 4 });
+    });
+
+    it('lève NotFoundException pour un slug draft - pas de like sur un post non publié', async () => {
+      // Le filtre status='published' est intégré à la requête UPDATE elle-même
+      // (atomicité conservée) : un draft ne matche aucune ligne.
+      db.returning.mockResolvedValueOnce([]);
+      await expect(service.like('un-brouillon')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(db.where).toHaveBeenCalledWith(
+        and(
+          eq(blogPosts.slug, 'un-brouillon'),
+          eq(blogPosts.status, 'published'),
+        ),
+      );
     });
   });
 });
