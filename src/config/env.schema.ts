@@ -54,6 +54,14 @@ export const envSchema = z.object({
         .filter(Boolean),
     ),
 
+  /**
+   * URL du webhook Dokploy qui déclenche un rebuild+redéploiement du frontend
+   * (portfolio-jned-frontend). Optionnel : si absent, la publication d'un
+   * article ne déclenche aucun rebuild (utile en dev local). Créé manuellement
+   * dans Dokploy → Application → Deployments → Webhook.
+   */
+  DOKPLOY_DEPLOY_WEBHOOK_URL: z.string().url().optional(),
+
   // S3 Storage
   S3_ENDPOINT: z.string().url(),
   S3_REGION: z.string().min(1),
