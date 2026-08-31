@@ -59,3 +59,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Docs
 /docs
 .claude
+
+# Git worktrees (scratch, per-branch)
+.worktrees/
