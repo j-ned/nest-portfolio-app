@@ -1,4 +1,11 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, index } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  timestamp,
+  index,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { timestamps } from '../../common/utils';
 
@@ -17,7 +24,9 @@ export const blogPosts = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
-    status: text('status', { enum: ['draft', 'published'] }).notNull().default('draft'),
+    status: text('status', { enum: ['draft', 'published'] })
+      .notNull()
+      .default('draft'),
     likesCount: integer('likes_count').notNull().default(0),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     ...timestamps(),
