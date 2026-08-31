@@ -41,7 +41,7 @@ export const envSchema = z.object({
 
   /**
    * Origines autorisées par CORS (requêtes credentials), séparées par des virgules.
-   * Prod: `https://nedellec-julien.fr,https://www.nedellec-julien.fr`.
+   * Prod: `https://nedellec-julien.fr` (le domaine `www` redirige vers l'apex côté Traefik, il n'a plus besoin d'être listé ici).
    * Dev local: `http://localhost:4200` (défaut).
    */
   CORS_ORIGINS: z
