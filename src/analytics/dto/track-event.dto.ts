@@ -16,6 +16,7 @@ export const ANALYTICS_TYPES = [
   'page_duration',
   'project_click',
   'article_view',
+  'article_read',
   'cv_download',
 ] as const;
 export type AnalyticsType = (typeof ANALYTICS_TYPES)[number];

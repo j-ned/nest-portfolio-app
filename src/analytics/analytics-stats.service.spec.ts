@@ -154,6 +154,16 @@ describe('AnalyticsStatsService', () => {
       expect(result).toEqual(rows);
       expect(db.limit).toHaveBeenCalledWith(5);
     });
+
+    it("articlesRead() filtre event_type='article_read' et group by entity", async () => {
+      const rows = [{ entityId: 'post-1', entityTitle: 'Baz', count: 3 }];
+      db.limit.mockResolvedValueOnce(rows);
+
+      const result = await service.articlesRead({ limit: 5 });
+
+      expect(result).toEqual(rows);
+      expect(db.limit).toHaveBeenCalledWith(5);
+    });
   });
 
   describe('cvDownloads', () => {
