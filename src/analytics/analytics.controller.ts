@@ -107,6 +107,15 @@ export class AnalyticsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('stats/articles-read')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Top articles read to completion (admin)' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  articlesRead(@Query() query: DateRangeQueryDto) {
+    return this.stats.articlesRead(query);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('stats/cv-downloads')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'CV download total + 30d timeline (admin)' })

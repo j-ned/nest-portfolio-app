@@ -37,6 +37,15 @@ describe('TrackEventDto', () => {
       expect(errors).toHaveLength(0);
     });
 
+    it("type='article_read' valide avec entityId + entityTitle", async () => {
+      const errors = await check({
+        type: 'article_read',
+        entityId: 'abc',
+        entityTitle: 'Test',
+      });
+      expect(errors).toHaveLength(0);
+    });
+
     it('type manquant → erreur', async () => {
       const errors = await check({ url: '/home' });
       const typeErr = errors.find((e) => e.property === 'type');

@@ -164,8 +164,12 @@ export class AnalyticsStatsService {
     return this.entityCounts('article_view', query);
   }
 
+  async articlesRead(query: DateRangeQueryDto) {
+    return this.entityCounts('article_read', query);
+  }
+
   private async entityCounts(
-    eventType: 'project_click' | 'article_view',
+    eventType: 'project_click' | 'article_view' | 'article_read',
     query: DateRangeQueryDto,
   ) {
     const { start, end } = this.bounds(query);
