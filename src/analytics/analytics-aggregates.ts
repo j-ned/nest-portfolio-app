@@ -12,6 +12,7 @@ export type DayAggregates = {
   projectClicks: number;
   articleViews: number;
   cvDownloads: number;
+  ctaClicks: number;
 };
 
 type PageViewAggregateRow = {
@@ -56,6 +57,7 @@ export async function computeAggregates(
         projectClicks: sql<number>`COUNT(*) FILTER (WHERE ${analyticsEvent.eventType} = 'project_click')::int`,
         articleViews: sql<number>`COUNT(*) FILTER (WHERE ${analyticsEvent.eventType} = 'article_view')::int`,
         cvDownloads: sql<number>`COUNT(*) FILTER (WHERE ${analyticsEvent.eventType} = 'cv_download')::int`,
+        ctaClicks: sql<number>`COUNT(*) FILTER (WHERE ${analyticsEvent.eventType} = 'cta_click')::int`,
       })
       .from(analyticsEvent)
       .where(
@@ -66,6 +68,7 @@ export async function computeAggregates(
             'project_click',
             'article_view',
             'cv_download',
+            'cta_click',
           ]),
         ),
       ),
@@ -86,5 +89,6 @@ export async function computeAggregates(
     projectClicks: Number(ev?.projectClicks ?? 0),
     articleViews: Number(ev?.articleViews ?? 0),
     cvDownloads: Number(ev?.cvDownloads ?? 0),
+    ctaClicks: Number(ev?.ctaClicks ?? 0),
   };
 }
