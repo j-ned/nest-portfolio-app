@@ -81,6 +81,7 @@ export const dailyStat = pgTable(
     projectClicks: integer('project_clicks').notNull().default(0),
     articleViews: integer('article_views').notNull().default(0),
     cvDownloads: integer('cv_downloads').notNull().default(0),
+    ctaClicks: integer('cta_clicks').notNull().default(0),
     ...timestamps(),
   },
   (t) => ({

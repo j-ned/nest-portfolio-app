@@ -55,6 +55,7 @@ export class AnalyticsStatsService {
       projectClicks: a.projectClicks,
       articleViews: a.articleViews,
       cvDownloads: a.cvDownloads,
+      ctaClicks: a.ctaClicks,
     };
   }
 
@@ -168,8 +169,14 @@ export class AnalyticsStatsService {
     return this.entityCounts('article_read', query);
   }
 
+  // `entityId` porte l'emplacement du CTA (`home_hero_projects`) : le regroupement
+  // par entité donne directement le taux de clic par emplacement.
+  async cta(query: DateRangeQueryDto) {
+    return this.entityCounts('cta_click', query);
+  }
+
   private async entityCounts(
-    eventType: 'project_click' | 'article_view' | 'article_read',
+    eventType: 'project_click' | 'article_view' | 'article_read' | 'cta_click',
     query: DateRangeQueryDto,
   ) {
     const { start, end } = this.bounds(query);

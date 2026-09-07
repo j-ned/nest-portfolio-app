@@ -32,7 +32,7 @@ describe('AnalyticsStatsService', () => {
         },
       ]);
       db.where.mockResolvedValueOnce([
-        { projectClicks: 15, articleViews: 8, cvDownloads: 5 },
+        { projectClicks: 15, articleViews: 8, cvDownloads: 5, ctaClicks: 12 },
       ]);
 
       const result = await service.overview({});
@@ -46,6 +46,7 @@ describe('AnalyticsStatsService', () => {
       expect(result.projectClicks).toBe(15);
       expect(result.articleViews).toBe(8);
       expect(result.cvDownloads).toBe(5);
+      expect(result.ctaClicks).toBe(12);
     });
 
     it('bounceRate = 0 quand pas de sessions', async () => {
@@ -53,7 +54,7 @@ describe('AnalyticsStatsService', () => {
         { pageviews: 0, total_duration: null, sessions: 0, bounces: 0 },
       ]);
       db.where.mockResolvedValueOnce([
-        { projectClicks: 0, articleViews: 0, cvDownloads: 0 },
+        { projectClicks: 0, articleViews: 0, cvDownloads: 0, ctaClicks: 0 },
       ]);
 
       const result = await service.overview({});
@@ -150,6 +151,22 @@ describe('AnalyticsStatsService', () => {
       db.limit.mockResolvedValueOnce(rows);
 
       const result = await service.projects({ limit: 5 });
+
+      expect(result).toEqual(rows);
+      expect(db.limit).toHaveBeenCalledWith(5);
+    });
+
+    it("cta() filtre event_type='cta_click' et group by entity", async () => {
+      const rows = [
+        {
+          entityId: 'home_hero_projects',
+          entityTitle: 'Voir les projets',
+          count: 42,
+        },
+      ];
+      db.limit.mockResolvedValueOnce(rows);
+
+      const result = await service.cta({ limit: 5 });
 
       expect(result).toEqual(rows);
       expect(db.limit).toHaveBeenCalledWith(5);
