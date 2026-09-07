@@ -1,0 +1,1 @@
+ALTER TABLE "daily_stat" ADD COLUMN "cta_clicks" integer DEFAULT 0 NOT NULL;

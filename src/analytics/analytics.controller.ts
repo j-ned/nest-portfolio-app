@@ -116,6 +116,15 @@ export class AnalyticsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('stats/cta')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Top clicked CTAs by placement (admin)' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  cta(@Query() query: DateRangeQueryDto) {
+    return this.stats.cta(query);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('stats/cv-downloads')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'CV download total + 30d timeline (admin)' })

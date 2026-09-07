@@ -46,6 +46,15 @@ describe('TrackEventDto', () => {
       expect(errors).toHaveLength(0);
     });
 
+    it("type='cta_click' valide avec entityId + entityTitle", async () => {
+      const errors = await check({
+        type: 'cta_click',
+        entityId: 'home_hero_projects',
+        entityTitle: 'Voir les projets',
+      });
+      expect(errors).toHaveLength(0);
+    });
+
     it('type manquant → erreur', async () => {
       const errors = await check({ url: '/home' });
       const typeErr = errors.find((e) => e.property === 'type');

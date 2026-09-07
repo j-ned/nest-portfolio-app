@@ -18,6 +18,7 @@ export const ANALYTICS_TYPES = [
   'article_view',
   'article_read',
   'cv_download',
+  'cta_click',
 ] as const;
 export type AnalyticsType = (typeof ANALYTICS_TYPES)[number];
 
