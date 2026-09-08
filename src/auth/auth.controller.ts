@@ -26,7 +26,7 @@ import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
 import { TwoFactorEnableDto } from './dto/two-factor-enable.dto';
 import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
 import type { User } from '../database/schema';
-import { PublicReadThrottle } from '../common/throttle';
+import { AuthAttemptThrottle, PublicReadThrottle } from '../common/throttle';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -36,6 +36,7 @@ export class AuthController {
     private readonly cfg: AppConfigService,
   ) {}
 
+  @AuthAttemptThrottle()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -58,6 +59,7 @@ export class AuthController {
     return { requiresTwoFactor: true, challengeToken: result.challengeToken };
   }
 
+  @AuthAttemptThrottle()
   @Post('2fa/verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Complete 2FA login with TOTP code or backup code' })

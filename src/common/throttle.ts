@@ -11,3 +11,13 @@ export const PUBLIC_READ_THROTTLE = {
 } as const;
 
 export const PublicReadThrottle = () => Throttle(PUBLIC_READ_THROTTLE);
+
+/**
+ * Tentatives d'authentification (login, vérification 2FA) : 5 par minute et par IP, comme le
+ * formulaire de contact. Freine la force brute sans gêner un utilisateur qui se trompe deux fois.
+ */
+export const AUTH_ATTEMPT_THROTTLE = {
+  default: { limit: 5, ttl: 60_000 },
+} as const;
+
+export const AuthAttemptThrottle = () => Throttle(AUTH_ATTEMPT_THROTTLE);
