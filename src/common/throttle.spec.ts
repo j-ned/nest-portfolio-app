@@ -4,7 +4,10 @@ import {
   THROTTLER_LIMIT,
   THROTTLER_TTL,
 } from '@nestjs/throttler/dist/throttler.constants';
+import { AuthController } from '../auth/auth.controller';
 import { BlogController } from '../blog/blog.controller';
+import { CvController } from '../cv/cv.controller';
+import { RuntimeConfigController } from '../runtime-config/runtime-config.controller';
 import { ProjectsController } from '../projects/projects.controller';
 import { PUBLIC_READ_THROTTLE } from './throttle';
 
@@ -28,6 +31,10 @@ describe('public read throttle', () => {
     ['GET /projects/:id', ProjectsController, 'findOne'],
     ['GET /blog/posts', BlogController, 'findAllPublished'],
     ['GET /blog/posts/:slug', BlogController, 'findBySlug'],
+    ['GET /config', RuntimeConfigController, 'get'],
+    ['GET /cv', CvController, 'findOne'],
+    ['GET /cv/download', CvController, 'download'],
+    ['GET /auth/me', AuthController, 'me'],
   ] as const)('%s allows 120 requests per minute', (_route, ctor, name) => {
     expect(limitOf(handler(ctor, name))).toBe(
       PUBLIC_READ_THROTTLE.default.limit,
