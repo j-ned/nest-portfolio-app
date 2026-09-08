@@ -9,7 +9,7 @@ import { BlogController } from '../blog/blog.controller';
 import { CvController } from '../cv/cv.controller';
 import { RuntimeConfigController } from '../runtime-config/runtime-config.controller';
 import { ProjectsController } from '../projects/projects.controller';
-import { PUBLIC_READ_THROTTLE } from './throttle';
+import { AUTH_ATTEMPT_THROTTLE, PUBLIC_READ_THROTTLE } from './throttle';
 
 type Ctor = abstract new (...args: never[]) => object;
 
@@ -48,5 +48,15 @@ describe('public read throttle', () => {
     ['POST /blog/posts/:slug/like', BlogController, 'like'],
   ] as const)('%s keeps the global limit', (_route, ctor, name) => {
     expect(limitOf(handler(ctor, name))).toBeUndefined();
+  });
+
+  it.each([
+    ['POST /auth/login', AuthController, 'login'],
+    ['POST /auth/2fa/verify', AuthController, 'verifyTwoFactor'],
+  ] as const)('%s allows 5 attempts per minute', (_route, ctor, name) => {
+    expect(limitOf(handler(ctor, name))).toBe(
+      AUTH_ATTEMPT_THROTTLE.default.limit,
+    );
+    expect(ttlOf(handler(ctor, name))).toBe(60_000);
   });
 });
