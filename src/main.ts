@@ -46,16 +46,21 @@ async function bootstrap() {
     .setDescription('NestJS backend for J-Ned portfolio')
     .setVersion(process.env.npm_package_version ?? 'dev')
     .build();
-  SwaggerModule.setup(
-    'docs',
-    app,
-    SwaggerModule.createDocument(app, swaggerConfig),
-  );
+  // Swagger UI hors production seulement : en prod, /docs publiait la carte complète de l'API.
+  if (!config.isProduction) {
+    SwaggerModule.setup(
+      'docs',
+      app,
+      SwaggerModule.createDocument(app, swaggerConfig),
+    );
+  }
 
   app.enableShutdownHooks();
   await app.listen(config.port);
   app
     .get(Logger)
-    .log(`Listening on http://localhost:${config.port} (docs: /docs)`);
+    .log(
+      `Listening on http://localhost:${config.port}${config.isProduction ? '' : ' (docs: /docs)'}`,
+    );
 }
 void bootstrap();
