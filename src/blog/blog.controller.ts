@@ -26,6 +26,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PublicReadThrottle } from '../common/throttle';
 import { CreateBlogPostDto } from './dto/create-blog-post.dto';
 import { UpdateBlogPostDto } from './dto/update-blog-post.dto';
 import { BlogService } from './blog.service';
@@ -35,6 +36,7 @@ import { BlogService } from './blog.service';
 export class BlogController {
   constructor(private readonly blog: BlogService) {}
 
+  @PublicReadThrottle()
   @Get()
   @ApiOperation({ summary: 'List published blog posts (public)' })
   findAllPublished() {
@@ -49,6 +51,7 @@ export class BlogController {
     return this.blog.findAllForAdmin();
   }
 
+  @PublicReadThrottle()
   @Get(':slug')
   @ApiOperation({ summary: 'Get a published blog post by slug (public)' })
   @ApiResponse({ status: 404, description: 'Not found' })
