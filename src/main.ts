@@ -4,6 +4,7 @@ import { Logger } from 'nestjs-pino';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import type { Application } from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -17,6 +18,14 @@ async function bootstrap() {
 
   const config = app.get(AppConfigService);
 
+  // En-têtes de sécurité. CSP désactivée : l'API ne sert que du JSON et Swagger UI (inline).
+  // CORP `cross-origin` : les images de /api/storage sont chargées depuis le site (autre origine).
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
   app.use(cookieParser());
 
   app.setGlobalPrefix('api');
