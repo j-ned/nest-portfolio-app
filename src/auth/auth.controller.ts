@@ -26,6 +26,7 @@ import { TwoFactorVerifyDto } from './dto/two-factor-verify.dto';
 import { TwoFactorEnableDto } from './dto/two-factor-enable.dto';
 import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
 import type { User } from '../database/schema';
+import { PublicReadThrottle } from '../common/throttle';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -92,6 +93,7 @@ export class AuthController {
     return { ok: true };
   }
 
+  @PublicReadThrottle()
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @ApiBearerAuth()
