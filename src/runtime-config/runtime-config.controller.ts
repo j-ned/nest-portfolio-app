@@ -1,6 +1,7 @@
 import { Controller, Get, Header } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AppConfigService } from '../config/app-config.service';
+import { PublicReadThrottle } from '../common/throttle';
 
 type SentryRuntimeConfig = {
   dsn: string;
@@ -17,6 +18,7 @@ type RuntimeConfigResponse = {
 export class RuntimeConfigController {
   constructor(private readonly config: AppConfigService) {}
 
+  @PublicReadThrottle()
   @Get()
   @Header('Cache-Control', 'public, max-age=300')
   @ApiOperation({

@@ -25,6 +25,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PublicReadThrottle } from '../common/throttle';
 import { CvService } from './cv.service';
 import { UploadCvResponseDto } from './dto/upload-cv-response.dto';
 
@@ -70,6 +71,7 @@ export class CvController {
     return this.cv.upsert(file);
   }
 
+  @PublicReadThrottle()
   @Get()
   @ApiOperation({
     summary: 'Get CV metadata (public, returns null if no CV)',
@@ -78,6 +80,7 @@ export class CvController {
     return this.cv.findLatestMetadata();
   }
 
+  @PublicReadThrottle()
   @Get('download')
   @ApiOperation({
     summary: 'Download the CV (public, attachment with original filename)',
