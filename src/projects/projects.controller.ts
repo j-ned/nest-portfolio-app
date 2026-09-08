@@ -28,6 +28,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PublicReadThrottle } from '../common/throttle';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { ProjectsService } from './projects.service';
@@ -37,6 +38,7 @@ import { ProjectsService } from './projects.service';
 export class ProjectsController {
   constructor(private readonly projects: ProjectsService) {}
 
+  @PublicReadThrottle()
   @Get()
   @ApiOperation({ summary: 'List projects (public, filterable)' })
   @ApiQuery({ name: 'category', required: false })
@@ -51,6 +53,7 @@ export class ProjectsController {
     });
   }
 
+  @PublicReadThrottle()
   @Get(':id')
   @ApiOperation({ summary: 'Get a project by id (public)' })
   @ApiResponse({ status: 404, description: 'Not found' })
