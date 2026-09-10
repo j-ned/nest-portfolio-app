@@ -14,17 +14,13 @@ import {
   type BlogPost,
 } from '../database/schema/blog-posts';
 import { StorageService } from '../storage/storage.service';
+import { ImageOptimizer } from '../storage/image-optimizer.service';
 import { deleteS3IfExists } from '../storage/s3-utils';
 import { AppConfigService } from '../config/app-config.service';
 import { CreateBlogPostDto } from './dto/create-blog-post.dto';
 import { UpdateBlogPostDto } from './dto/update-blog-post.dto';
 import { findByIdOrFail } from '../common/crud-helpers';
-import {
-  isUniqueViolation,
-  mimeToExt,
-  slugify,
-  fireAndForget,
-} from '../common/utils';
+import { isUniqueViolation, slugify, fireAndForget } from '../common/utils';
 
 @Injectable()
 export class BlogService {
@@ -35,6 +31,7 @@ export class BlogService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly storage: StorageService,
     private readonly config: AppConfigService,
+    private readonly images: ImageOptimizer,
   ) {}
 
   async findAllPublished(): Promise<BlogPost[]> {
@@ -160,7 +157,10 @@ export class BlogService {
     file: Express.Multer.File,
   ): Promise<BlogPost> {
     const current = await this.findByIdRaw(id);
-    const newKey = `blog/${id}.${mimeToExt(file.mimetype)}`;
+    // Quel que soit le format reçu, on stocke un AVIF ≤ 1600 px : le poids servi ne dépend
+    // plus de l'export de l'admin (un JPEG photo de 2,8 Mo tombait en l'état sur la page).
+    const image = await this.images.optimize(file.buffer);
+    const newKey = `blog/${id}.${image.ext}`;
 
     // Ordre : upload → update DB → cleanup ancienne clé.
     // Si une étape échoue, on préfère un orphelin S3 (cleanup manuel possible)
@@ -168,8 +168,8 @@ export class BlogService {
     await this.storage.upload(
       BlogService.BUCKET,
       newKey,
-      file.buffer,
-      file.mimetype,
+      image.buffer,
+      image.mimetype,
     );
 
     const [row] = await this.db

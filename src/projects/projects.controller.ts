@@ -109,7 +109,7 @@ export class ProjectsController {
   })
   @ApiOperation({
     summary:
-      'Upload/replace project image (admin, max 5MB, image/webp|jpeg|png|avif)',
+      'Upload/replace project image (admin, max 5MB, image/webp|jpeg|png|avif, stored as AVIF ≤ 1600px)',
   })
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({
