@@ -1,8 +1,8 @@
 {
   "name": "nest-portfolio-app",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "API NestJS du portfolio nedellec-julien.fr : auth JWT + 2FA, blog, projets, contact, CV, analytics",
+  "author": "Julien Nédellec <contact@nedellec-julien.fr> (https://nedellec-julien.fr)",
   "private": true,
   "license": "MIT",
   "packageManager": "pnpm@10.33.2",
