@@ -61,7 +61,9 @@ export class StorageController {
     res.set({
       'Content-Type': contentType,
       'Content-Length': contentLength.toString(),
-      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+      // Les clés portent un hachage du contenu (`<id>-<sha8>.avif`) : une image remplacée change
+      // d'URL, celle-ci peut donc être gardée un an sans revalidation.
+      'Cache-Control': 'public, max-age=31536000, immutable',
     });
     return new StreamableFile(stream);
   }
