@@ -1,4 +1,4 @@
-import { renderTemplate } from './mailer.utils';
+import { escapeHtml, renderTemplate } from './mailer.utils';
 
 describe('renderTemplate', () => {
   it('remplace une variable simple', () => {
@@ -27,7 +27,38 @@ describe('renderTemplate', () => {
     expect(renderTemplate('Prix: {{amount}}', { amount: '$100' })).toBe(
       'Prix: $100',
     );
-    expect(renderTemplate('Match: {{x}}', { x: '$&' })).toBe('Match: $&');
+    // `&` est échappé en `&amp;` ; si `$&` était interprété, on lirait le placeholder lui-même.
+    expect(renderTemplate('Match: {{x}}', { x: '$&' })).toBe('Match: $&amp;');
     expect(renderTemplate('Dollar: {{x}}', { x: '$$' })).toBe('Dollar: $$');
+  });
+
+  describe('échappement HTML (valeurs issues du formulaire public)', () => {
+    it.each([
+      [
+        '<a href="https://evil">Voir</a>',
+        '&lt;a href=&quot;https://evil&quot;&gt;Voir&lt;/a&gt;',
+      ],
+      ['<img src=x onerror=alert(1)>', '&lt;img src=x onerror=alert(1)&gt;'],
+      ['" onmouseover="alert(1)', '&quot; onmouseover=&quot;alert(1)'],
+      ["it's & co", 'it&#39;s &amp; co'],
+      ['Julien', 'Julien'],
+    ])('%s → %s', (raw, expected) => {
+      expect(renderTemplate('<p>{{v}}</p>', { v: raw })).toBe(
+        `<p>${expected}</p>`,
+      );
+    });
+
+    it("neutralise une sortie d'attribut href", () => {
+      const html = renderTemplate('<a href="mailto:{{email}}">x</a>', {
+        email: 'a@b.fr" onclick="alert(1)',
+      });
+      expect(html).toBe(
+        '<a href="mailto:a@b.fr&quot; onclick=&quot;alert(1)">x</a>',
+      );
+    });
+
+    it('escapeHtml laisse les caractères ordinaires intacts', () => {
+      expect(escapeHtml('Bonjour, ça va ?')).toBe('Bonjour, ça va ?');
+    });
   });
 });
