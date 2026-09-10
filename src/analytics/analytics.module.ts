@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { AppConfigModule } from '../config/app-config.module';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsTrackerService } from './analytics-tracker.service';
 import { AnalyticsStatsService } from './analytics-stats.service';
 import { AnalyticsAggregatorService } from './analytics-aggregator.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, AppConfigModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsTrackerService,
