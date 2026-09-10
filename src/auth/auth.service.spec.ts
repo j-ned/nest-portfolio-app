@@ -43,6 +43,7 @@ describe('AuthService', () => {
             disableTwoFactor: jest.fn(),
             replaceBackupCodes: jest.fn(),
             consumeBackupCode: jest.fn(),
+            revokeSessions: jest.fn(),
           },
         },
         {
@@ -338,6 +339,39 @@ describe('AuthService', () => {
         'hashN1',
         'hashN2',
       ]);
+    });
+  });
+
+  describe('revokeSessionFromToken', () => {
+    it('incrémente tokenVersion pour le sub du JWT de session', async () => {
+      jwt.verify.mockReturnValue({ sub: 'u1', tokenVersion: 3 });
+      await service.revokeSessionFromToken('valid.jwt');
+      expect(users.revokeSessions).toHaveBeenCalledWith('u1');
+    });
+
+    it.each([
+      [undefined, 'cookie absent'],
+      ['', 'cookie vide'],
+    ])('token %s (%s) → aucune révocation', async (token) => {
+      await service.revokeSessionFromToken(token);
+      expect(jwt.verify).not.toHaveBeenCalled();
+      expect(users.revokeSessions).not.toHaveBeenCalled();
+    });
+
+    it('JWT invalide ou expiré → ignoré sans throw', async () => {
+      jwt.verify.mockImplementation(() => {
+        throw new Error('jwt expired');
+      });
+      await expect(
+        service.revokeSessionFromToken('stale.jwt'),
+      ).resolves.toBeUndefined();
+      expect(users.revokeSessions).not.toHaveBeenCalled();
+    });
+
+    it('challenge 2FA → jamais révoqué', async () => {
+      jwt.verify.mockReturnValue({ sub: 'u1', scope: '2fa-challenge' });
+      await service.revokeSessionFromToken('challenge.jwt');
+      expect(users.revokeSessions).not.toHaveBeenCalled();
     });
   });
 });
