@@ -5,10 +5,12 @@ import { and, eq, gte } from 'drizzle-orm';
 import { isbot } from 'isbot';
 import geoip from 'geoip-lite';
 import { UAParser } from 'ua-parser-js';
+import { AppConfigService } from '../config/app-config.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
 import { pageView, analyticsEvent } from '../database/schema';
 import { TrackEventDto } from './dto/track-event.dto';
+import { normalizeReferrer } from './referrer';
 
 // RFC1918 + loopback + link-local + IPv6 ULA. Strips ::ffff: IPv4-mapped prefix.
 export function isPrivateIp(raw: string): boolean {
@@ -47,7 +49,10 @@ function isExcludedUrl(url: string): boolean {
 export class AnalyticsTrackerService {
   private readonly logger = new Logger(AnalyticsTrackerService.name);
 
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly cfg: AppConfigService,
+  ) {}
 
   /**
    * Track une page-view ou un custom event. Ne throw JAMAIS - toute erreur
@@ -134,7 +139,9 @@ export class AnalyticsTrackerService {
     await this.db.insert(pageView).values({
       sessionHash,
       url: dto.url!,
-      referrer: dto.referrer ?? null,
+      // Les origines CORS sont exactement les hôtes du site : un referrer qui en vient est une
+      // navigation interne, pas une provenance.
+      referrer: normalizeReferrer(dto.referrer, this.cfg.corsOrigins),
       browser,
       os,
       country,
