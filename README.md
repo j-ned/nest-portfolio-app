@@ -387,4 +387,4 @@ Modules réellement présents et livrés : Fondations, Auth, S3 Storage, Project
 
 ## Licence
 
-UNLICENSED (privé).
+Le **code** est publié sous licence [MIT](LICENSE). Le **contenu éditorial** servi par l'API (articles, fiches projets, CV, visuels, templates de mail) reste sous **tous droits réservés** et n'est pas couvert par la licence MIT.
