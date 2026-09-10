@@ -33,6 +33,23 @@ export class AuthService {
     private readonly jwt: JwtService,
   ) {}
 
+  /**
+   * Logout : incrémente `tokenVersion` pour que le JWT (7 jours) ne survive pas à la
+   * déconnexion s'il a fuité. Un cookie absent, expiré ou de challenge 2FA est ignoré :
+   * le contrôleur efface le cookie dans tous les cas.
+   */
+  async revokeSessionFromToken(token: string | undefined): Promise<void> {
+    if (!token) return;
+    let payload: JwtPayload;
+    try {
+      payload = this.jwt.verify<JwtPayload>(token);
+    } catch {
+      return;
+    }
+    if (payload.scope === '2fa-challenge') return;
+    await this.users.revokeSessions(payload.sub);
+  }
+
   async login(email: string, plainPassword: string): Promise<LoginResult> {
     const user = await this.users.findByEmail(email);
     if (!user) throw new UnauthorizedException('Invalid credentials');

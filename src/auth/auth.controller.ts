@@ -7,6 +7,7 @@ import {
   Post,
   Res,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -14,7 +15,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { AppConfigService } from '../config/app-config.service';
 import { parseDurationMs } from '../common/utils';
@@ -84,8 +85,13 @@ export class AuthController {
   @Post('logout')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Logout (clears auth cookie)' })
-  logout(@Res({ passthrough: true }) res: Response) {
+  @ApiOperation({
+    summary: 'Logout (clears auth cookie, revokes every session)',
+  })
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    await this.auth.revokeSessionFromToken(
+      (req.cookies as Record<string, string> | undefined)?.token,
+    );
     res.clearCookie('token', {
       httpOnly: true,
       sameSite: 'lax',

@@ -26,6 +26,17 @@ export class UsersService {
     return rows[0] ?? null;
   }
 
+  /** Invalide tous les JWT émis pour cet utilisateur (logout, compromission). */
+  async revokeSessions(id: string): Promise<void> {
+    await this.db
+      .update(users)
+      .set({
+        tokenVersion: sql`${users.tokenVersion} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, id));
+  }
+
   async updatePassword(id: string, passwordHash: string): Promise<void> {
     await this.db
       .update(users)
