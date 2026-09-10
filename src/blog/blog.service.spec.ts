@@ -5,6 +5,7 @@ import { BlogService } from './blog.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import { StorageService } from '../storage/storage.service';
+import { ImageOptimizer } from '../storage/image-optimizer.service';
 import { AppConfigService } from '../config/app-config.service';
 import {
   blogPosts,
@@ -53,6 +54,18 @@ describe('BlogService', () => {
         { provide: DRIZZLE, useValue: db },
         { provide: StorageService, useValue: storage },
         { provide: AppConfigService, useValue: config },
+        {
+          provide: ImageOptimizer,
+          useValue: {
+            optimize: jest.fn().mockResolvedValue({
+              buffer: Buffer.from('avif-bytes'),
+              mimetype: 'image/avif',
+              ext: 'avif',
+              width: 1600,
+              height: 900,
+            }),
+          },
+        },
       ],
     }).compile();
     service = module.get(BlogService);
