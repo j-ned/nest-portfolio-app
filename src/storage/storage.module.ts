@@ -6,6 +6,7 @@ import { AppConfigService } from '../config/app-config.service';
 import { S3_CLIENT } from './s3.constants';
 import { StorageController } from './storage.controller';
 import { StorageService } from './storage.service';
+import { ImageOptimizer } from './image-optimizer.service';
 
 const s3ClientProvider: Provider = {
   provide: S3_CLIENT,
@@ -26,8 +27,8 @@ const s3ClientProvider: Provider = {
 @Module({
   imports: [AppConfigModule],
   controllers: [StorageController],
-  providers: [s3ClientProvider, StorageService],
-  exports: [StorageService],
+  providers: [s3ClientProvider, StorageService, ImageOptimizer],
+  exports: [StorageService, ImageOptimizer],
 })
 export class StorageModule implements OnModuleDestroy {
   constructor(@Inject(S3_CLIENT) private readonly s3: S3Client) {}

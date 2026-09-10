@@ -1,7 +1,6 @@
-import { UnprocessableEntityException, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import {
   isUniqueViolation,
-  mimeToExt,
   slugify,
   fireAndForget,
   parseDurationMs,
@@ -27,19 +26,6 @@ describe('slugify', () => {
 
   it('retourne chaîne vide si aucun caractère valide', () => {
     expect(slugify('!!@@##')).toBe('');
-  });
-});
-
-describe('mimeToExt', () => {
-  it('mappe les 4 MIME whitelistés', () => {
-    expect(mimeToExt('image/webp')).toBe('webp');
-    expect(mimeToExt('image/jpeg')).toBe('jpg');
-    expect(mimeToExt('image/png')).toBe('png');
-    expect(mimeToExt('image/avif')).toBe('avif');
-  });
-
-  it('rejette un MIME non whitelisté', () => {
-    expect(() => mimeToExt('image/gif')).toThrow(UnprocessableEntityException);
   });
 });
 
