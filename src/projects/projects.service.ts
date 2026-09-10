@@ -8,11 +8,12 @@ import {
   type Project,
 } from '../database/schema/projects';
 import { StorageService } from '../storage/storage.service';
+import { ImageOptimizer } from '../storage/image-optimizer.service';
 import { deleteS3IfExists } from '../storage/s3-utils';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { findByIdOrFail } from '../common/crud-helpers';
-import { isUniqueViolation, mimeToExt, slugify } from '../common/utils';
+import { isUniqueViolation, slugify } from '../common/utils';
 
 @Injectable()
 export class ProjectsService {
@@ -21,6 +22,7 @@ export class ProjectsService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly storage: StorageService,
+    private readonly images: ImageOptimizer,
   ) {}
 
   async findAll(filters: {
@@ -111,7 +113,10 @@ export class ProjectsService {
 
   async uploadImage(id: string, file: Express.Multer.File): Promise<Project> {
     const current = await this.findByIdRaw(id);
-    const newKey = `projects/${id}.${mimeToExt(file.mimetype)}`;
+    // Quel que soit le format reçu, on stocke un AVIF ≤ 1600 px : le poids servi ne dépend
+    // plus de l'export de l'admin (un JPEG photo de 2,8 Mo tombait en l'état sur la page).
+    const image = await this.images.optimize(file.buffer);
+    const newKey = `projects/${id}.${image.ext}`;
 
     // Ordre : upload → update DB → cleanup ancienne clé.
     // Si une étape échoue, on préfère un orphelin S3 (cleanup manuel possible)
@@ -119,8 +124,8 @@ export class ProjectsService {
     await this.storage.upload(
       ProjectsService.BUCKET,
       newKey,
-      file.buffer,
-      file.mimetype,
+      image.buffer,
+      image.mimetype,
     );
 
     const [row] = await this.db

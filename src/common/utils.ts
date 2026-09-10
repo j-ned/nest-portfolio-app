@@ -1,4 +1,4 @@
-import { Logger, UnprocessableEntityException } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { timestamp } from 'drizzle-orm/pg-core';
 
 export function fireAndForget(
@@ -70,23 +70,6 @@ export function slugify(input: string): string {
     .replace(/[̀-ͯ]/g, '') // strip combining diacritics (NFD form)
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
-}
-
-const MIME_TO_EXT: Record<string, string> = {
-  'image/webp': 'webp',
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/avif': 'avif',
-};
-
-export function mimeToExt(mimetype: string): string {
-  const ext = MIME_TO_EXT[mimetype];
-  if (!ext) {
-    throw new UnprocessableEntityException(
-      `Unsupported file type: ${mimetype}`,
-    );
-  }
-  return ext;
 }
 
 export function isUniqueViolation(err: unknown, columnHint?: string): boolean {

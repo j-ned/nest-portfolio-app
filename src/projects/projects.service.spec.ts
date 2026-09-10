@@ -1,14 +1,20 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import { StorageService } from '../storage/storage.service';
+import { ImageOptimizer } from '../storage/image-optimizer.service';
 import type { Project } from '../database/schema';
 
 describe('ProjectsService', () => {
   let service: ProjectsService;
+  let module: TestingModule;
   let db: ReturnType<typeof createMockDb>;
   let storage: jest.Mocked<StorageService>;
 
@@ -43,11 +49,23 @@ describe('ProjectsService', () => {
       getPublicUrl: jest.fn().mockReturnValue('https://example.test/url'),
     } as unknown as jest.Mocked<StorageService>;
 
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         ProjectsService,
         { provide: DRIZZLE, useValue: db },
         { provide: StorageService, useValue: storage },
+        {
+          provide: ImageOptimizer,
+          useValue: {
+            optimize: jest.fn().mockResolvedValue({
+              buffer: Buffer.from('avif-bytes'),
+              mimetype: 'image/avif',
+              ext: 'avif',
+              width: 1600,
+              height: 900,
+            }),
+          },
+        },
       ],
     }).compile();
     service = module.get(ProjectsService);
@@ -326,16 +344,17 @@ describe('ProjectsService', () => {
       const current = mkProject({ image: '' });
       const updated = mkProject({
         ...current,
-        image: `projects/${current.id}.webp`,
+        image: `projects/${current.id}.avif`,
       });
       db.limit.mockResolvedValueOnce([current]);
       db.returning.mockResolvedValueOnce([updated]);
       const result = await service.uploadImage(current.id, file);
+      // Quel que soit le fichier reçu, c'est la version optimisée (AVIF) qui part en S3.
       expect(storage.upload).toHaveBeenCalledWith(
         'portfolio-storage',
-        `projects/${current.id}.webp`,
-        file.buffer,
-        'image/webp',
+        `projects/${current.id}.avif`,
+        Buffer.from('avif-bytes'),
+        'image/avif',
       );
       expect(storage.delete).not.toHaveBeenCalled();
       expect(result.image).toBe('https://example.test/url');
@@ -345,7 +364,7 @@ describe('ProjectsService', () => {
     it('replace même extension → upload, pas de delete (clé identique)', async () => {
       const current = mkProject({
         id: '22222222-2222-2222-2222-222222222222',
-        image: 'projects/22222222-2222-2222-2222-222222222222.webp',
+        image: 'projects/22222222-2222-2222-2222-222222222222.avif',
       });
       const updated = mkProject({ ...current });
       db.limit.mockResolvedValueOnce([current]);
@@ -362,16 +381,16 @@ describe('ProjectsService', () => {
       });
       const updated = mkProject({
         ...current,
-        image: 'projects/33333333-3333-3333-3333-333333333333.webp',
+        image: 'projects/33333333-3333-3333-3333-333333333333.avif',
       });
       db.limit.mockResolvedValueOnce([current]);
       db.returning.mockResolvedValueOnce([updated]);
       const result = await service.uploadImage(current.id, file);
       expect(storage.upload).toHaveBeenCalledWith(
         'portfolio-storage',
-        `projects/${current.id}.webp`,
-        file.buffer,
-        'image/webp',
+        `projects/${current.id}.avif`,
+        Buffer.from('avif-bytes'),
+        'image/avif',
       );
       expect(storage.delete).toHaveBeenCalledWith(
         'portfolio-storage',
@@ -380,17 +399,16 @@ describe('ProjectsService', () => {
       expect(result.image).toBe('https://example.test/url');
     });
 
-    it('throw UnprocessableEntityException si mimetype non whitelisté', async () => {
-      const fileWithBadMime = {
-        buffer: Buffer.from('fake'),
-        mimetype: 'application/octet-stream',
-        size: 100,
-      } as Express.Multer.File;
+    it("image illisible → 422 de l'optimiseur, rien n'est envoyé en S3", async () => {
       const current = mkProject({ image: '' });
       db.limit.mockResolvedValueOnce([current]);
-      await expect(
-        service.uploadImage(current.id, fileWithBadMime),
-      ).rejects.toThrow('Unsupported file type: application/octet-stream');
+      const optimizer = module.get<jest.Mocked<ImageOptimizer>>(ImageOptimizer);
+      optimizer.optimize.mockRejectedValueOnce(
+        new UnprocessableEntityException('Image illisible'),
+      );
+      await expect(service.uploadImage(current.id, file)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
       expect(storage.upload).not.toHaveBeenCalled();
     });
   });

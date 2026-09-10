@@ -252,7 +252,7 @@ CRUD admin des projets affichés sur le portfolio.
 | POST    | `/projects`           | ✅   | Crée. Slug auto-généré depuis `title`. 409 si collision de slug.                                                                        |
 | PATCH   | `/projects/:id`       | ✅   | Met à jour. Re-slugifie si `title` change. `image: null` supprime l'image S3 (via `@Equals(null)` - pas de valeur arbitraire acceptée). |
 | DELETE  | `/projects/:id`       | ✅   | Supprime le projet + son image S3 si présente.                                                                                          |
-| POST    | `/projects/:id/image` | ✅   | Upload multipart (`file`, max 5MB, MIME whitelist `image/webp\|jpeg\|png\|avif`, 422 si invalide).                                      |
+| POST    | `/projects/:id/image` | ✅   | Upload multipart (`file`, max 5MB, MIME whitelist `image/webp\|jpeg\|png\|avif`, 422 si invalide). Converti en **AVIF ≤ 1600 px** (`sharp`) avant stockage.                                      |
 
 **Lifecycle S3** : key = `projects/<id>.<ext>`. Ordre upload → update DB → cleanup ancienne clé (jamais l'inverse, pour ne jamais laisser une référence DB cassée). Les réponses API exposent une URL proxy (`getPublicUrl`), jamais la key S3 brute.
 
@@ -272,7 +272,7 @@ CRUD admin des articles de blog + endpoints publics de consultation/like. Le sit
 | POST    | `/blog/posts`            | ✅   | Crée. Slug auto-généré depuis `title`. 409 si collision de slug.                                                                                |
 | PATCH   | `/blog/posts/:id`        | ✅   | Met à jour. Slug **figé** une fois l'article publié (ne se re-génère plus au changement de titre - casserait l'URL publique/le thread Giscus). `coverImage: null` supprime l'image S3.  |
 | DELETE  | `/blog/posts/:id`        | ✅   | Supprime l'article + son image S3.                                                                                                             |
-| POST    | `/blog/posts/:id/image`  | ✅   | Upload multipart (`file`, max 5MB, MIME whitelist `image/webp\|jpeg\|png\|avif`).                                                              |
+| POST    | `/blog/posts/:id/image`  | ✅   | Upload multipart (`file`, max 5MB, MIME whitelist `image/webp\|jpeg\|png\|avif`). Converti en **AVIF ≤ 1600 px** (`sharp`) avant stockage.                                                              |
 | POST    | `/blog/posts/:slug/like` | ❌   | Incrémente le compteur de likes d'un article **publié** (public, pas d'auth). 404 sur un slug draft/dépublié/inconnu.                          |
 
 **Lifecycle S3** : identique à Projects (key `blog/<id>.<ext>`, ordre upload → update DB → cleanup ancienne clé).

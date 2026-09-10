@@ -106,7 +106,7 @@ export class BlogController {
   })
   @ApiOperation({
     summary:
-      'Upload/replace cover image (admin, max 5MB, image/webp|jpeg|png|avif)',
+      'Upload/replace cover image (admin, max 5MB, image/webp|jpeg|png|avif, stored as AVIF ≤ 1600px)',
   })
   @ApiResponse({
     status: 422,
