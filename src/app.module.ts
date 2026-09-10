@@ -51,6 +51,8 @@ import { RuntimeConfigModule } from './runtime-config/runtime-config.module';
             'req.body.code',
             'req.body.token',
             'req.body.refreshToken',
+            // Le cookie de session (JWT complet) était écrit dans les logs à chaque login.
+            'res.headers["set-cookie"]',
           ],
           autoLogging: {
             ignore: (req: { url?: string }) => req.url === '/api/health',
