@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsTrackerService } from './analytics-tracker.service';
+import { AppConfigService } from '../config/app-config.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import * as isbotModule from 'isbot';
@@ -24,7 +25,14 @@ describe('AnalyticsTrackerService', () => {
     geoipLookup.mockReturnValue({ country: 'FR' });
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [AnalyticsTrackerService, { provide: DRIZZLE, useValue: db }],
+      providers: [
+        AnalyticsTrackerService,
+        { provide: DRIZZLE, useValue: db },
+        {
+          provide: AppConfigService,
+          useValue: { corsOrigins: ['https://nedellec-julien.fr'] },
+        },
+      ],
     }).compile();
     service = module.get(AnalyticsTrackerService);
 
@@ -100,6 +108,35 @@ describe('AnalyticsTrackerService', () => {
 
       expect(db.insert).toHaveBeenCalledTimes(1);
       expect(db.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('referrer', () => {
+    it.each([
+      [
+        'https://www.google.com/',
+        'google.com',
+        'source externe réduite à son hôte',
+      ],
+      [
+        'https://nedellec-julien.fr/admin/analytics',
+        null,
+        'navigation interne ignorée',
+      ],
+      [undefined, null, 'absent'],
+    ])('referrer %s → %s (%s)', async (referrer, expected) => {
+      db.limit.mockResolvedValueOnce([]);
+      db.returning.mockResolvedValueOnce([{ id: 'pv' }]);
+
+      await service.track(
+        { type: 'page_view', url: '/blog', referrer },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+
+      expect(db.values).toHaveBeenCalledWith(
+        expect.objectContaining({ referrer: expected }),
+      );
     });
   });
 
