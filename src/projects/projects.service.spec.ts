@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/unbound-method */
+import { createHash } from 'node:crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   ConflictException,
@@ -327,6 +328,10 @@ describe('ProjectsService', () => {
   });
 
   describe('uploadImage', () => {
+    const HASH = createHash('sha256')
+      .update('avif-bytes')
+      .digest('hex')
+      .slice(0, 8);
     const file = {
       buffer: Buffer.from('fake'),
       mimetype: 'image/webp',
@@ -344,7 +349,7 @@ describe('ProjectsService', () => {
       const current = mkProject({ image: '' });
       const updated = mkProject({
         ...current,
-        image: `projects/${current.id}.avif`,
+        image: `projects/${current.id}-${HASH}.avif`,
       });
       db.limit.mockResolvedValueOnce([current]);
       db.returning.mockResolvedValueOnce([updated]);
@@ -352,7 +357,7 @@ describe('ProjectsService', () => {
       // Quel que soit le fichier reçu, c'est la version optimisée (AVIF) qui part en S3.
       expect(storage.upload).toHaveBeenCalledWith(
         'portfolio-storage',
-        `projects/${current.id}.avif`,
+        `projects/${current.id}-${HASH}.avif`,
         Buffer.from('avif-bytes'),
         'image/avif',
       );
@@ -361,10 +366,10 @@ describe('ProjectsService', () => {
       expect(result.id).toBe(current.id);
     });
 
-    it('replace même extension → upload, pas de delete (clé identique)', async () => {
+    it('même image renvoyée → même clé, upload mais pas de delete', async () => {
       const current = mkProject({
         id: '22222222-2222-2222-2222-222222222222',
-        image: 'projects/22222222-2222-2222-2222-222222222222.avif',
+        image: `projects/22222222-2222-2222-2222-222222222222-${HASH}.avif`,
       });
       const updated = mkProject({ ...current });
       db.limit.mockResolvedValueOnce([current]);
@@ -388,7 +393,7 @@ describe('ProjectsService', () => {
       const result = await service.uploadImage(current.id, file);
       expect(storage.upload).toHaveBeenCalledWith(
         'portfolio-storage',
-        `projects/${current.id}.avif`,
+        `projects/${current.id}-${HASH}.avif`,
         Buffer.from('avif-bytes'),
         'image/avif',
       );

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { StorageService } from './storage.service';
 
 /**
@@ -14,4 +15,9 @@ export async function deleteS3IfExists(
 ): Promise<void> {
   if (!key) return;
   await storage.delete(bucket, key);
+}
+
+/** 8 hexa du SHA-256 : suffisant pour distinguer deux versions d'une même image. */
+export function contentHash(buffer: Buffer): string {
+  return createHash('sha256').update(buffer).digest('hex').slice(0, 8);
 }
