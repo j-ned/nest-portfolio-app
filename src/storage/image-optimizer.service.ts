@@ -5,6 +5,9 @@ import sharp from 'sharp';
 export const IMAGE_MAX_WIDTH = 1600;
 const AVIF_QUALITY = 60;
 const AVIF_EFFORT = 4;
+/** Carte de partage Open Graph : le 1,91:1 attendu par Facebook, LinkedIn et X, en JPEG (l'AVIF n'y est pas décodé). */
+export const SHARE_CARD = { width: 1200, height: 630 } as const;
+const SHARE_CARD_JPEG_QUALITY = 80;
 
 export type OptimizedImage = {
   readonly buffer: Buffer;
@@ -34,6 +37,24 @@ export class ImageOptimizer {
         width: info.width,
         height: info.height,
       };
+    } catch {
+      throw new UnprocessableEntityException(
+        'Image illisible : fichier corrompu ou format non supporté',
+      );
+    }
+  }
+
+  /**
+   * Carte de partage JPEG 1200×630 (recadrage centré) pour `og:image` / `twitter:image` : les
+   * crawlers sociaux ne lisent pas l'AVIF stocké, et exigent un ratio 1,91:1 pour la grande carte.
+   */
+  async toShareCard(input: Buffer): Promise<Buffer> {
+    try {
+      return await sharp(input, { animated: false })
+        .rotate()
+        .resize({ ...SHARE_CARD, fit: 'cover', position: 'attention' })
+        .jpeg({ quality: SHARE_CARD_JPEG_QUALITY, progressive: true })
+        .toBuffer();
     } catch {
       throw new UnprocessableEntityException(
         'Image illisible : fichier corrompu ou format non supporté',

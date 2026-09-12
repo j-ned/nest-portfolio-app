@@ -1,15 +1,20 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   NotFoundException,
   Param,
+  Query,
   Res,
   StreamableFile,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
+import { ShareCardService } from './share-card.service';
 import { StorageService } from './storage.service';
+
+const CACHE_CONTROL = 'public, max-age=86400, stale-while-revalidate=604800';
 
 /**
  * Whitelist des buckets servis publiquement via le proxy.
@@ -28,7 +33,10 @@ const PUBLIC_BUCKETS = new Set<string>(['portfolio-storage']);
 @ApiTags('Storage')
 @Controller('storage')
 export class StorageController {
-  constructor(private readonly storage: StorageService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly shareCards: ShareCardService,
+  ) {}
 
   @Get(':bucket/*splat')
   @ApiOperation({
@@ -43,16 +51,37 @@ export class StorageController {
     status: 404,
     description: 'Bucket non public ou objet inexistant',
   })
+  @ApiQuery({
+    name: 'variant',
+    required: false,
+    enum: ['share'],
+    description:
+      "`share` : carte de partage JPEG 1200×630 dérivée de l'image (og:image), générée à la première demande",
+  })
   async getObject(
     @Param('bucket') bucket: string,
     @Param('splat') splat: string[],
     @Res({ passthrough: true }) res: Response,
+    @Query('variant') variant?: string,
   ): Promise<StreamableFile> {
     if (!PUBLIC_BUCKETS.has(bucket)) {
       throw new NotFoundException();
     }
     const key = Array.isArray(splat) ? splat.join('/') : String(splat);
     if (!key) throw new NotFoundException();
+
+    if (variant === 'share') {
+      const { buffer, contentType } = await this.shareCards.get(bucket, key);
+      res.set({
+        'Content-Type': contentType,
+        'Content-Length': buffer.length.toString(),
+        'Cache-Control': CACHE_CONTROL,
+      });
+      return new StreamableFile(buffer);
+    }
+    if (variant !== undefined) {
+      throw new BadRequestException(`Unknown variant "${variant}"`);
+    }
 
     const { stream, contentType, contentLength } = await this.storage.get(
       bucket,
@@ -61,9 +90,7 @@ export class StorageController {
     res.set({
       'Content-Type': contentType,
       'Content-Length': contentLength.toString(),
-      // Les clés portent un hachage du contenu (`<id>-<sha8>.avif`) : une image remplacée change
-      // d'URL, celle-ci peut donc être gardée un an sans revalidation.
-      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Cache-Control': CACHE_CONTROL,
     });
     return new StreamableFile(stream);
   }

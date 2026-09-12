@@ -1,6 +1,10 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 import sharp from 'sharp';
-import { IMAGE_MAX_WIDTH, ImageOptimizer } from './image-optimizer.service';
+import {
+  IMAGE_MAX_WIDTH,
+  ImageOptimizer,
+  SHARE_CARD,
+} from './image-optimizer.service';
 
 function solidImage(
   width: number,
@@ -69,5 +73,33 @@ describe('ImageOptimizer', () => {
     await expect(
       optimizer.optimize(Buffer.from('not an image')),
     ).rejects.toThrow(UnprocessableEntityException);
+  });
+
+  describe('toShareCard', () => {
+    it.each([
+      ['paysage 16:9', 1600, 900],
+      ['portrait', 600, 900],
+      ['petite image (agrandie pour un rendu constant)', 400, 300],
+    ] as const)('%s → JPEG 1200×630', async (_label, w, h) => {
+      const out = await optimizer.toShareCard(await solidImage(w, h, 'png'));
+      const meta = await sharp(out).metadata();
+      expect(meta.format).toBe('jpeg');
+      expect(meta.width).toBe(SHARE_CARD.width);
+      expect(meta.height).toBe(SHARE_CARD.height);
+    });
+
+    it('lit un AVIF (format stocké) en entrée', async () => {
+      const avif = (
+        await optimizer.optimize(await solidImage(1600, 900, 'png'))
+      ).buffer;
+      const meta = await sharp(await optimizer.toShareCard(avif)).metadata();
+      expect(meta.format).toBe('jpeg');
+    });
+
+    it('fichier corrompu → 422', async () => {
+      await expect(
+        optimizer.toShareCard(Buffer.from('not an image')),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
   });
 });

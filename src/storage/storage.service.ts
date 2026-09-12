@@ -9,6 +9,7 @@ import {
 } from '@aws-sdk/client-s3';
 import type { Readable } from 'node:stream';
 import { S3_CLIENT } from './s3.constants';
+import { isShareCardKey, shareCardKey } from './s3-utils';
 
 export type S3ObjectStream = {
   stream: Readable;
@@ -20,6 +21,7 @@ export type S3ObjectStream = {
 export class StorageService {
   constructor(@Inject(S3_CLIENT) private readonly s3: S3Client) {}
 
+  /** Écrit l'objet et jette sa carte de partage dérivée (`<key>.share.jpg`), devenue obsolète. */
   async upload(
     bucket: string,
     key: string,
@@ -34,6 +36,7 @@ export class StorageService {
         ContentType: contentType,
       }),
     );
+    await this.deleteShareCardOf(bucket, key);
   }
 
   async get(bucket: string, key: string): Promise<S3ObjectStream> {
@@ -58,9 +61,18 @@ export class StorageService {
     };
   }
 
+  /** Efface l'objet et sa carte de partage dérivée. */
   async delete(bucket: string, key: string): Promise<void> {
     // S3 DeleteObject est idempotent : pas d'erreur si la clé n'existe pas.
     await this.s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    await this.deleteShareCardOf(bucket, key);
+  }
+
+  private async deleteShareCardOf(bucket: string, key: string): Promise<void> {
+    if (isShareCardKey(key)) return;
+    await this.s3.send(
+      new DeleteObjectCommand({ Bucket: bucket, Key: shareCardKey(key) }),
+    );
   }
 
   /**
