@@ -15,3 +15,14 @@ export async function deleteS3IfExists(
   if (!key) return;
   await storage.delete(bucket, key);
 }
+
+/** Suffixe de la carte de partage (JPEG 1200×630) dérivée d'un objet image : `blog/<id>.avif.share.jpg`. */
+const SHARE_CARD_SUFFIX = '.share.jpg';
+
+export function shareCardKey(key: string): string {
+  return `${key}${SHARE_CARD_SUFFIX}`;
+}
+
+export function isShareCardKey(key: string): boolean {
+  return key.endsWith(SHARE_CARD_SUFFIX);
+}
