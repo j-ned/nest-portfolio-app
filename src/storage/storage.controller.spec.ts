@@ -68,7 +68,7 @@ describe('StorageController', () => {
     expect(res.set).toHaveBeenCalledWith({
       'Content-Type': 'image/jpeg',
       'Content-Length': String(buffer.length),
-      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+      'Cache-Control': 'public, max-age=31536000, immutable',
     });
   });
 
