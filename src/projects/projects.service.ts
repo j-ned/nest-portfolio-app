@@ -9,7 +9,7 @@ import {
 } from '../database/schema/projects';
 import { StorageService } from '../storage/storage.service';
 import { ImageOptimizer } from '../storage/image-optimizer.service';
-import { deleteS3IfExists } from '../storage/s3-utils';
+import { contentHash, deleteS3IfExists } from '../storage/s3-utils';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { findByIdOrFail } from '../common/crud-helpers';
@@ -116,7 +116,9 @@ export class ProjectsService {
     // Quel que soit le format reçu, on stocke un AVIF ≤ 1600 px : le poids servi ne dépend
     // plus de l'export de l'admin (un JPEG photo de 2,8 Mo tombait en l'état sur la page).
     const image = await this.images.optimize(file.buffer);
-    const newKey = `projects/${id}.${image.ext}`;
+    // Clé dérivée du contenu : chaque nouvelle image a une nouvelle URL, l'ancienne peut donc être
+    // servie avec un cache immuable d'un an sans jamais afficher une image remplacée.
+    const newKey = `projects/${id}-${contentHash(image.buffer)}.${image.ext}`;
 
     // Ordre : upload → update DB → cleanup ancienne clé.
     // Si une étape échoue, on préfère un orphelin S3 (cleanup manuel possible)

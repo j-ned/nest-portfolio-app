@@ -107,6 +107,7 @@ export class ContactService {
       email: msg.email,
       subject: msg.subject,
       message: msg.message,
+      year: String(new Date().getFullYear()),
     };
     await Promise.all([
       this.mailer.sendMail({
