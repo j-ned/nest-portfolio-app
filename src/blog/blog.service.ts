@@ -15,7 +15,7 @@ import {
 } from '../database/schema/blog-posts';
 import { StorageService } from '../storage/storage.service';
 import { ImageOptimizer } from '../storage/image-optimizer.service';
-import { deleteS3IfExists } from '../storage/s3-utils';
+import { contentHash, deleteS3IfExists } from '../storage/s3-utils';
 import { AppConfigService } from '../config/app-config.service';
 import { CreateBlogPostDto } from './dto/create-blog-post.dto';
 import { UpdateBlogPostDto } from './dto/update-blog-post.dto';
@@ -160,7 +160,9 @@ export class BlogService {
     // Quel que soit le format reçu, on stocke un AVIF ≤ 1600 px : le poids servi ne dépend
     // plus de l'export de l'admin (un JPEG photo de 2,8 Mo tombait en l'état sur la page).
     const image = await this.images.optimize(file.buffer);
-    const newKey = `blog/${id}.${image.ext}`;
+    // Clé dérivée du contenu : chaque nouvelle image a une nouvelle URL, l'ancienne peut donc être
+    // servie avec un cache immuable d'un an sans jamais afficher une image remplacée.
+    const newKey = `blog/${id}-${contentHash(image.buffer)}.${image.ext}`;
 
     // Ordre : upload → update DB → cleanup ancienne clé.
     // Si une étape échoue, on préfère un orphelin S3 (cleanup manuel possible)
