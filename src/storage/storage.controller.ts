@@ -14,7 +14,9 @@ import type { Response } from 'express';
 import { ShareCardService } from './share-card.service';
 import { StorageService } from './storage.service';
 
-const CACHE_CONTROL = 'public, max-age=86400, stale-while-revalidate=604800';
+// Les clés portent un hachage du contenu (`<id>-<sha8>.avif`, et sa carte `.share.jpg` en dérive) :
+// une image remplacée change d'URL, celle-ci peut donc être gardée un an sans revalidation.
+const CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 /**
  * Whitelist des buckets servis publiquement via le proxy.
@@ -26,7 +28,7 @@ const PUBLIC_BUCKETS = new Set<string>(['portfolio-storage']);
 /**
  * Le rate limit global (10 req/60s) ne s'applique pas ici : une page peut
  * référencer N images, un dashboard admin avec une liste de projets en charge
- * autant qu'il y a de rows. Le cache HTTP (24h max-age) absorbe les répétitions.
+ * autant qu'il y a de rows. Le cache HTTP (un an, immutable) absorbe les répétitions.
  * R2 Class B (read) free tier = 1M req/mois, largement couvert pour un portfolio.
  */
 @SkipThrottle()
