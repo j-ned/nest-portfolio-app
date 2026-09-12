@@ -95,10 +95,36 @@ describe('StorageService', () => {
   });
 
   describe('delete', () => {
-    it('envoie un DeleteObjectCommand (idempotent)', async () => {
+    it("efface l'objet et sa carte de partage dérivée (idempotent)", async () => {
       s3Mock.on(DeleteObjectCommand).resolves({});
       await service.delete('my-bucket', 'foo.txt');
-      expect(s3Mock.commandCalls(DeleteObjectCommand)).toHaveLength(1);
+      const keys = s3Mock
+        .commandCalls(DeleteObjectCommand)
+        .map((c) => c.args[0].input.Key);
+      expect(keys).toEqual(['foo.txt', 'foo.txt.share.jpg']);
+    });
+  });
+
+  describe('carte de partage dérivée (<key>.share.jpg)', () => {
+    it("un nouvel upload de l'original jette la carte obsolète", async () => {
+      s3Mock.on(PutObjectCommand).resolves({});
+      s3Mock.on(DeleteObjectCommand).resolves({});
+      await service.upload('b', 'blog/1.avif', Buffer.from('x'), 'image/avif');
+      const deleted = s3Mock
+        .commandCalls(DeleteObjectCommand)
+        .map((c) => c.args[0].input.Key);
+      expect(deleted).toEqual(['blog/1.avif.share.jpg']);
+    });
+
+    it("l'upload de la carte elle-même ne cascade pas", async () => {
+      s3Mock.on(PutObjectCommand).resolves({});
+      await service.upload(
+        'b',
+        'blog/1.avif.share.jpg',
+        Buffer.from('x'),
+        'image/jpeg',
+      );
+      expect(s3Mock.commandCalls(DeleteObjectCommand)).toHaveLength(0);
     });
   });
 
