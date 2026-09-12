@@ -17,7 +17,12 @@ export async function deleteS3IfExists(
   await storage.delete(bucket, key);
 }
 
-/** Suffixe de la carte de partage (JPEG 1200×630) dérivée d'un objet image : `blog/<id>.avif.share.jpg`. */
+/** 8 hexa du SHA-256 : suffisant pour distinguer deux versions d'une même image. */
+export function contentHash(buffer: Buffer): string {
+  return createHash('sha256').update(buffer).digest('hex').slice(0, 8);
+}
+
+/** Suffixe de la carte de partage (JPEG 1200×630) dérivée d'un objet image : `blog/<id>-<sha8>.avif.share.jpg`. */
 const SHARE_CARD_SUFFIX = '.share.jpg';
 
 export function shareCardKey(key: string): string {
