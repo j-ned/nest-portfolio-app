@@ -32,6 +32,10 @@ export const projects = pgTable(
       .notNull()
       .default(sql`ARRAY[]::text[]`),
     description: text('description').notNull(),
+    // Champs éditoriaux (ADR-0010) : NULL = pas encore rédigé, bornes dans le DTO.
+    pitch: text('pitch'),
+    highlight: text('highlight'),
+    scope: text('scope'),
     image: text('image').notNull().default(''),
     techChoices: jsonb('tech_choices')
       .$type<TechChoice[]>()
