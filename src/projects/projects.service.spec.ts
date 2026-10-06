@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   ConflictException,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -12,12 +13,24 @@ import { createMockDb } from '../database/test-utils';
 import { StorageService } from '../storage/storage.service';
 import { ImageOptimizer } from '../storage/image-optimizer.service';
 import type { Project } from '../database/schema';
+import { ProjectImagesService } from './project-images.service';
+import type { ProjectImageResponse } from './project-gallery';
 
 describe('ProjectsService', () => {
   let service: ProjectsService;
   let module: TestingModule;
   let db: ReturnType<typeof createMockDb>;
   let storage: jest.Mocked<StorageService>;
+  let gallery: jest.Mocked<Pick<ProjectImagesService, 'galleryOf' | 'keysOf'>>;
+
+  const mkImage = (id: string): ProjectImageResponse => ({
+    id,
+    url: `/storage/portfolio-storage/project-images/${id}-12345678.avif`,
+    alt: `Capture ${id}`,
+    width: 1600,
+    height: 1000,
+    order: 0,
+  });
 
   const mkProject = (overrides: Partial<Project> = {}): Project => ({
     id: '11111111-1111-1111-1111-111111111111',
@@ -33,6 +46,7 @@ describe('ProjectsService', () => {
     repoUrl: null,
     repoUrlFront: null,
     repoUrlBack: null,
+    kind: 'demo',
     featured: false,
     order: 0,
     createdAt: new Date('2026-04-26T00:00:00Z'),
@@ -50,11 +64,17 @@ describe('ProjectsService', () => {
       getPublicUrl: jest.fn().mockReturnValue('https://example.test/url'),
     } as unknown as jest.Mocked<StorageService>;
 
+    gallery = {
+      galleryOf: jest.fn().mockResolvedValue(new Map()),
+      keysOf: jest.fn().mockResolvedValue([]),
+    };
+
     module = await Test.createTestingModule({
       providers: [
         ProjectsService,
         { provide: DRIZZLE, useValue: db },
         { provide: StorageService, useValue: storage },
+        { provide: ProjectImagesService, useValue: gallery },
         {
           provide: ImageOptimizer,
           useValue: {
@@ -210,6 +230,105 @@ describe('ProjectsService', () => {
     });
   });
 
+  describe('gallery (ADR-0009)', () => {
+    it('Given projects with and without captures, When listing, Then each one carries its own gallery', async () => {
+      db.orderBy.mockResolvedValueOnce([
+        mkProject({ id: 'a' }),
+        mkProject({ id: 'b' }),
+      ]);
+      gallery.galleryOf.mockResolvedValueOnce(
+        new Map([['a', [mkImage('x'), mkImage('y')]]]),
+      );
+      const result = await service.findAll({});
+      expect(gallery.galleryOf).toHaveBeenCalledWith(['a', 'b']);
+      expect(result[0].gallery.map((i) => i.id)).toEqual(['x', 'y']);
+      expect(result[1].gallery).toEqual([]);
+    });
+
+    it('Given a project with captures, When read by id, Then its gallery is included', async () => {
+      const row = mkProject();
+      db.limit.mockResolvedValueOnce([row]);
+      gallery.galleryOf.mockResolvedValueOnce(
+        new Map([[row.id, [mkImage('x')]]]),
+      );
+      const result = await service.findById(row.id);
+      expect(gallery.galleryOf).toHaveBeenCalledWith([row.id]);
+      expect(result.gallery).toEqual([mkImage('x')]);
+    });
+
+    it('Given a new project, When created, Then its gallery is empty without a query', async () => {
+      db.returning.mockResolvedValueOnce([mkProject()]);
+      const result = await service.create({
+        title: 'Mon site',
+        category: 'web',
+        description: 'd',
+      });
+      expect(result.gallery).toEqual([]);
+      expect(gallery.galleryOf).not.toHaveBeenCalled();
+    });
+
+    it('Given a project with captures, When updated, Then the response keeps its gallery', async () => {
+      const row = mkProject();
+      db.limit.mockResolvedValueOnce([row]);
+      db.returning.mockResolvedValueOnce([row]);
+      gallery.galleryOf.mockResolvedValueOnce(
+        new Map([[row.id, [mkImage('x')]]]),
+      );
+      const result = await service.update(row.id, { featured: true });
+      expect(result.gallery).toEqual([mkImage('x')]);
+    });
+
+    it('Given a project with captures, When its cover is replaced, Then the response keeps its gallery', async () => {
+      const row = mkProject();
+      db.limit.mockResolvedValueOnce([row]);
+      db.returning.mockResolvedValueOnce([row]);
+      gallery.galleryOf.mockResolvedValueOnce(
+        new Map([[row.id, [mkImage('x')]]]),
+      );
+      const result = await service.uploadImage(row.id, {
+        buffer: Buffer.from('f'),
+      } as Express.Multer.File);
+      expect(result.gallery).toEqual([mkImage('x')]);
+    });
+  });
+
+  describe('kind (ADR-0008)', () => {
+    it('Given a kind, When creating, Then it is inserted and exposed', async () => {
+      db.returning.mockResolvedValueOnce([mkProject({ kind: 'production' })]);
+      const result = await service.create({
+        title: 'Mon site',
+        category: 'web',
+        description: 'desc',
+        kind: 'production',
+      });
+      expect(db.values).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'production' }),
+      );
+      expect(result.kind).toBe('production');
+    });
+
+    it('Given no kind, When creating, Then kind is left to the column default', async () => {
+      db.returning.mockResolvedValueOnce([mkProject()]);
+      await service.create({
+        title: 'Mon site',
+        category: 'web',
+        description: 'd',
+      });
+      const [inserted] = db.values.mock.calls[0] as [Record<string, unknown>];
+      expect(inserted).not.toHaveProperty('kind');
+    });
+
+    it('Given a kind, When updating, Then it is written and exposed', async () => {
+      db.limit.mockResolvedValueOnce([mkProject()]);
+      db.returning.mockResolvedValueOnce([mkProject({ kind: 'script' })]);
+      const result = await service.update(mkProject().id, { kind: 'script' });
+      expect(db.set).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'script' }),
+      );
+      expect(result.kind).toBe('script');
+    });
+  });
+
   describe('update', () => {
     it('throw NotFoundException si projet absent', async () => {
       db.limit.mockResolvedValueOnce([]);
@@ -305,6 +424,67 @@ describe('ProjectsService', () => {
         'portfolio-storage',
         'projects/<id>.webp',
       );
+    });
+
+    it('Given a project with a gallery, When removed, Then its capture keys are read before and deleted from S3 after the row', async () => {
+      const current = mkProject({ image: 'projects/cover.avif' });
+      const calls: string[] = [];
+      db.limit.mockResolvedValueOnce([current]);
+      gallery.keysOf.mockImplementationOnce(() => {
+        calls.push('keysOf');
+        return Promise.resolve([
+          'project-images/a.avif',
+          'project-images/b.avif',
+        ]);
+      });
+      db.where.mockReturnValueOnce(db).mockImplementationOnce(() => {
+        calls.push('db.delete');
+        return Promise.resolve(undefined);
+      });
+      storage.delete.mockImplementation((_bucket, key) => {
+        calls.push(`s3:${key}`);
+        return Promise.resolve();
+      });
+
+      await service.remove(current.id);
+
+      expect(calls).toEqual([
+        'keysOf',
+        'db.delete',
+        's3:projects/cover.avif',
+        's3:project-images/a.avif',
+        's3:project-images/b.avif',
+      ]);
+    });
+
+    it('Given one S3 delete fails after the row is gone, When removed, Then the other keys are still deleted, the failure is logged and no error reaches the client', async () => {
+      const current = mkProject({ image: 'projects/cover.avif' });
+      db.limit.mockResolvedValueOnce([current]);
+      gallery.keysOf.mockResolvedValueOnce([
+        'project-images/a.avif',
+        'project-images/b.avif',
+      ]);
+      storage.delete.mockImplementation((_bucket, key) =>
+        key === 'project-images/a.avif'
+          ? Promise.reject(new Error('S3 down'))
+          : Promise.resolve(),
+      );
+      const logError = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      await expect(service.remove(current.id)).resolves.toBeUndefined();
+
+      expect(storage.delete.mock.calls.map(([, key]) => key)).toEqual([
+        'projects/cover.avif',
+        'project-images/a.avif',
+        'project-images/b.avif',
+      ]);
+      expect(logError).toHaveBeenCalledTimes(1);
+      expect(String(logError.mock.calls[0][0])).toContain(
+        'project-images/a.avif',
+      );
+      logError.mockRestore();
     });
 
     it("ne touche pas S3 si pas d'image", async () => {
