@@ -39,6 +39,9 @@ describe('ProjectsService', () => {
     category: 'web',
     tags: [],
     description: 'Description',
+    pitch: null,
+    highlight: null,
+    scope: null,
     image: '',
     techChoices: [],
     architectureDecisions: [],
@@ -595,6 +598,97 @@ describe('ProjectsService', () => {
         UnprocessableEntityException,
       );
       expect(storage.upload).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('editorial fields (ADR-0010)', () => {
+    const EDITORIAL = {
+      pitch: 'Le budget familial et le suivi médical de toute la famille.',
+      highlight: 'Chiffrement de bout en bout côté client',
+      scope: 'Conception, développement, déploiement',
+    };
+
+    it('Given a pitch, a highlight and a scope, When creating, Then they are inserted and exposed', async () => {
+      db.returning.mockResolvedValueOnce([{ ...mkProject(), ...EDITORIAL }]);
+      const result = await service.create({
+        title: 'Mon site',
+        category: 'web',
+        description: 'desc',
+        ...EDITORIAL,
+      });
+      expect(db.values).toHaveBeenCalledWith(
+        expect.objectContaining(EDITORIAL),
+      );
+      expect(result).toMatchObject(EDITORIAL);
+    });
+
+    it('Given none of them, When creating, Then the insert leaves them to the NULL columns', async () => {
+      db.returning.mockResolvedValueOnce([mkProject()]);
+      await service.create({
+        title: 'Mon site',
+        category: 'web',
+        description: 'd',
+      });
+      const [inserted] = db.values.mock.calls[0] as [Record<string, unknown>];
+      expect(inserted).not.toHaveProperty('pitch');
+      expect(inserted).not.toHaveProperty('highlight');
+      expect(inserted).not.toHaveProperty('scope');
+    });
+
+    it('Given stored values, When listing, Then every response carries the three keys', async () => {
+      db.orderBy.mockResolvedValueOnce([
+        { ...mkProject({ id: 'a' }), ...EDITORIAL },
+        {
+          ...mkProject({ id: 'b' }),
+          pitch: null,
+          highlight: null,
+          scope: null,
+        },
+      ]);
+      const [written, blank] = await service.findAll({});
+      expect(written).toMatchObject(EDITORIAL);
+      expect(blank).toMatchObject({
+        pitch: null,
+        highlight: null,
+        scope: null,
+      });
+    });
+
+    it('Given null on the three fields, When updating, Then null is written and exposed', async () => {
+      const cleared = { pitch: null, highlight: null, scope: null };
+      db.limit.mockResolvedValueOnce([{ ...mkProject(), ...EDITORIAL }]);
+      db.returning.mockResolvedValueOnce([mkProject(cleared)]);
+      const result = await service.update(mkProject().id, cleared);
+      expect(db.set).toHaveBeenCalledWith(expect.objectContaining(cleared));
+      expect(result).toMatchObject(cleared);
+    });
+
+    it('Given a new pitch only, When updating, Then the highlight and the scope are left out of the SET', async () => {
+      db.limit.mockResolvedValueOnce([{ ...mkProject(), ...EDITORIAL }]);
+      db.returning.mockResolvedValueOnce([
+        { ...mkProject(), ...EDITORIAL, pitch: 'Nouvelle accroche' },
+      ]);
+      const result = await service.update(mkProject().id, {
+        pitch: 'Nouvelle accroche',
+      });
+      const [patch] = db.set.mock.calls[0] as [Record<string, unknown>];
+      expect(patch).toMatchObject({ pitch: 'Nouvelle accroche' });
+      expect(patch).not.toHaveProperty('highlight');
+      expect(patch).not.toHaveProperty('scope');
+      expect(result).toMatchObject({
+        pitch: 'Nouvelle accroche',
+        highlight: EDITORIAL.highlight,
+        scope: EDITORIAL.scope,
+      });
+    });
+
+    it('Given a stored project, When its cover is uploaded, Then the response keeps the three fields', async () => {
+      db.limit.mockResolvedValueOnce([{ ...mkProject(), ...EDITORIAL }]);
+      db.returning.mockResolvedValueOnce([{ ...mkProject(), ...EDITORIAL }]);
+      const result = await service.uploadImage(mkProject().id, {
+        buffer: Buffer.from('f'),
+      } as Express.Multer.File);
+      expect(result).toMatchObject(EDITORIAL);
     });
   });
 });
