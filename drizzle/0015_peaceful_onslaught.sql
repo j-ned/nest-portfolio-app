@@ -1,0 +1,2 @@
+ALTER TABLE "project" ADD COLUMN "kind" text DEFAULT 'demo' NOT NULL;--> statement-breakpoint
+ALTER TABLE "project" ADD CONSTRAINT "project_kind_check" CHECK ("project"."kind" in ('production', 'demo', 'script'));

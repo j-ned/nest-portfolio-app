@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger } from '@nestjs/common';
 import { and, asc, desc, eq, type SQL } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
@@ -12,23 +12,27 @@ import { ImageOptimizer } from '../storage/image-optimizer.service';
 import { contentHash, deleteS3IfExists } from '../storage/s3-utils';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import type { ProjectImageResponse, ProjectResponse } from './project-gallery';
+import { ProjectImagesService } from './project-images.service';
 import { findByIdOrFail } from '../common/crud-helpers';
 import { isUniqueViolation, slugify } from '../common/utils';
 
 @Injectable()
 export class ProjectsService {
   private static readonly BUCKET = 'portfolio-storage';
+  private readonly logger = new Logger(ProjectsService.name);
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly storage: StorageService,
     private readonly images: ImageOptimizer,
+    private readonly gallery: ProjectImagesService,
   ) {}
 
   async findAll(filters: {
     category?: string;
     featured?: boolean;
-  }): Promise<Project[]> {
+  }): Promise<ProjectResponse[]> {
     const conditions: SQL[] = [];
     if (filters.category)
       conditions.push(eq(projects.category, filters.category));
@@ -39,22 +43,23 @@ export class ProjectsService {
       .from(projects)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(asc(projects.order), desc(projects.createdAt));
-    return rows.map((r) => this.toResponse(r));
+    const galleries = await this.gallery.galleryOf(rows.map((r) => r.id));
+    return rows.map((r) => this.toResponse(r, galleries.get(r.id) ?? []));
   }
 
-  async findById(id: string): Promise<Project> {
+  async findById(id: string): Promise<ProjectResponse> {
     const row = await this.findByIdRaw(id);
-    return this.toResponse(row);
+    return this.toResponse(row, await this.galleryOfOne(id));
   }
 
-  async create(dto: CreateProjectDto): Promise<Project> {
+  async create(dto: CreateProjectDto): Promise<ProjectResponse> {
     const slug = slugify(dto.title);
     try {
       const [row] = await this.db
         .insert(projects)
         .values({ ...dto, slug })
         .returning();
-      return this.toResponse(row);
+      return this.toResponse(row, []);
     } catch (err) {
       if (isUniqueViolation(err, 'slug')) {
         throw new ConflictException(
@@ -65,7 +70,7 @@ export class ProjectsService {
     }
   }
 
-  async update(id: string, dto: UpdateProjectDto): Promise<Project> {
+  async update(id: string, dto: UpdateProjectDto): Promise<ProjectResponse> {
     const current = await this.findByIdRaw(id);
 
     // image extrait du spread : il ne peut être que null ou undefined côté DTO,
@@ -102,16 +107,38 @@ export class ProjectsService {
       );
     }
 
-    return this.toResponse(row);
+    return this.toResponse(row, await this.galleryOfOne(id));
   }
 
   async remove(id: string): Promise<void> {
     const current = await this.findByIdRaw(id);
+    // Les lignes de galerie partent par cascade : leurs clés S3 sont lues avant, effacées après.
+    const galleryKeys = await this.gallery.keysOf(id);
     await this.db.delete(projects).where(eq(projects.id, id));
-    await deleteS3IfExists(this.storage, ProjectsService.BUCKET, current.image);
+
+    // La ligne est partie : un échec S3 ne laisse qu'un orphelin, logué, jamais une erreur 500.
+    const keys = [current.image, ...galleryKeys];
+    const results = await Promise.allSettled(
+      keys.map((key) =>
+        deleteS3IfExists(this.storage, ProjectsService.BUCKET, key),
+      ),
+    );
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        this.logger.error(
+          `S3 orphan after deleting project ${id}: ${keys[i]}`,
+          result.reason instanceof Error
+            ? result.reason.stack
+            : String(result.reason),
+        );
+      }
+    });
   }
 
-  async uploadImage(id: string, file: Express.Multer.File): Promise<Project> {
+  async uploadImage(
+    id: string,
+    file: Express.Multer.File,
+  ): Promise<ProjectResponse> {
     const current = await this.findByIdRaw(id);
     // Quel que soit le format reçu, on stocke un AVIF ≤ 1600 px : le poids servi ne dépend
     // plus de l'export de l'admin (un JPEG photo de 2,8 Mo tombait en l'état sur la page).
@@ -144,7 +171,7 @@ export class ProjectsService {
       );
     }
 
-    return this.toResponse(row);
+    return this.toResponse(row, await this.galleryOfOne(id));
   }
 
   // Helper privé : retourne la row brute (sans transformation URL).
@@ -153,10 +180,20 @@ export class ProjectsService {
     return findByIdOrFail<Project>(this.db, projects, id, 'Project');
   }
 
-  // Transforme la key DB en URL publique pour la sortie API.
-  private toResponse(p: Project): Project {
+  private async galleryOfOne(
+    id: string,
+  ): Promise<readonly ProjectImageResponse[]> {
+    return (await this.gallery.galleryOf([id])).get(id) ?? [];
+  }
+
+  // Transforme la key DB en URL publique pour la sortie API, galerie jointe (ADR-0009 §4).
+  private toResponse(
+    p: Project,
+    gallery: readonly ProjectImageResponse[],
+  ): ProjectResponse {
     return {
       ...p,
+      gallery,
       image: p.image
         ? this.storage.getPublicUrl(ProjectsService.BUCKET, p.image)
         : '',
