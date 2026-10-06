@@ -1,5 +1,6 @@
+import { applyDecorators } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -19,8 +20,28 @@ import {
   PROJECT_KINDS,
   type ProjectKind,
 } from '../../database/schema/projects';
+import {
+  PROJECT_FACT_MAX,
+  PROJECT_PITCH_MAX,
+  toNullableText,
+} from '../project-editorial';
 import { ArchitectureDecisionDto } from './architecture-decision.dto';
 import { TechChoiceDto } from './tech-choice.dto';
+
+/**
+ * Champ éditorial facultatif (ADR-0010 §3) : trim, vide → null, null efface, borne après trim.
+ * Garder le type `string | null` : il se reflète en `Object`, donc `enableImplicitConversion`
+ * ne change pas `42` en `'42'` avant `@IsString` (un type `string` seul le ferait).
+ */
+function EditorialText(max: number): PropertyDecorator {
+  return applyDecorators(
+    Transform(({ value }: { value: unknown }) => toNullableText(value)),
+    IsOptional(),
+    ValidateIf((_, v) => v !== null),
+    IsString(),
+    MaxLength(max),
+  );
+}
 
 export class CreateProjectDto {
   @ApiProperty({ maxLength: 200 })
@@ -48,6 +69,30 @@ export class CreateProjectDto {
   @IsNotEmpty()
   @MaxLength(5000)
   description!: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    maxLength: PROJECT_PITCH_MAX,
+    nullable: true,
+  })
+  @EditorialText(PROJECT_PITCH_MAX)
+  pitch?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    maxLength: PROJECT_FACT_MAX,
+    nullable: true,
+  })
+  @EditorialText(PROJECT_FACT_MAX)
+  highlight?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    maxLength: PROJECT_FACT_MAX,
+    nullable: true,
+  })
+  @EditorialText(PROJECT_FACT_MAX)
+  scope?: string | null;
 
   @ApiPropertyOptional({ format: 'uri', nullable: true })
   @IsOptional()
