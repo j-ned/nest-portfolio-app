@@ -9,7 +9,12 @@ import { BlogController } from '../blog/blog.controller';
 import { CvController } from '../cv/cv.controller';
 import { RuntimeConfigController } from '../runtime-config/runtime-config.controller';
 import { ProjectsController } from '../projects/projects.controller';
-import { AUTH_ATTEMPT_THROTTLE, PUBLIC_READ_THROTTLE } from './throttle';
+import { ProjectImagesController } from '../projects/project-images.controller';
+import {
+  ADMIN_WRITE_THROTTLE,
+  AUTH_ATTEMPT_THROTTLE,
+  PUBLIC_READ_THROTTLE,
+} from './throttle';
 
 type Ctor = abstract new (...args: never[]) => object;
 
@@ -56,6 +61,22 @@ describe('public read throttle', () => {
   ] as const)('%s allows 5 attempts per minute', (_route, ctor, name) => {
     expect(limitOf(handler(ctor, name))).toBe(
       AUTH_ATTEMPT_THROTTLE.default.limit,
+    );
+    expect(ttlOf(handler(ctor, name))).toBe(60_000);
+  });
+
+  it.each([
+    ['POST /projects/:id/images', ProjectImagesController, 'upload'],
+    [
+      'PATCH /projects/:id/images/:imageId',
+      ProjectImagesController,
+      'updateAlt',
+    ],
+    ['DELETE /projects/:id/images/:imageId', ProjectImagesController, 'remove'],
+    ['PUT /projects/:id/images/order', ProjectImagesController, 'reorder'],
+  ] as const)('%s allows 60 admin writes per minute', (_route, ctor, name) => {
+    expect(limitOf(handler(ctor, name))).toBe(
+      ADMIN_WRITE_THROTTLE.default.limit,
     );
     expect(ttlOf(handler(ctor, name))).toBe(60_000);
   });

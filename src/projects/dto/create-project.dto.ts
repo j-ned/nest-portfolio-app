@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -14,6 +15,10 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import {
+  PROJECT_KINDS,
+  type ProjectKind,
+} from '../../database/schema/projects';
 import { ArchitectureDecisionDto } from './architecture-decision.dto';
 import { TechChoiceDto } from './tech-choice.dto';
 
@@ -83,6 +88,13 @@ export class CreateProjectDto {
   @ValidateNested({ each: true })
   @Type(() => ArchitectureDecisionDto)
   architectureDecisions?: ArchitectureDecisionDto[];
+
+  @ApiPropertyOptional({ enum: PROJECT_KINDS, default: 'demo' })
+  // Optionnel mais jamais null : la colonne est NOT NULL (ADR-0008 §4). Pas de @IsOptional,
+  // qui laisserait passer null jusqu'à une erreur 500 en base.
+  @ValidateIf((_, v) => v !== undefined)
+  @IsIn([...PROJECT_KINDS])
+  kind?: ProjectKind;
 
   @ApiPropertyOptional({ default: false })
   @IsOptional()
