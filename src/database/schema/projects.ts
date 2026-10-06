@@ -6,9 +6,14 @@ import {
   boolean,
   jsonb,
   index,
+  check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { timestamps } from '../../common/utils';
+
+/** Nature d'un projet (ADR-0008) : union fermée, distincte de `category`. */
+export const PROJECT_KINDS = ['production', 'demo', 'script'] as const;
+export type ProjectKind = (typeof PROJECT_KINDS)[number];
 
 export type TechChoice = { techno: string; why: string };
 export type ArchitectureDecision = { decision: string; rationale: string };
@@ -40,6 +45,7 @@ export const projects = pgTable(
     repoUrl: text('repo_url'),
     repoUrlFront: text('repo_url_front'),
     repoUrlBack: text('repo_url_back'),
+    kind: text('kind', { enum: PROJECT_KINDS }).notNull().default('demo'),
     featured: boolean('featured').notNull().default(false),
     order: integer('order').notNull().default(0),
     ...timestamps(),
@@ -48,6 +54,10 @@ export const projects = pgTable(
     categoryIdx: index('project_category_idx').on(t.category),
     featuredIdx: index('project_featured_idx').on(t.featured),
     orderIdx: index('project_order_idx').on(t.order),
+    kindCheck: check(
+      'project_kind_check',
+      sql`${t.kind} in ('production', 'demo', 'script')`,
+    ),
   }),
 );
 
