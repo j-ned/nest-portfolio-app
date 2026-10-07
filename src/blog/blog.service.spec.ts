@@ -7,6 +7,7 @@ import { createMockDb } from '../database/test-utils';
 import { StorageService } from '../storage/storage.service';
 import { ImageOptimizer } from '../storage/image-optimizer.service';
 import { AppConfigService } from '../config/app-config.service';
+import { BlogContentImagesService } from './blog-content-images.service';
 import {
   blogPosts,
   type BlogPost,
@@ -18,6 +19,7 @@ describe('BlogService', () => {
   let db: ReturnType<typeof createMockDb>;
   let storage: jest.Mocked<StorageService>;
   let config: jest.Mocked<AppConfigService>;
+  let contentImages: { removeUnreferenced: jest.Mock };
 
   const mkPost = (overrides: Partial<BlogPost> = {}): BlogPost => ({
     id: '11111111-1111-1111-1111-111111111111',
@@ -47,6 +49,9 @@ describe('BlogService', () => {
     config = {
       dokployDeployWebhookUrl: undefined,
     } as unknown as jest.Mocked<AppConfigService>;
+    contentImages = {
+      removeUnreferenced: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -54,6 +59,7 @@ describe('BlogService', () => {
         { provide: DRIZZLE, useValue: db },
         { provide: StorageService, useValue: storage },
         { provide: AppConfigService, useValue: config },
+        { provide: BlogContentImagesService, useValue: contentImages },
         {
           provide: ImageOptimizer,
           useValue: {
@@ -322,6 +328,107 @@ describe('BlogService', () => {
 
       expect(fetchSpy).not.toHaveBeenCalled();
       fetchSpy.mockRestore();
+    });
+  });
+
+  describe('remove — images du corps (spec 016, A2)', () => {
+    const ID = '11111111-1111-1111-1111-111111111111';
+    const KEY_A =
+      'blog-content/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-a1b2c3d4-1600x900.avif';
+    const KEY_B =
+      'blog-content/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb-deadbeef-800x600.avif';
+    const markdown = [
+      '# Titre',
+      `![a](https://api.nedellec-julien.fr/api/storage/portfolio-storage/${KEY_A})`,
+      `![b](/storage/portfolio-storage/${KEY_B})`,
+      `![a encore](/storage/portfolio-storage/${KEY_A})`,
+      '![externe](https://example.com/photo.avif)',
+    ].join('\n\n');
+
+    it('Given a post citing body images, When removed, Then its cited keys are handed over for cleanup, excluding itself', async () => {
+      db.limit.mockResolvedValueOnce([
+        mkPost({ contentMarkdown: markdown, coverImage: 'blog/cover.avif' }),
+      ]);
+
+      await service.remove(ID);
+
+      expect(contentImages.removeUnreferenced).toHaveBeenCalledWith(
+        [KEY_A, KEY_B],
+        ID,
+      );
+    });
+
+    it('Given a post, When removed, Then the row is deleted before any storage cleanup', async () => {
+      db.limit.mockResolvedValueOnce([
+        mkPost({ contentMarkdown: markdown, coverImage: 'blog/cover.avif' }),
+      ]);
+
+      await service.remove(ID);
+
+      const dbDelete = db.delete.mock.invocationCallOrder[0];
+      expect(dbDelete).toBeLessThan(storage.delete.mock.invocationCallOrder[0]);
+      expect(dbDelete).toBeLessThan(
+        contentImages.removeUnreferenced.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('Given a post with a cover, When removed, Then the cover is still deleted as before', async () => {
+      db.limit.mockResolvedValueOnce([
+        mkPost({ contentMarkdown: markdown, coverImage: 'blog/cover.avif' }),
+      ]);
+
+      await service.remove(ID);
+
+      expect(storage.delete.mock.calls).toContainEqual([
+        'portfolio-storage',
+        'blog/cover.avif',
+      ]);
+    });
+
+    it('Given a post without body images, When removed, Then the cleanup receives no key', async () => {
+      db.limit.mockResolvedValueOnce([mkPost({ contentMarkdown: '# Titre' })]);
+
+      await service.remove(ID);
+
+      expect(contentImages.removeUnreferenced).toHaveBeenCalledWith([], ID);
+    });
+
+    it('Given the cover deletion fails, When removed, Then the body cleanup still runs, the error is logged and the removal succeeds', async () => {
+      const logError = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      db.limit.mockResolvedValueOnce([
+        mkPost({ contentMarkdown: markdown, coverImage: 'blog/cover.avif' }),
+      ]);
+      storage.delete.mockRejectedValueOnce(new Error('S3 down'));
+
+      await expect(service.remove(ID)).resolves.toBeUndefined();
+
+      expect(contentImages.removeUnreferenced).toHaveBeenCalledWith(
+        [KEY_A, KEY_B],
+        ID,
+      );
+      expect(logError).toHaveBeenCalledWith(
+        expect.stringContaining('blog/cover.avif'),
+        expect.anything(),
+      );
+      logError.mockRestore();
+    });
+
+    it('Given the cleanup fails, When removed, Then the removal still succeeds and the error is logged', async () => {
+      const logError = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      db.limit.mockResolvedValueOnce([mkPost({ contentMarkdown: markdown })]);
+      contentImages.removeUnreferenced.mockRejectedValueOnce(
+        new Error('DB down'),
+      );
+
+      await expect(service.remove(ID)).resolves.toBeUndefined();
+
+      expect(db.delete).toHaveBeenCalled();
+      expect(logError).toHaveBeenCalled();
+      logError.mockRestore();
     });
   });
 
