@@ -6,6 +6,7 @@ import {
 } from '@nestjs/throttler/dist/throttler.constants';
 import { AuthController } from '../auth/auth.controller';
 import { BlogController } from '../blog/blog.controller';
+import { BlogContentImagesController } from '../blog/blog-content-images.controller';
 import { CvController } from '../cv/cv.controller';
 import { RuntimeConfigController } from '../runtime-config/runtime-config.controller';
 import { ProjectsController } from '../projects/projects.controller';
@@ -74,6 +75,7 @@ describe('public read throttle', () => {
     ],
     ['DELETE /projects/:id/images/:imageId', ProjectImagesController, 'remove'],
     ['PUT /projects/:id/images/order', ProjectImagesController, 'reorder'],
+    ['POST /blog/content-images', BlogContentImagesController, 'upload'],
   ] as const)('%s allows 60 admin writes per minute', (_route, ctor, name) => {
     expect(limitOf(handler(ctor, name))).toBe(
       ADMIN_WRITE_THROTTLE.default.limit,

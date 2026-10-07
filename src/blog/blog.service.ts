@@ -17,6 +17,8 @@ import { StorageService } from '../storage/storage.service';
 import { ImageOptimizer } from '../storage/image-optimizer.service';
 import { contentHash, deleteS3IfExists } from '../storage/s3-utils';
 import { AppConfigService } from '../config/app-config.service';
+import { contentImageKeysIn } from './blog-content-image';
+import { BlogContentImagesService } from './blog-content-images.service';
 import { CreateBlogPostDto } from './dto/create-blog-post.dto';
 import { UpdateBlogPostDto } from './dto/update-blog-post.dto';
 import { findByIdOrFail } from '../common/crud-helpers';
@@ -32,6 +34,7 @@ export class BlogService {
     private readonly storage: StorageService,
     private readonly config: AppConfigService,
     private readonly images: ImageOptimizer,
+    private readonly contentImages: BlogContentImagesService,
   ) {}
 
   async findAllPublished(): Promise<BlogPost[]> {
@@ -143,11 +146,27 @@ export class BlogService {
   async remove(id: string): Promise<void> {
     const current = await this.findByIdRaw(id);
     await this.db.delete(blogPosts).where(eq(blogPosts.id, id));
+    // La ligne est supprimée : un échec S3 ne laisse qu'un orphelin, il est journalisé sans
+    // faire échouer la suppression ni sauter le nettoyage suivant.
     await deleteS3IfExists(
       this.storage,
       BlogService.BUCKET,
       current.coverImage,
+    ).catch((err: unknown) =>
+      this.logger.error(
+        `Suppression de la couverture ${current.coverImage} de l'article ${id} en échec`,
+        err,
+      ),
     );
+    // Images du corps que nul autre article ne cite.
+    await this.contentImages
+      .removeUnreferenced(contentImageKeysIn(current.contentMarkdown), id)
+      .catch((err: unknown) =>
+        this.logger.error(
+          `Nettoyage des images du corps de l'article ${id} en échec`,
+          err,
+        ),
+      );
     // Un article publié disparaît du site statique seulement après rebuild.
     if (current.status === 'published') this.triggerDeploy();
   }
