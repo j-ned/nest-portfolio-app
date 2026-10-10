@@ -39,7 +39,7 @@ Modules importés dans `AppModule` (`src/app.module.ts`), dans l'ordre :
 7. **`AuthModule`** - users, JWT, 2FA TOTP.
 8. **`StorageModule`** (`@Global`) - `StorageService` (S3) + `StorageController` (proxy public).
 9. **`ProjectsModule`** - CRUD projets + upload image.
-10. **`BlogModule`** - CRUD admin des articles de blog + endpoints publics (liste/détail/like). Déclenche le webhook `DOKPLOY_DEPLOY_WEBHOOK_URL` pour rebuild le site statique quand le contenu publié change.
+10. **`BlogModule`** - CRUD admin des articles de blog + endpoints publics (liste/détail/like), lus à la requête par le front (aucune écriture ne déclenche de rebuild).
 11. **`ProfileModule`** - contenu de la page Parcours (`/about`) : document unique versionné + portrait, lu à la requête par le front (aucune écriture ne déclenche de rebuild).
 12. **`MailerModule`** (`@Global`) - `MailerService` (SMTP).
 13. **`ThrottlerModule`** (global, `APP_GUARD`) - 10 req/60s par défaut, overridable par endpoint via `@Throttle()`.
@@ -68,7 +68,6 @@ Toute la config passe par les variables d'env, validées au boot par Zod (`src/c
 | `ADMIN_INITIAL_PASSWORD`    | string, 12+ chars                                  | _(optionnel)_                | Requis uniquement pour `pnpm db:seed`                                                           |
 | `TOTP_APP_NAME`             | string                                             | `J-Ned Portfolio`            | Nom affiché dans l'app authenticator                                                            |
 | `CORS_ORIGINS`              | CSV                                                | `http://localhost:4200`      | Origines autorisées (credentials)                                                               |
-| `DOKPLOY_DEPLOY_WEBHOOK_URL` | URL                                                | _(optionnel)_                 | Webhook de rebuild Dokploy du site statique, appelé fire-and-forget par `BlogModule` (vide = no-op) |
 | `S3_ENDPOINT`               | URL                                                | _(requis)_                   | Endpoint S3-compatible (MinIO/R2)                                                               |
 | `S3_REGION`                 | string                                             | _(requis)_                   | Région S3                                                                                       |
 | `S3_ACCESS_KEY`             | string, 4+ chars                                   | _(requis)_                   | Access key S3                                                                                   |
@@ -261,7 +260,7 @@ CRUD admin des projets affichés sur le portfolio.
 
 ## Blog
 
-CRUD admin des articles de blog + endpoints publics de consultation/like. Le site public consomme les articles au build (pages `/blog` prerendered, pas de SSR par requête) - toute mutation qui change ce qui doit être visible déclenche donc un rebuild Dokploy.
+CRUD admin des articles de blog + endpoints publics de consultation/like. Le front lit les articles à la requête (rendu serveur, spec front 022) : une écriture admin est visible dès la requête suivante, sans rebuild.
 
 **Schéma** : table `blog_post` (uuid, `slug` unique, `excerpt`, `contentMarkdown`, `coverImage` (key S3), `tags` (array), `status: 'draft' | 'published'`, `likesCount`, `publishedAt`).
 
@@ -279,8 +278,6 @@ CRUD admin des articles de blog + endpoints publics de consultation/like. Le sit
 | POST    | `/blog/posts/:slug/like` | ❌   | Incrémente le compteur de likes d'un article **publié** (public, pas d'auth). 404 sur un slug draft/dépublié/inconnu.                          |
 
 **Lifecycle S3** : identique à Projects (key `blog/<id>.<ext>`, ordre upload → update DB → cleanup ancienne clé).
-
-**Rebuild Dokploy** : `DOKPLOY_DEPLOY_WEBHOOK_URL` (optionnel, no-op si absent) est appelé fire-and-forget (`fetch` avec timeout 5s ; réponse non-2xx ou timeout loggés en erreur) à chaque mutation qui change le rendu du site public - publication (création ou transition draft→published), édition d'un article déjà publié, dépublication, ou suppression d'un article publié. **Setup manuel requis** : créer un webhook de rebuild dans le dashboard Dokploy de l'app statique du portfolio, puis coller son URL dans `DOKPLOY_DEPLOY_WEBHOOK_URL`.
 
 ## Profile (page Parcours)
 
