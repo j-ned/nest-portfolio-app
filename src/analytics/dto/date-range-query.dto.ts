@@ -49,3 +49,13 @@ export class MetricsQueryDto extends DateRangeQueryDto {
   @IsIn([...METRIC_TYPES])
   type!: MetricType;
 }
+
+/** Événements dont l'admin lit le détail par `entityId` (emplacement de formulaire, canal). */
+export const EVENT_COUNT_TYPES = ['contact_submit', 'outbound_click'] as const;
+export type EventCountType = (typeof EVENT_COUNT_TYPES)[number];
+
+export class EventsQueryDto extends DateRangeQueryDto {
+  @ApiProperty({ enum: EVENT_COUNT_TYPES })
+  @IsIn([...EVENT_COUNT_TYPES])
+  type!: EventCountType;
+}

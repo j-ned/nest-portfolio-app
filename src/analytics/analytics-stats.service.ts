@@ -16,55 +16,82 @@ import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
 import { pageView, analyticsEvent, dailyStat } from '../database/schema';
 import {
-  endOfDay,
-  formatDate,
-  startOfDay,
+  endOfUtcDay,
+  formatUtcDate,
+  startOfUtcDay,
   subDays,
   subMinutes,
 } from '../common/utils';
 import { computeAggregates } from './analytics-aggregates';
-import { DateRangeQueryDto, MetricsQueryDto } from './dto/date-range-query.dto';
+import { type OverviewDay, summarizeOverview } from './analytics-overview';
+import {
+  DateRangeQueryDto,
+  EventsQueryDto,
+  MetricsQueryDto,
+} from './dto/date-range-query.dto';
 
 type DateBounds = {
   start: Date;
   end: Date;
+  fromDateStr: string;
   toDateStr: string;
   isTodayIncluded: boolean;
 };
+
+/** Profondeur des tables brutes (purge du cron) : au-delà, seuls les totaux journaliers existent. */
+const RAW_RETENTION_DAYS = 30;
 
 @Injectable()
 export class AnalyticsStatsService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
+  /**
+   * Jours complets lus dans `daily_stat` (qui couvre toute l'histoire, contrairement aux tables
+   * brutes purgées à 30 jours) + aujourd'hui calculé en direct si la plage l'inclut.
+   */
   async overview(query: DateRangeQueryDto) {
-    const { start, end } = this.bounds(query);
-    const a = await computeAggregates(this.db, start, end);
+    const { fromDateStr, toDateStr } = this.bounds(query);
+    const now = new Date();
+    const today = formatUtcDate(now);
+    const lastStoredDay =
+      toDateStr < today ? toDateStr : formatUtcDate(subDays(now, 1));
 
-    const bounceRate =
-      a.sessions > 0 ? Math.round((a.bounces / a.sessions) * 10000) / 100 : 0;
-    const avgDuration =
-      a.pageviews > 0 ? Math.round(a.totalDuration / a.pageviews) : 0;
+    const days: OverviewDay[] =
+      fromDateStr <= lastStoredDay
+        ? await this.db
+            .select()
+            .from(dailyStat)
+            .where(
+              and(
+                gte(dailyStat.date, fromDateStr),
+                lte(dailyStat.date, lastStoredDay),
+              ),
+            )
+            .orderBy(asc(dailyStat.date))
+        : [];
 
-    return {
-      visitors: a.visitors,
-      pageviews: a.pageviews,
-      sessions: a.sessions,
-      bounces: a.bounces,
-      bounceRate,
-      avgDuration,
-      projectClicks: a.projectClicks,
-      articleViews: a.articleViews,
-      cvDownloads: a.cvDownloads,
-      ctaClicks: a.ctaClicks,
-    };
+    if (fromDateStr <= today && toDateStr >= today) {
+      const live = await computeAggregates(
+        this.db,
+        startOfUtcDay(now),
+        endOfUtcDay(now),
+      );
+      days.push({ date: today, ...live });
+    }
+
+    const oldestRawDay = formatUtcDate(subDays(now, RAW_RETENTION_DAYS));
+    return summarizeOverview(
+      days,
+      fromDateStr > oldestRawDay ? fromDateStr : oldestRawDay,
+    );
   }
 
   async chart(query: DateRangeQueryDto) {
     const { start, end, isTodayIncluded } = this.bounds(query);
-    const today = formatDate(new Date());
+    const today = formatUtcDate(new Date());
 
-    const fromDateStr = formatDate(start);
-    const toDateStr = formatDate(end);
+    const fromDateStr = formatUtcDate(start);
+    const toDateStr = formatUtcDate(end);
 
     const whereClause = isTodayIncluded
       ? and(gte(dailyStat.date, fromDateStr), lt(dailyStat.date, today))
@@ -81,8 +108,8 @@ export class AnalyticsStatsService {
       .orderBy(asc(dailyStat.date));
 
     if (isTodayIncluded && toDateStr === today) {
-      const todayStart = startOfDay(new Date());
-      const todayEnd = endOfDay(new Date());
+      const todayStart = startOfUtcDay(new Date());
+      const todayEnd = endOfUtcDay(new Date());
       const [[v], [p]] = await Promise.all([
         this.db
           .select({ value: countDistinct(pageView.sessionHash) })
@@ -113,17 +140,19 @@ export class AnalyticsStatsService {
     return data;
   }
 
+  /** Top N par visite : une visite de cinq pages compte une fois, pas cinq. */
   async metrics(query: MetricsQueryDto) {
     const { start, end } = this.bounds(query);
     const limit = query.limit ?? 20;
 
-    const col = pageView[query.type as keyof typeof pageView] as never;
+    if (query.type === 'referrer') {
+      return this.referrersByVisit(start, end, limit);
+    }
 
+    const col = pageView[query.type];
+    const visits = countDistinct(pageView.sessionHash);
     return this.db
-      .select({
-        name: col,
-        count: count(),
-      })
+      .select({ name: col, count: visits })
       .from(pageView)
       .where(
         and(
@@ -133,8 +162,35 @@ export class AnalyticsStatsService {
         ),
       )
       .groupBy(col)
-      .orderBy(desc(count()))
+      .orderBy(desc(visits))
       .limit(limit);
+  }
+
+  /**
+   * Une ligne par visite : sa première provenance externe de la journée, sinon `''` (accès
+   * direct, compté). Le front envoie le referrer d'arrivée à chaque page vue d'une SPA : le
+   * compter par page gonflait les sources des visites longues.
+   */
+  private async referrersByVisit(start: Date, end: Date, limit: number) {
+    const rows = await this.db.execute<{ name: string; count: number }>(sql`
+      WITH visit AS (
+        SELECT COALESCE(
+          (array_agg(${pageView.referrer} ORDER BY ${pageView.createdAt})
+            FILTER (WHERE ${pageView.referrer} IS NOT NULL))[1],
+          ''
+        ) AS name
+        FROM ${pageView}
+        WHERE ${pageView.createdAt} >= ${start.toISOString()}
+          AND ${pageView.createdAt} < ${end.toISOString()}
+        GROUP BY ${pageView.sessionHash}
+      )
+      SELECT name, COUNT(*)::int AS count
+      FROM visit
+      GROUP BY name
+      ORDER BY count DESC, name
+      LIMIT ${limit}
+    `);
+    return rows.map((r) => ({ name: r.name, count: Number(r.count) }));
   }
 
   async active() {
@@ -201,12 +257,31 @@ export class AnalyticsStatsService {
       .limit(limit);
   }
 
+  // `entityId` porte l'emplacement (`contact_submit`) ou le canal (`outbound_click`).
+  async events(query: EventsQueryDto) {
+    const { start, end } = this.bounds(query);
+
+    return this.db
+      .select({ entityId: analyticsEvent.entityId, count: count() })
+      .from(analyticsEvent)
+      .where(
+        and(
+          eq(analyticsEvent.eventType, query.type),
+          gte(analyticsEvent.createdAt, start),
+          lt(analyticsEvent.createdAt, end),
+        ),
+      )
+      .groupBy(analyticsEvent.entityId)
+      .orderBy(desc(count()))
+      .limit(query.limit ?? 20);
+  }
+
   async cvDownloads(query: DateRangeQueryDto) {
     const { start, end } = this.bounds(query);
 
     // Timeline: hardcoded 30 derniers jours, indépendant du query
-    const timelineEnd = endOfDay(new Date());
-    const timelineStart = startOfDay(subDays(new Date(), 30));
+    const timelineEnd = endOfUtcDay(new Date());
+    const timelineStart = startOfUtcDay(subDays(new Date(), 30));
 
     const [[countRow], timeline] = await Promise.all([
       this.db
@@ -244,16 +319,17 @@ export class AnalyticsStatsService {
 
   private bounds(query: DateRangeQueryDto): DateBounds {
     const now = new Date();
-    const today = formatDate(now);
-    const fromStr = query.startDate ?? formatDate(subDays(now, 30));
+    const today = formatUtcDate(now);
+    const fromStr = query.startDate ?? formatUtcDate(subDays(now, 30));
     const toStr = query.endDate ?? today;
 
-    const start = startOfDay(new Date(`${fromStr}T00:00:00Z`));
-    const end = endOfDay(new Date(`${toStr}T00:00:00Z`));
+    const start = startOfUtcDay(new Date(`${fromStr}T00:00:00Z`));
+    const end = endOfUtcDay(new Date(`${toStr}T00:00:00Z`));
 
     return {
       start,
       end,
+      fromDateStr: fromStr,
       toDateStr: toStr,
       isTodayIncluded: toStr === today,
     };

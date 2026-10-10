@@ -34,23 +34,20 @@ export const subDays = (d: Date, days: number) =>
 export const subMinutes = (d: Date, minutes: number) =>
   new Date(d.getTime() - minutes * MINUTE_MS);
 
-export function formatDate(date: Date): string {
-  // Local-timezone YYYY-MM-DD (matches date-fns format(d, 'yyyy-MM-dd')).
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+// Jours UTC explicites : `daily_stat.date` et l'empreinte de session (`ip|ua|jour`) sont des
+// jours UTC. Indépendant du fuseau du processus (`TZ`).
+export const formatUtcDate = (date: Date): string =>
+  date.toISOString().slice(0, 10);
 
-export function startOfDay(date: Date): Date {
+export function startOfUtcDay(date: Date): Date {
   const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
+  d.setUTCHours(0, 0, 0, 0);
   return d;
 }
 
-export function endOfDay(date: Date): Date {
+export function endOfUtcDay(date: Date): Date {
   const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
+  d.setUTCHours(23, 59, 59, 999);
   return d;
 }
 
