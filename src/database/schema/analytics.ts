@@ -82,6 +82,15 @@ export const dailyStat = pgTable(
     articleViews: integer('article_views').notNull().default(0),
     cvDownloads: integer('cv_downloads').notNull().default(0),
     ctaClicks: integer('cta_clicks').notNull().default(0),
+    // Spec 020 : nullables sans défaut, `NULL` = jour non mesuré (ADR-0022).
+    durationSamples: integer('duration_samples'),
+    engagedSessions: integer('engaged_sessions'),
+    realBounces: integer('real_bounces'),
+    contactSubmits: integer('contact_submits'),
+    contactClicks: integer('contact_clicks'),
+    profileClicks: integer('profile_clicks'),
+    demoClicks: integer('demo_clicks'),
+    contactSectionViews: integer('contact_section_views'),
     ...timestamps(),
   },
   (t) => ({
