@@ -40,13 +40,14 @@ Modules importés dans `AppModule` (`src/app.module.ts`), dans l'ordre :
 8. **`StorageModule`** (`@Global`) - `StorageService` (S3) + `StorageController` (proxy public).
 9. **`ProjectsModule`** - CRUD projets + upload image.
 10. **`BlogModule`** - CRUD admin des articles de blog + endpoints publics (liste/détail/like). Déclenche le webhook `DOKPLOY_DEPLOY_WEBHOOK_URL` pour rebuild le site statique quand le contenu publié change.
-11. **`MailerModule`** (`@Global`) - `MailerService` (SMTP).
-12. **`ThrottlerModule`** (global, `APP_GUARD`) - 10 req/60s par défaut, overridable par endpoint via `@Throttle()`.
-13. **`ContactModule`** - formulaire de contact public + gestion admin.
-14. **`ScheduleModule`** (`@nestjs/schedule`) - support des `@Cron()`.
-15. **`CvModule`** - upload/download du CV.
-16. **`AnalyticsModule`** - tracking + stats + rollup cron.
-17. **`RuntimeConfigModule`** - `GET /api/config`.
+11. **`ProfileModule`** - contenu de la page Parcours (`/about`) : document unique versionné + portrait, lu à la requête par le front (aucune écriture ne déclenche de rebuild).
+12. **`MailerModule`** (`@Global`) - `MailerService` (SMTP).
+13. **`ThrottlerModule`** (global, `APP_GUARD`) - 10 req/60s par défaut, overridable par endpoint via `@Throttle()`.
+14. **`ContactModule`** - formulaire de contact public + gestion admin.
+15. **`ScheduleModule`** (`@nestjs/schedule`) - support des `@Cron()`.
+16. **`CvModule`** - upload/download du CV.
+17. **`AnalyticsModule`** - tracking + stats + rollup cron.
+18. **`RuntimeConfigModule`** - `GET /api/config`.
 
 Les modules `@Global` (`DatabaseModule`, `StorageModule`, `MailerModule`, `LoggerModule`) sont injectables partout sans import explicite.
 
@@ -96,7 +97,7 @@ PostgreSQL 17-alpine dans un container Podman/Docker dédié (`portfolio-nest-db
 
 ### Schéma actuel (`src/database/schema/`)
 
-5 tables, une par module métier réellement implémenté : `users`, `project`, `contact_message`, `cv_file`, `blog_post`, plus les tables analytics (`page_view`, `analytics_event`, `daily_stat`).
+Une table par module métier réellement implémenté : `users`, `project`, `project_image`, `contact_message`, `cv_file`, `blog_post`, `profile_content` (une seule ligne), plus les tables analytics (`page_view`, `analytics_event`, `daily_stat`).
 
 ### Workflow migrations
 
@@ -220,7 +221,9 @@ Liste réelle (`package.json`) - pas de script `s3:*` (démarrer MinIO à la mai
 
 ## S3 Storage
 
-Module d'infrastructure S3-compatible, consommé par Projects et CV.
+Module d'infrastructure S3-compatible, consommé par Projects, Blog, Profile et CV.
+
+**Délais** (`src/storage/s3-client.ts`, `S3_TIMEOUTS`) : connexion 5 s, requête 30 s avec `throwOnRequestTimeout` (le SDK n'impose aucune borne par défaut et ne ferait qu'un warning), 3 tentatives au plus. 30 s couvrent le plus gros envoi (CV, 10 Mo) dès ~3 Mbit/s montants ; un stockage bloqué donne une erreur au lieu de tenir la requête, et le verrou du portrait, indéfiniment.
 
 **Stack** : `@aws-sdk/client-s3` v3. Dev local : container MinIO (`compose.yaml`, ports 9000 API / 9001 console, bucket `portfolio-storage` initialisé en anonymous-read par le service `minio-init`). Prod : Cloudflare R2 (visé, non figé dans le code - juste un endpoint S3-compatible).
 
@@ -278,6 +281,23 @@ CRUD admin des articles de blog + endpoints publics de consultation/like. Le sit
 **Lifecycle S3** : identique à Projects (key `blog/<id>.<ext>`, ordre upload → update DB → cleanup ancienne clé).
 
 **Rebuild Dokploy** : `DOKPLOY_DEPLOY_WEBHOOK_URL` (optionnel, no-op si absent) est appelé fire-and-forget (`fetch` avec timeout 5s ; réponse non-2xx ou timeout loggés en erreur) à chaque mutation qui change le rendu du site public - publication (création ou transition draft→published), édition d'un article déjà publié, dépublication, ou suppression d'un article publié. **Setup manuel requis** : créer un webhook de rebuild dans le dashboard Dokploy de l'app statique du portfolio, puis coller son URL dans `DOKPLOY_DEPLOY_WEBHOOK_URL`.
+
+## Profile (page Parcours)
+
+Contenu de `/about` édité depuis l'admin (spec front 021, ADR-0023 du front) : **un document unique** versionné, lu à la requête par le front (rendu serveur, spec front 022 : aucune écriture ne déclenche de rebuild), l'identité (phrase d'accroche commune, nom, ville, réseaux) restant dans le code du front.
+
+**Schéma** : table `profile_content`, une seule ligne (`id = 'main'`, `CHECK`) : `content jsonb` (biographie, traits, résumé et liste « ce que je fais », technos, résumé et liste des formations, motivation), `version integer`, `portrait_key` et `previous_portrait_key` (hors version), `updated_at`. Contenu initial versé par la migration `0021_profile_seed.sql` (généré depuis le contenu statique du front, égal à `src/profile/profile.seed.ts`, vérifié par test).
+
+| Méthode | Chemin               | Auth | Rôle |
+| ------- | -------------------- | ---- | ---- |
+| GET     | `/profile`           | ❌   | Document à plat + `version`, `updatedAt`, `portrait` (URL proxy ou `null` = portrait par défaut du front). 120 req/min. |
+| PUT     | `/profile`           | ✅   | Remplace le document entier (`UpdateProfileDto` + `version` lue). Document identique à la `version` courante ⇒ 200 sans écriture ; version périmée ⇒ **409** ; 400 sur clé inconnue, borne (`PROFILE_LIMITS`), liste vide, `id` non UUID ou dupliqué, icône hors `^[a-z0-9-]{1,40}$`, texte blanc ou contenant du balisage HTML. |
+| POST    | `/profile/portrait`  | ✅   | Multipart `file` (max 5 Mo, `image/webp\|jpeg\|png\|avif`, 422 sinon). Recadré en **AVIF 640×800** (`ImageOptimizer.toPortrait`, `position: attention`), clé `profile/portrait-<sha8>.avif`. 200 + document. Envois simultanés sérialisés (verrou de ligne). |
+| DELETE  | `/profile/portrait`  | ✅   | Retour au portrait par défaut. 204 (sans portrait : 204 sans écriture). |
+
+**Lifecycle S3 du portrait** : une page `/about` déjà servie (onglet ouvert, cache HTTP) cite encore l'ancienne clé ; la supprimer à l'envoi casserait son image LCP. Chaque changement (envoi ou retrait) fait donc glisser les clés - courante → `previous_portrait_key` - et ne supprime que l'**avant-dernière** clé : au plus un fichier en trop dans le bucket, jamais une image citée absente.
+
+**Sérialisation** : toute opération portrait tient le verrou de la ligne (`SELECT … FOR UPDATE` dans une transaction) : raccourci « même fichier », envoi S3 et `UPDATE` sous le même verrou, puis, après le `COMMIT`, suppression de l'objet devenu inutile dans une seconde transaction verrouillée qui ne supprime que si la ligne ne cite la clé ni comme courante ni comme précédente. La clé étant adressée par contenu, seule une opération portrait peut la réintroduire, envoi compris, et elle attend le verrou : une suppression décidée sous verrou ne retire jamais un objet cité. Deux envois simultanés s'appliquent l'un après l'autre (pas de 409). Envoi ou `UPDATE` en échec ⇒ rollback, puis l'objet envoyé est supprimé s'il n'est pas cité. Échec S3 du nettoyage ⇒ journalisé avec la clé (`S3 orphan …`), l'écriture reste validée, jamais une 500. **Durées bornées** : chaque transaction sur la ligne (opérations portrait **et** `PUT` texte) commence par `SET LOCAL lock_timeout = '5s'` ; au-delà, Postgres annule l'attente (`55P03`) et l'API répond **503** (« réessayez dans quelques secondes »), au lieu de garder une connexion du pool (10, partagé avec la lecture publique) indéfiniment. Le `PUT` texte ne prend pas le verrou `FOR UPDATE` et n'écrit jamais les colonnes du portrait (hors versionnage), mais son `UPDATE` attend derrière une opération portrait en cours : cette attente est bornée de la même façon. La lecture publique (`GET /profile`, `SELECT` simple) n'attend jamais le verrou. La détention du verrou est bornée par les délais du client S3 (`S3_TIMEOUTS`, ci-dessous). Test d'intégration sur Postgres réel : `PROFILE_IT_DATABASE_URL=… pnpm test -- profile-portrait.integration` (ignoré sans cette variable).
 
 ## Mailer
 
@@ -383,7 +403,7 @@ Collecte de page-views/events custom du portfolio public + agrégation quotidien
 
 ## État réel
 
-Modules réellement présents et livrés : Fondations, Auth, S3 Storage, Projects, Blog, Mailer, Contact, CV, Analytics, Runtime Config.
+Modules réellement présents et livrés : Fondations, Auth, S3 Storage, Projects, Blog, Profile, Mailer, Contact, CV, Analytics, Runtime Config.
 
 ## Licence
 

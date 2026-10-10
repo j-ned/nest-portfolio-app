@@ -8,6 +8,11 @@ const AVIF_EFFORT = 4;
 /** Carte de partage Open Graph : le 1,91:1 attendu par Facebook, LinkedIn et X, en JPEG (l'AVIF n'y est pas décodé). */
 export const SHARE_CARD = { width: 1200, height: 630 } as const;
 const SHARE_CARD_JPEG_QUALITY = 80;
+/**
+ * Portrait de la page Parcours (spec 021, D6) : cadre 4:5 de 20 rem, 640 px couvrent la DPR 2. Seule
+ * image LCP de `/about` : sa taille fixe garde le poids proche de l'ancien `avatar.avif`.
+ */
+export const PORTRAIT = { width: 640, height: 800 } as const;
 
 export type OptimizedImage = {
   readonly buffer: Buffer;
@@ -55,6 +60,28 @@ export class ImageOptimizer {
         .resize({ ...SHARE_CARD, fit: 'cover', position: 'attention' })
         .jpeg({ quality: SHARE_CARD_JPEG_QUALITY, progressive: true })
         .toBuffer();
+    } catch {
+      throw new UnprocessableEntityException(
+        'Image illisible : fichier corrompu ou format non supporté',
+      );
+    }
+  }
+
+  /** Portrait AVIF 640×800 recadré sur la zone saillante (visage), orientation EXIF appliquée. */
+  async toPortrait(input: Buffer): Promise<OptimizedImage> {
+    try {
+      const { data, info } = await sharp(input, { animated: false })
+        .rotate()
+        .resize({ ...PORTRAIT, fit: 'cover', position: 'attention' })
+        .avif({ quality: AVIF_QUALITY, effort: AVIF_EFFORT })
+        .toBuffer({ resolveWithObject: true });
+      return {
+        buffer: data,
+        mimetype: 'image/avif',
+        ext: 'avif',
+        width: info.width,
+        height: info.height,
+      };
     } catch {
       throw new UnprocessableEntityException(
         'Image illisible : fichier corrompu ou format non supporté',

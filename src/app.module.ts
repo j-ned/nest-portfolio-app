@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { StorageModule } from './storage/storage.module';
 import { ProjectsModule } from './projects/projects.module';
 import { BlogModule } from './blog/blog.module';
+import { ProfileModule } from './profile/profile.module';
 import { MailerModule } from './mailer/mailer.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
@@ -98,6 +99,7 @@ import { RuntimeConfigModule } from './runtime-config/runtime-config.module';
     StorageModule,
     ProjectsModule,
     BlogModule,
+    ProfileModule,
     MailerModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
     ContactModule,
