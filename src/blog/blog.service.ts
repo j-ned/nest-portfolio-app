@@ -16,13 +16,12 @@ import {
 import { StorageService } from '../storage/storage.service';
 import { ImageOptimizer } from '../storage/image-optimizer.service';
 import { contentHash, deleteS3IfExists } from '../storage/s3-utils';
-import { AppConfigService } from '../config/app-config.service';
 import { contentImageKeysIn } from './blog-content-image';
 import { BlogContentImagesService } from './blog-content-images.service';
 import { CreateBlogPostDto } from './dto/create-blog-post.dto';
 import { UpdateBlogPostDto } from './dto/update-blog-post.dto';
 import { findByIdOrFail } from '../common/crud-helpers';
-import { isUniqueViolation, slugify, fireAndForget } from '../common/utils';
+import { isUniqueViolation, slugify } from '../common/utils';
 
 @Injectable()
 export class BlogService {
@@ -32,7 +31,6 @@ export class BlogService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly storage: StorageService,
-    private readonly config: AppConfigService,
     private readonly images: ImageOptimizer,
     private readonly contentImages: BlogContentImagesService,
   ) {}
@@ -74,7 +72,6 @@ export class BlogService {
         .insert(blogPosts)
         .values({ ...dto, slug, publishedAt })
         .returning();
-      if (dto.status === 'published') this.triggerDeploy();
       return this.toResponse(row);
     } catch (err) {
       if (isUniqueViolation(err, 'slug')) {
@@ -106,13 +103,6 @@ export class BlogService {
       dto.status === 'published' && current.status !== 'published';
     if (isPublishing) patch.publishedAt = new Date();
 
-    // Rebuild Dokploy dès que le patch change ce qui doit être visible sur le
-    // site statique : passage en published (transition ou simple édition de
-    // contenu déjà publié), ou dépublication (published -> draft).
-    const newStatus = dto.status ?? current.status;
-    const shouldDeploy =
-      newStatus === 'published' || current.status === 'published';
-
     let row: BlogPost;
     try {
       [row] = await this.db
@@ -138,7 +128,6 @@ export class BlogService {
         current.coverImage,
       );
     }
-    if (shouldDeploy) this.triggerDeploy();
 
     return this.toResponse(row);
   }
@@ -167,8 +156,6 @@ export class BlogService {
           err,
         ),
       );
-    // Un article publié disparaît du site statique seulement après rebuild.
-    if (current.status === 'published') this.triggerDeploy();
   }
 
   async uploadCoverImage(
@@ -235,25 +222,6 @@ export class BlogService {
   // lecture (findBySlug) qu'en écriture (like).
   private publishedSlugFilter(slug: string) {
     return and(eq(blogPosts.slug, slug), eq(blogPosts.status, 'published'));
-  }
-
-  // Publier un article déclenche un rebuild : les pages /blog sont prerendered
-  // au build (pas de SSR par requête en prod, cf. spec), donc rien n'est
-  // visible tant que le site n'a pas été reconstruit et redéployé.
-  private triggerDeploy(): void {
-    const url = this.config.dokployDeployWebhookUrl;
-    if (!url) return;
-    fireAndForget(
-      fetch(url, { method: 'POST', signal: AbortSignal.timeout(5_000) }).then(
-        (res) => {
-          if (!res.ok) {
-            throw new Error(`Dokploy webhook responded ${res.status}`);
-          }
-        },
-      ),
-      this.logger,
-      'dokploy-deploy-webhook',
-    );
   }
 
   // Transforme la key DB en URL publique pour la sortie API.
