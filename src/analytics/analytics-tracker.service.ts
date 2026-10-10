@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isIPv4, isIPv6 } from 'node:net';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, gte } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 import { isbot } from 'isbot';
 import geoip from 'geoip-lite';
 import { UAParser } from 'ua-parser-js';
@@ -41,6 +41,11 @@ export function isPrivateIp(raw: string): boolean {
   return false;
 }
 
+/** Une ancre (`#demande`) n'est pas une page : `/offres/x#demande` est `/offres/x`. */
+function withoutFragment(url: string): string {
+  return url.split('#', 1)[0];
+}
+
 function isExcludedUrl(url: string): boolean {
   return url === '/login' || url === '/admin' || url.startsWith('/admin/');
 }
@@ -58,8 +63,13 @@ export class AnalyticsTrackerService {
    * Track une page-view ou un custom event. Ne throw JAMAIS - toute erreur
    * interne est loggée et avalée pour ne pas bloquer le client.
    */
-  async track(dto: TrackEventDto, ip: string, ua: string): Promise<void> {
+  async track(event: TrackEventDto, ip: string, ua: string): Promise<void> {
     try {
+      const dto =
+        event.url === undefined
+          ? event
+          : { ...event, url: withoutFragment(event.url) };
+
       if (isbot(ua)) {
         return;
       }
@@ -127,12 +137,24 @@ export class AnalyticsTrackerService {
       )
       .limit(1);
 
+    // Une durée s'ajoute à la page vue du jour ; sans elle (envoyée après minuit UTC, nouvelle
+    // empreinte), elle ne crée pas de visite : ce serait un rebond « accès direct » fabriqué.
+    if (dto.type === 'page_duration') {
+      if (existing) {
+        // Incrément calculé par Postgres : deux beacons simultanés (`visibilitychange` puis
+        // `pagehide`) s'additionnent, alors qu'une lecture suivie d'une réécriture en perdrait un.
+        await this.db
+          .update(pageView)
+          .set({
+            duration: sql`COALESCE(${pageView.duration}, 0) + ${dto.duration ?? 0}`,
+          })
+          .where(eq(pageView.id, existing.id));
+      }
+      return;
+    }
+
+    // Page déjà vue aujourd'hui : une seule ligne, et une durée inconnue ne devient pas 0 s.
     if (existing) {
-      const newDuration = (existing.duration ?? 0) + (dto.duration ?? 0);
-      await this.db
-        .update(pageView)
-        .set({ duration: newDuration })
-        .where(eq(pageView.id, existing.id));
       return;
     }
 

@@ -21,7 +21,11 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AnalyticsTrackerService } from './analytics-tracker.service';
 import { AnalyticsStatsService } from './analytics-stats.service';
 import { TrackEventDto } from './dto/track-event.dto';
-import { DateRangeQueryDto, MetricsQueryDto } from './dto/date-range-query.dto';
+import {
+  DateRangeQueryDto,
+  EventsQueryDto,
+  MetricsQueryDto,
+} from './dto/date-range-query.dto';
 
 @ApiTags('Analytics')
 @Controller('analytics')
@@ -122,6 +126,19 @@ export class AnalyticsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   cta(@Query() query: DateRangeQueryDto) {
     return this.stats.cta(query);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('stats/events')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Counts by entityId for contact_submit (placement) or outbound_click (channel) (admin)',
+  })
+  @ApiResponse({ status: 400, description: 'Unknown type' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  events(@Query() query: EventsQueryDto) {
+    return this.stats.events(query);
   }
 
   @UseGuards(JwtAuthGuard)

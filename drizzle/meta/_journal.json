@@ -134,6 +134,13 @@
       "when": 1791311041517,
       "tag": "0018_third_bloodaxe",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791639374414,
+      "tag": "0019_narrow_leo",
+      "breakpoints": true
     }
   ]
 }
