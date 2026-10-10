@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import {
   IMAGE_MAX_WIDTH,
   ImageOptimizer,
+  PORTRAIT,
   SHARE_CARD,
 } from './image-optimizer.service';
 
@@ -99,6 +100,37 @@ describe('ImageOptimizer', () => {
     it('fichier corrompu → 422', async () => {
       await expect(
         optimizer.toShareCard(Buffer.from('not an image')),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+  });
+
+  describe('toPortrait (spec 021, A5)', () => {
+    it.each([
+      ['PNG paysage 1000×600', 1000, 600, 'png'],
+      ['JPEG portrait 1200×1800', 1200, 1800, 'jpeg'],
+      [
+        'petite image 300×300 (agrandie pour un cadre constant)',
+        300,
+        300,
+        'webp',
+      ],
+    ] as const)('%s → AVIF 640×800', async (_label, w, h, format) => {
+      const out = await optimizer.toPortrait(await solidImage(w, h, format));
+
+      expect(out.mimetype).toBe('image/avif');
+      expect(out.ext).toBe('avif');
+      expect([out.width, out.height]).toEqual([
+        PORTRAIT.width,
+        PORTRAIT.height,
+      ]);
+      const meta = await sharp(out.buffer).metadata();
+      expect(meta.format).toBe('heif');
+      expect([meta.width, meta.height]).toEqual([640, 800]);
+    });
+
+    it('fichier corrompu → 422', async () => {
+      await expect(
+        optimizer.toPortrait(Buffer.from('not an image')),
       ).rejects.toThrow(UnprocessableEntityException);
     });
   });
