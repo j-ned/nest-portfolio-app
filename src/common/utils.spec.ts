@@ -6,9 +6,9 @@ import {
   parseDurationMs,
   subDays,
   subMinutes,
-  formatDate,
-  startOfDay,
-  endOfDay,
+  formatUtcDate,
+  startOfUtcDay,
+  endOfUtcDay,
 } from './utils';
 
 describe('slugify', () => {
@@ -148,42 +148,36 @@ describe('subDays / subMinutes', () => {
   });
 });
 
-describe('formatDate', () => {
-  it('formats a date as YYYY-MM-DD in local timezone', () => {
-    const d = new Date(2026, 4, 6); // May 6, 2026 (month is 0-indexed)
-    expect(formatDate(d)).toBe('2026-05-06');
-  });
-
-  it('pads single-digit month and day', () => {
-    const d = new Date(2026, 0, 9); // Jan 9, 2026
-    expect(formatDate(d)).toBe('2026-01-09');
+// Jours UTC : `daily_stat.date` et l'empreinte de session sont des jours UTC, quel que soit le
+// fuseau du processus. Instants choisis près de minuit pour différer de toute date locale.
+describe('formatUtcDate', () => {
+  it.each([
+    ['2026-05-06T23:30:00.000Z', '2026-05-06'],
+    ['2026-05-06T00:15:00.000Z', '2026-05-06'],
+    ['2026-01-09T12:00:00.000Z', '2026-01-09'],
+  ])('formats %s as the UTC day %s', (instant, day) => {
+    expect(formatUtcDate(new Date(instant))).toBe(day);
   });
 });
 
-describe('startOfDay / endOfDay', () => {
-  it('startOfDay sets time to 00:00:00.000', () => {
-    const d = new Date('2026-05-06T15:30:45.123Z');
-    const s = startOfDay(d);
-    expect(s.getHours()).toBe(0);
-    expect(s.getMinutes()).toBe(0);
-    expect(s.getSeconds()).toBe(0);
-    expect(s.getMilliseconds()).toBe(0);
-  });
-
-  it('endOfDay sets time to 23:59:59.999', () => {
-    const d = new Date('2026-05-06T15:30:45.123Z');
-    const e = endOfDay(d);
-    expect(e.getHours()).toBe(23);
-    expect(e.getMinutes()).toBe(59);
-    expect(e.getSeconds()).toBe(59);
-    expect(e.getMilliseconds()).toBe(999);
-  });
+describe('startOfUtcDay / endOfUtcDay', () => {
+  it.each([['2026-05-06T23:30:45.123Z'], ['2026-05-06T00:15:00.000Z']])(
+    'bounds the UTC day of %s',
+    (instant) => {
+      expect(startOfUtcDay(new Date(instant)).toISOString()).toBe(
+        '2026-05-06T00:00:00.000Z',
+      );
+      expect(endOfUtcDay(new Date(instant)).toISOString()).toBe(
+        '2026-05-06T23:59:59.999Z',
+      );
+    },
+  );
 
   it('does not mutate the input date', () => {
     const d = new Date('2026-05-06T15:30:45.123Z');
     const before = d.toISOString();
-    startOfDay(d);
-    endOfDay(d);
+    startOfUtcDay(d);
+    endOfUtcDay(d);
     expect(d.toISOString()).toBe(before);
   });
 });

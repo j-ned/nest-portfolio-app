@@ -6,6 +6,15 @@ import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import * as isbotModule from 'isbot';
 import * as geoipModule from 'geoip-lite';
+import { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
+
+/** Rend le `set` d'un UPDATE tel que Postgres le recevra. */
+const renderSet = (set: unknown) => {
+  const { duration } = set as { duration: unknown };
+  expect(duration).toBeInstanceOf(SQL);
+  return new PgDialect({ casing: 'snake_case' }).sqlToQuery(duration as SQL);
+};
 
 jest.mock('isbot');
 jest.mock('geoip-lite');
@@ -89,10 +98,14 @@ describe('AnalyticsTrackerService', () => {
         NORMAL_UA,
       );
 
+      // Incrément atomique côté Postgres : deux beacons simultanés s'additionnent au lieu de
+      // s'écraser (lecture puis réécriture = incrément perdu).
       expect(db.update).toHaveBeenCalledTimes(1);
-      expect(db.set).toHaveBeenCalledWith(
-        expect.objectContaining({ duration: 15 }), // 10 + 5
-      );
+      const [set] = db.set.mock.calls[0] as [unknown];
+      expect(renderSet(set)).toMatchObject({
+        sql: 'COALESCE("page_view"."duration", 0) + $1',
+        params: [5],
+      });
       expect(db.insert).not.toHaveBeenCalled();
     });
 
@@ -393,6 +406,118 @@ describe('AnalyticsTrackerService', () => {
           NORMAL_UA,
         ),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('spec 020 : fragments et visites fantômes', () => {
+    it.each([
+      ['page_view', '/offres/site-vitrine#demande', '/offres/site-vitrine'],
+      ['page_view', '/#contact', '/'],
+      ['page_view', '/blog', '/blog'],
+    ] as const)(
+      'Given a %s on %s, When tracked, Then the stored url is %s',
+      async (type, url, expected) => {
+        db.limit.mockResolvedValueOnce([]);
+
+        await service.track({ type, url }, '1.2.3.4', NORMAL_UA);
+
+        expect(db.values).toHaveBeenCalledWith(
+          expect.objectContaining({ url: expected }),
+        );
+      },
+    );
+
+    it('Given a page_duration with a fragment, When tracked, Then the existing row of the url without fragment is updated', async () => {
+      db.limit.mockResolvedValueOnce([{ id: 'pv', duration: 4 }]);
+
+      await service.track(
+        { type: 'page_duration', url: '/offres/x#demande', duration: 6 },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+
+      const where = JSON.stringify(
+        db.where.mock.calls[0][0],
+        (_k, v: unknown) =>
+          typeof v === 'object' && v !== null && 'table' in v ? undefined : v,
+      );
+      expect(where).toContain('/offres/x');
+      expect(where).not.toContain('#demande');
+      const [set] = db.set.mock.calls[0] as [unknown];
+      expect(renderSet(set).params).toEqual([6]);
+    });
+
+    it('Given /admin#x, When tracked, Then nothing is stored (exclusion après troncature)', async () => {
+      await service.track(
+        { type: 'page_view', url: '/admin#x' },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('Given a page_view of an url already viewed today, When tracked, Then the row is left untouched (une durée inconnue ne devient pas 0 s)', async () => {
+      db.limit.mockResolvedValueOnce([{ id: 'pv', duration: null }]);
+
+      await service.track(
+        { type: 'page_view', url: '/offres/x#demande' },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('Given a page_duration without an existing row, When tracked, Then no page_view is inserted', async () => {
+      db.limit.mockResolvedValueOnce([]);
+
+      await service.track(
+        { type: 'page_duration', url: '/projects', duration: 12 },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ type: 'outbound_click', entityId: 'email', entityTitle: '/' }],
+      [{ type: 'contact_submit', entityId: 'home' }],
+      [{ type: 'section_view', entityId: 'home_contact', entityTitle: '/' }],
+    ] as const)(
+      'Given %o, When tracked, Then an analytics_event is inserted',
+      async (dto) => {
+        await service.track(dto, '1.2.3.4', NORMAL_UA);
+
+        expect(db.values).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventType: dto.type,
+            entityId: dto.entityId,
+          }),
+        );
+      },
+    );
+
+    it('Given an outbound_click from a bot, When tracked, Then nothing is stored', async () => {
+      isbotMock.mockReturnValue(true);
+      await service.track(
+        { type: 'outbound_click', entityId: 'email' },
+        '1.2.3.4',
+        'Googlebot/2.1',
+      );
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('Given an outbound_click from a private IP, When tracked, Then nothing is stored', async () => {
+      await service.track(
+        { type: 'outbound_click', entityId: 'email' },
+        '10.0.0.4',
+        NORMAL_UA,
+      );
+      expect(db.insert).not.toHaveBeenCalled();
     });
   });
 });
