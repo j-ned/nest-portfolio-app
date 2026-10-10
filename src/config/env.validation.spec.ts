@@ -146,6 +146,15 @@ describe('validateEnv', () => {
     expect(result.SMTP_PORT).toBe(1025);
   });
 
+  it('ignore une variable inconnue résiduelle (ex. DOKPLOY_DEPLOY_WEBHOOK_URL retirée du schéma) sans bloquer le démarrage', () => {
+    const result = validateEnv({
+      ...baseValid,
+      DOKPLOY_DEPLOY_WEBHOOK_URL: 'https://dokploy.example.test/webhook/abc',
+    });
+    expect(result.DATABASE_URL).toBe(baseValid.DATABASE_URL);
+    expect(result).not.toHaveProperty('DOKPLOY_DEPLOY_WEBHOOK_URL');
+  });
+
   it('rejette SMTP_FROM si pas un email valide', () => {
     expect(() =>
       validateEnv({ ...baseValid, SMTP_FROM: 'not-an-email' }),
