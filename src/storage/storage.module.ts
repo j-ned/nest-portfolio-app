@@ -3,6 +3,7 @@ import type { Provider } from '@nestjs/common';
 import { S3Client } from '@aws-sdk/client-s3';
 import { AppConfigModule } from '../config/app-config.module';
 import { AppConfigService } from '../config/app-config.service';
+import { createS3Client } from './s3-client';
 import { S3_CLIENT } from './s3.constants';
 import { StorageController } from './storage.controller';
 import { StorageService } from './storage.service';
@@ -12,16 +13,7 @@ import { ShareCardService } from './share-card.service';
 const s3ClientProvider: Provider = {
   provide: S3_CLIENT,
   inject: [AppConfigService],
-  useFactory: (cfg: AppConfigService): S3Client =>
-    new S3Client({
-      endpoint: cfg.s3Endpoint,
-      region: cfg.s3Region,
-      credentials: {
-        accessKeyId: cfg.s3AccessKey,
-        secretAccessKey: cfg.s3SecretKey,
-      },
-      forcePathStyle: true, // requis pour MinIO local ; R2 accepte path-style aussi
-    }),
+  useFactory: (cfg: AppConfigService): S3Client => createS3Client(cfg),
 };
 
 @Global()
