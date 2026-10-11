@@ -23,6 +23,43 @@ function solidImage(
   return img[format]().toBuffer();
 }
 
+/** Bruit gaussien RGB ; `background` est exigé par les types de sharp mais ignoré quand `noise` est fourni. */
+function gaussianNoise(width: number, height: number, sigma: number) {
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: '#808080',
+      noise: { type: 'gaussian', mean: 128, sigma },
+    },
+  });
+}
+
+/**
+ * JPEG q95 à la taille d'un appareil photo : scène basse fréquence (bruit 1/32 agrandi en cubique,
+ * dégradés et formes floues) + grain de capteur fin (σ ≤ 8, fusion `overlay` dans libvips : une
+ * boucle JS sur 11 Mo de pixels coûte ~8 s dans le bac à sable Jest). Un bruit blanc pur sur toute
+ * l'image n'est pas une photo : c'est le pire cas de l'encodeur AV1, ~4 fois plus lent à encoder.
+ */
+async function photoLikeJpeg(width: number, height: number) {
+  const scene = await gaussianNoise(
+    Math.ceil(width / 32),
+    Math.ceil(height / 32),
+    50,
+  )
+    .resize(width, height, { kernel: 'cubic' })
+    .png({ compressionLevel: 0 })
+    .toBuffer();
+  const grain = await gaussianNoise(width, height, 8)
+    .png({ compressionLevel: 0 })
+    .toBuffer();
+  return sharp(scene)
+    .composite([{ input: grain, blend: 'overlay' }])
+    .jpeg({ quality: 95 })
+    .toBuffer();
+}
+
 describe('ImageOptimizer', () => {
   const optimizer = new ImageOptimizer();
   // Encodage AVIF réel : ~1 s par image, davantage quand la suite tourne en parallèle.
@@ -56,18 +93,9 @@ describe('ImageOptimizer', () => {
   });
 
   it("réduit nettement le poids d'un JPEG photo", async () => {
-    const noisy = await sharp({
-      create: {
-        width: 2400,
-        height: 1600,
-        channels: 3,
-        noise: { type: 'gaussian', mean: 128, sigma: 40 },
-      },
-    })
-      .jpeg({ quality: 95 })
-      .toBuffer();
-    const out = await optimizer.optimize(noisy);
-    expect(out.buffer.length).toBeLessThan(noisy.length / 2);
+    const photo = await photoLikeJpeg(2400, 1600);
+    const out = await optimizer.optimize(photo);
+    expect(out.buffer.length).toBeLessThan(photo.length / 2);
   });
 
   it('fichier corrompu → 422', async () => {
