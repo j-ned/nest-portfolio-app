@@ -4,8 +4,7 @@ import { ENGAGED_DURATION_SECONDS } from './engagement';
 
 /** Un jour de la plage : ligne `daily_stat` (jour complet) ou agrégat en direct d'aujourd'hui. */
 export type OverviewDay = { date: string } & (
-  | DayAggregates
-  | Omit<DailyStat, 'id' | 'createdAt' | 'updatedAt'>
+  DayAggregates | Omit<DailyStat, 'id' | 'createdAt' | 'updatedAt'>
 );
 
 const percent = (part: number, whole: number) =>

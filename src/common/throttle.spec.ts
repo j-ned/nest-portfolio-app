@@ -26,8 +26,7 @@ const handler = (ctor: Ctor, name: string): object =>
 
 const limitOf = (target: object): number | undefined =>
   Reflect.getMetadata(`${THROTTLER_LIMIT}default`, target) as
-    | number
-    | undefined;
+    number | undefined;
 const ttlOf = (target: object): number | undefined =>
   Reflect.getMetadata(`${THROTTLER_TTL}default`, target) as number | undefined;
 
