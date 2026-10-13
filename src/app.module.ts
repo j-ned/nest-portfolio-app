@@ -5,6 +5,7 @@ import { AppConfigModule } from './config/app-config.module';
 import { AppConfigService } from './config/app-config.service';
 import { validateEnv } from './config/env.validation';
 import { LOGGER_ROUTES } from './config/logger-routes';
+import { LOG_REDACT_PATHS } from './common/log-redact';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -22,6 +23,7 @@ import { CvModule } from './cv/cv.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { RuntimeConfigModule } from './runtime-config/runtime-config.module';
+import { BookingModule } from './booking/booking.module';
 
 @Module({
   imports: [
@@ -45,18 +47,7 @@ import { RuntimeConfigModule } from './runtime-config/runtime-config.module';
                 options: { singleLine: true, colorize: true },
               }
             : undefined,
-          redact: [
-            'req.headers.authorization',
-            'req.headers.cookie',
-            'req.body.password',
-            'req.body.newPassword',
-            'req.body.currentPassword',
-            'req.body.code',
-            'req.body.token',
-            'req.body.refreshToken',
-            // Le cookie de session (JWT complet) était écrit dans les logs à chaque login.
-            'res.headers["set-cookie"]',
-          ],
+          redact: [...LOG_REDACT_PATHS],
           autoLogging: {
             ignore: (req: { url?: string }) => req.url === '/api/health',
           },
@@ -109,6 +100,7 @@ import { RuntimeConfigModule } from './runtime-config/runtime-config.module';
     ScheduleModule.forRoot(),
     AnalyticsModule,
     RuntimeConfigModule,
+    BookingModule,
   ],
   providers: [
     {

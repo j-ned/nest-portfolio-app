@@ -78,6 +78,8 @@ Toute la config passe par les variables d'env, validées au boot par Zod (`src/c
 | `SMTP_USER`                 | string                                             | _(requis)_                   | User SMTP                                                                                       |
 | `SMTP_PASS`                 | string                                             | _(requis)_                   | Password SMTP                                                                                   |
 | `SMTP_FROM`                 | email                                              | _(requis)_                   | Expéditeur des mails                                                                            |
+| `BOOKING_VIDEO_URL_BASE`    | URL                                                | `https://meet.jit.si`        | Base des salles de visio des rendez-vous (Jitsi public ou auto-hébergé)                         |
+| `PUBLIC_SITE_URL`           | URL                                                | `https://nedellec-julien.fr` | Origine publique du site, base du lien d'annulation envoyé par email au visiteur                |
 | `SENTRY_DSN`                | URL                                                | _(optionnel)_                | DSN backend ; vide = Sentry désactivé                                                           |
 | `SENTRY_RELEASE`            | string                                             | _(optionnel)_                | Tag de release Sentry                                                                           |
 | `SENTRY_TRACES_SAMPLE_RATE` | float 0-1                                          | `0.2` prod / `1.0` dev       | Sample rate tracing                                                                             |
@@ -116,7 +118,7 @@ pnpm db:down            # Stoppe le container
 
 - **Dev** : sortie `pino-pretty`.
 - **Prod/test** : JSON structuré.
-- **Redaction** automatique : `authorization`, `cookie`, et dans le body `password`, `newPassword`, `currentPassword`, `code`, `token`, `refreshToken`.
+- **Redaction** automatique (liste unique `LOG_REDACT_PATHS`, `src/common/log-redact.ts`) : `authorization`, `cookie`, `set-cookie`, et dans le body `password`, `newPassword`, `currentPassword`, `code`, `token`, `refreshToken`, `phone`, `email`.
 - **`/api/health`** est ignoré par le logger HTTP (évite de polluer les logs au rythme du pinger/healthcheck Docker).
 - Tout log `error` (level ≥ 50) est aussi envoyé à Sentry via `Sentry.captureMessage`, sauf s'il s'agit déjà d'une exception capturée par le filter global (anti-doublon).
 
@@ -328,9 +330,34 @@ Formulaire de contact public + gestion admin des messages.
 
 **Stratégie mails** : fire-and-forget après le `db.insert` (helper `fireAndForget` dans `src/common/utils.ts`) - le visiteur reçoit 201 dès la persistance garantie ; un échec SMTP (3 retries épuisés) est loggé mais invisible côté visiteur, le message reste consultable côté admin.
 
-**Destinataire admin codé en dur** : `CONTACT_RECIPIENT = 'contact@nedellec-julien.fr'` dans `src/contact/contact.service.ts` - pas de variable d'env dédiée. `SMTP_FROM` reste l'expéditeur (rôle distinct).
+**Destinataire admin codé en dur** : `OWNER_EMAIL = 'contact@nedellec-julien.fr'` dans `src/mailer/mailer.constants.ts` (partagé par le contact et les rendez-vous) - pas de variable d'env dédiée. `SMTP_FROM` reste l'expéditeur (rôle distinct).
 
 **Templates** : `src/contact/mail-templates/contact-notification.html` (admin) et `contact-confirmation.html` (visiteur). Variables : `{{name}}`, `{{email}}`, `{{subject}}`, `{{message}}`.
+
+## Rendez-vous
+
+Prise de rendez-vous publique (appel de cadrage de 30 min, visio ou téléphone) et gestion admin (spec 024, ADR 0026). Module `src/booking/`.
+
+**Routes sous `/api/booking`** : publiques `GET /slots`, `POST /bookings`, `POST /bookings/cancel/preview`, `POST /bookings/cancel` ; admin (session) `GET|PUT /availability/rules`, `GET|POST /availability/closures`, `DELETE /availability/closures/:id`, `GET /bookings`, `GET /bookings/upcoming-count`, `PATCH /bookings/:id/cancel`.
+
+**Emails** (`BookingNotifier`, gabarits `src/booking/mail-templates/`) : confirmation au visiteur (invitation `.ics` + lien d'annulation `PUBLIC_SITE_URL/rendez-vous/annulation#<jeton>`), notification au propriétaire, annulation des deux côtés (`.ics` `CANCEL`), rappel la veille au visiteur seul (sans lien d'annulation : seule l'empreinte du jeton est conservée). Destinataire propriétaire : `OWNER_EMAIL` (`src/mailer/mailer.constants.ts`), comme le contact.
+
+**Variables d'env** : `BOOKING_VIDEO_URL_BASE` (base des salles de visio, défaut `https://meet.jit.si`) et `PUBLIC_SITE_URL` (origine des liens envoyés par email, défaut `https://nedellec-julien.fr`).
+
+**Crons** (`BookingScheduler`, UTC, surveillés par Sentry Crons) :
+
+| Cron           | Moniteur Sentry     | Rôle                                                                                                                                                                                                                                                                     |
+| -------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `*/15 * * * *` | `booking-reminders` | Rappel des rendez-vous confirmés qui commencent dans les 24 h et réservés au moins 30 h avant leur début. Réclamation atomique (`update … set reminder_sent_at = now() … returning`) puis envoi : au plus un rappel, un envoi raté est journalisé (id seul), pas rejoué. |
+| `30 3 * * *`   | `booking-purge`     | Purge des rendez-vous terminés depuis plus de **6 mois**, quel que soit leur statut ; le nombre de lignes supprimées est journalisé.                                                                                                                                     |
+
+**Tests d'intégration** (Postgres réel, ignorés sans `BOOKING_IT_DATABASE_URL`) :
+
+```bash
+docker run --rm -d --name booking-it -e POSTGRES_PASSWORD=it -p 55433:5432 docker.io/postgres:17-alpine
+BOOKING_IT_DATABASE_URL=postgres://postgres:it@127.0.0.1:55433/postgres pnpm test -- booking.integration booking-scheduler.integration
+docker stop booking-it
+```
 
 ## CV
 

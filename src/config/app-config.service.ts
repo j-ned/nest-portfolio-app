@@ -82,6 +82,14 @@ export class AppConfigService {
     return this.config.get('SMTP_FROM', { infer: true });
   }
 
+  get bookingVideoUrlBase() {
+    return this.config.get('BOOKING_VIDEO_URL_BASE', { infer: true });
+  }
+
+  get publicSiteUrl() {
+    return this.config.get('PUBLIC_SITE_URL', { infer: true });
+  }
+
   get sentryRelease() {
     return this.config.get('SENTRY_RELEASE', { infer: true });
   }
