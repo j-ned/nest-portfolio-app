@@ -160,4 +160,25 @@ describe('validateEnv', () => {
       validateEnv({ ...baseValid, SMTP_FROM: 'not-an-email' }),
     ).toThrow(/SMTP_FROM/);
   });
+
+  it('défaut BOOKING_VIDEO_URL_BASE à meet.jit.si', () => {
+    expect(validateEnv(baseValid)).toMatchObject({
+      BOOKING_VIDEO_URL_BASE: 'https://meet.jit.si',
+    });
+  });
+
+  it('respecte BOOKING_VIDEO_URL_BASE fourni (Jitsi auto-hébergé)', () => {
+    expect(
+      validateEnv({
+        ...baseValid,
+        BOOKING_VIDEO_URL_BASE: 'https://visio.example.test',
+      }),
+    ).toMatchObject({ BOOKING_VIDEO_URL_BASE: 'https://visio.example.test' });
+  });
+
+  it('rejette BOOKING_VIDEO_URL_BASE non-URL', () => {
+    expect(() =>
+      validateEnv({ ...baseValid, BOOKING_VIDEO_URL_BASE: 'meet.jit.si' }),
+    ).toThrow(/BOOKING_VIDEO_URL_BASE/);
+  });
 });

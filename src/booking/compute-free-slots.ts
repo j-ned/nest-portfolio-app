@@ -25,6 +25,21 @@ export type FreeSlotsInput = {
   readonly bookings: readonly Pick<Booking, 'startsAt' | 'endsAt' | 'status'>[];
 };
 
+type BookingSpan = Pick<Booking, 'startsAt' | 'endsAt'>;
+
+/** Le créneau `[start, end)` touche le rendez-vous, battement de `bufferMinutes` compris de part et d'autre. */
+export function overlapsBooking(
+  start: Date,
+  end: Date,
+  booking: BookingSpan,
+): boolean {
+  const buffer = BOOKING_POLICY.bufferMinutes * MINUTE_MS;
+  return (
+    booking.startsAt.getTime() - buffer < end.getTime() &&
+    start.getTime() < booking.endsAt.getTime() + buffer
+  );
+}
+
 const nextDate = (date: string): string =>
   new Date(Date.parse(`${date}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10);
 
@@ -40,10 +55,9 @@ export function computeFreeSlots({
   closures,
   bookings,
 }: FreeSlotsInput): readonly FreeSlot[] {
-  const { slotMinutes, stepMinutes, bufferMinutes } = BOOKING_POLICY;
+  const { slotMinutes, stepMinutes } = BOOKING_POLICY;
   const earliest = now.getTime() + BOOKING_POLICY.minNoticeHours * HOUR_MS;
   const latest = now.getTime() + BOOKING_POLICY.maxAdvanceDays * DAY_MS;
-  const buffer = bufferMinutes * MINUTE_MS;
   const blocking = bookings.filter((booking) => booking.status === 'confirmed');
   const free = new Map<number, FreeSlot>();
 
@@ -65,13 +79,11 @@ export function computeFreeSlots({
         if (!startsAt) continue;
         const start = startsAt.getTime();
         if (start < earliest || start > latest) continue;
-        const end = start + slotMinutes * MINUTE_MS;
-        const taken = blocking.some(
-          (booking) =>
-            booking.startsAt.getTime() - buffer < end &&
-            start < booking.endsAt.getTime() + buffer,
+        const endsAt = new Date(start + slotMinutes * MINUTE_MS);
+        const taken = blocking.some((booking) =>
+          overlapsBooking(startsAt, endsAt, booking),
         );
-        if (!taken) free.set(start, { startsAt, endsAt: new Date(end) });
+        if (!taken) free.set(start, { startsAt, endsAt });
       }
     }
   }

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { asc, gte } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
-import type { Database } from '../database/drizzle.types';
+import type { Database, DbExecutor } from '../database/drizzle.types';
 import {
   availabilityClosures,
   availabilityRules,
@@ -14,8 +14,8 @@ import { toParisDate } from './paris-time';
 export class AvailabilityService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  listRules(): Promise<AvailabilityRule[]> {
-    return this.db
+  listRules(executor: DbExecutor = this.db): Promise<AvailabilityRule[]> {
+    return executor
       .select()
       .from(availabilityRules)
       .orderBy(
@@ -25,8 +25,8 @@ export class AvailabilityService {
   }
 
   /** Fermetures non terminées : `endsOn` à partir d'aujourd'hui, date de Paris. */
-  listClosures(): Promise<AvailabilityClosure[]> {
-    return this.db
+  listClosures(executor: DbExecutor = this.db): Promise<AvailabilityClosure[]> {
+    return executor
       .select()
       .from(availabilityClosures)
       .where(gte(availabilityClosures.endsOn, toParisDate(new Date())))
