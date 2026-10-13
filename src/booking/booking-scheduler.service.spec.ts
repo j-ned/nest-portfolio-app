@@ -8,6 +8,7 @@ import { DRIZZLE } from '../database/drizzle.constants';
 import { bookings } from '../database/schema';
 import { createMockDb } from '../database/test-utils';
 import { BookingNotifier } from './booking-notifier.service';
+import { BOOKING_POLICY } from './booking-policy';
 import { BookingScheduler } from './booking-scheduler.service';
 import { aBooking } from './booking-test-builders';
 
@@ -166,6 +167,33 @@ describe('BookingScheduler', () => {
       expect(where.sql).toContain('"created_at"');
     });
 
+    it('Given la politique, Then les bornes du rappel en sont dérivées par paramètres SQL, sans littéral', async () => {
+      db.returning.mockResolvedValueOnce([]);
+
+      await scheduler.sendReminders();
+
+      const where = render((db.where.mock.calls as unknown[][])[0][0]);
+      expect(where.sql).toMatch(
+        /"booking"\."starts_at" <= now\(\) \+ make_interval\(hours => \$(\d+)\)/,
+      );
+      expect(where.sql).toMatch(
+        /"booking"\."created_at" <= "booking"\."starts_at" - make_interval\(hours => \$(\d+)\)/,
+      );
+      const leadIndex = Number(
+        /now\(\) \+ make_interval\(hours => \$(\d+)\)/.exec(where.sql)?.[1],
+      );
+      const aheadIndex = Number(
+        /- make_interval\(hours => \$(\d+)\)/.exec(where.sql)?.[1],
+      );
+      expect(where.params[leadIndex - 1]).toBe(
+        BOOKING_POLICY.reminderLeadHours,
+      );
+      expect(where.params[aheadIndex - 1]).toBe(
+        BOOKING_POLICY.reminderMinCreatedAheadHours,
+      );
+      expect(where.sql).not.toContain("interval '");
+    });
+
     it('Given aucun rendez-vous à rappeler, Then aucun email', async () => {
       db.returning.mockResolvedValueOnce([]);
 
@@ -238,9 +266,17 @@ describe('BookingScheduler', () => {
       const where = render((db.where.mock.calls as unknown[][])[0][0]);
       expect(where.sql).toContain('"ends_at" <');
       expect(where.sql).not.toContain('"status"');
-      expect([where.sql, ...where.params.map(String)].join(' ')).toMatch(
-        /2026-04-13T03:30:00\.000Z|interval '6 months'/,
-      );
+    });
+
+    it('Given la politique, Then l’ancienneté de purge en est dérivée par paramètre SQL, sans littéral', async () => {
+      db.returning.mockResolvedValueOnce([]);
+
+      await scheduler.purgeExpired();
+
+      const where = render((db.where.mock.calls as unknown[][])[0][0]);
+      expect(where.sql).toContain('make_interval(months => $1)');
+      expect(where.params).toEqual([BOOKING_POLICY.retentionMonths]);
+      expect(where.sql).not.toContain("interval '");
     });
 
     it('Given onze rendez-vous supprimés, Then le nombre est journalisé', async () => {

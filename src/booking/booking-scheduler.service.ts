@@ -6,6 +6,7 @@ import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
 import { bookings } from '../database/schema';
 import { BookingNotifier } from './booking-notifier.service';
+import { BOOKING_POLICY } from './booking-policy';
 
 const REMINDERS_CRON = '*/15 * * * *';
 const PURGE_CRON = '30 3 * * *';
@@ -32,7 +33,7 @@ export class BookingScheduler {
   })
   @Cron(REMINDERS_CRON, { timeZone: 'UTC' })
   async sendReminders(): Promise<void> {
-    // Réservé moins de 30 h avant le début : la confirmation tient lieu de rappel.
+    // Réservé trop peu de temps avant le début : la confirmation tient lieu de rappel.
     const claimed = await this.db
       .update(bookings)
       .set({ reminderSentAt: sql`now()` })
@@ -41,8 +42,8 @@ export class BookingScheduler {
           eq(bookings.status, 'confirmed'),
           isNull(bookings.reminderSentAt),
           sql`${bookings.startsAt} > now()`,
-          sql`${bookings.startsAt} <= now() + interval '24 hours'`,
-          sql`${bookings.createdAt} <= ${bookings.startsAt} - interval '30 hours'`,
+          sql`${bookings.startsAt} <= now() + make_interval(hours => ${BOOKING_POLICY.reminderLeadHours})`,
+          sql`${bookings.createdAt} <= ${bookings.startsAt} - make_interval(hours => ${BOOKING_POLICY.reminderMinCreatedAheadHours})`,
         ),
       )
       .returning();
@@ -67,10 +68,15 @@ export class BookingScheduler {
   async purgeExpired(): Promise<void> {
     const deleted = await this.db
       .delete(bookings)
-      .where(lt(bookings.endsAt, sql`now() - interval '6 months'`))
+      .where(
+        lt(
+          bookings.endsAt,
+          sql`now() - make_interval(months => ${BOOKING_POLICY.retentionMonths})`,
+        ),
+      )
       .returning({ id: bookings.id });
     this.logger.log(
-      `Purged ${deleted.length} bookings ended more than 6 months ago`,
+      `Purged ${deleted.length} bookings ended more than ${BOOKING_POLICY.retentionMonths} months ago`,
     );
   }
 }

@@ -1,4 +1,4 @@
-import { escapeHtml, renderTemplate } from './mailer.utils';
+import { escapeHtml, maskEmail, renderTemplate } from './mailer.utils';
 
 describe('renderTemplate', () => {
   it('remplace une variable simple', () => {
@@ -60,5 +60,17 @@ describe('renderTemplate', () => {
     it('escapeHtml laisse les caractères ordinaires intacts', () => {
       expect(escapeHtml('Bonjour, ça va ?')).toBe('Bonjour, ça va ?');
     });
+  });
+});
+
+describe('maskEmail', () => {
+  it.each([
+    ['camille@example.com', 'c***@example.com'],
+    ['c@example.com', 'c***@example.com'],
+    ['a@x.fr, bob@y.com', 'a***@x.fr, b***@y.com'],
+    ['pas-une-adresse', '***'],
+    ['@example.com', '***@example.com'],
+  ])('masque %p en %p', (address, masked) => {
+    expect(maskEmail(address)).toBe(masked);
   });
 });
