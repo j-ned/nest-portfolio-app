@@ -22,6 +22,7 @@ import { CvModule } from './cv/cv.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { RuntimeConfigModule } from './runtime-config/runtime-config.module';
+import { BookingModule } from './booking/booking.module';
 
 @Module({
   imports: [
@@ -109,6 +110,7 @@ import { RuntimeConfigModule } from './runtime-config/runtime-config.module';
     ScheduleModule.forRoot(),
     AnalyticsModule,
     RuntimeConfigModule,
+    BookingModule,
   ],
   providers: [
     {
