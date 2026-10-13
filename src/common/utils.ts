@@ -69,24 +69,38 @@ export function slugify(input: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-export function isUniqueViolation(err: unknown, columnHint?: string): boolean {
-  // Walk the error cause chain (Drizzle wraps the raw pg error in a
-  // DrizzleQueryError whose `.cause` holds the original PostgresError).
+/**
+ * Erreur Postgres `code` dans la chaîne `cause` (Drizzle enveloppe l'erreur brute dans une
+ * `DrizzleQueryError` dont `.cause` porte la `PostgresError`), sur une contrainte dont le nom
+ * contient `hint` s'il est fourni.
+ */
+function hasPgViolation(err: unknown, code: string, hint?: string): boolean {
   let current: unknown = err;
-  let depth = 0;
-  while (current !== null && typeof current === 'object' && depth < 5) {
-    const obj = current as {
-      code?: string;
-      constraint_name?: string;
+  for (let depth = 0; depth < 5; depth++) {
+    if (current === null || typeof current !== 'object') return false;
+    const fields = current as {
+      code?: unknown;
+      constraint_name?: unknown;
       cause?: unknown;
     };
-    if (obj.code === '23505') {
-      if (!columnHint) return true;
-      const constraint = obj.constraint_name ?? '';
-      return constraint.includes(columnHint);
+    if (fields.code === code) {
+      return (
+        !hint ||
+        (typeof fields.constraint_name === 'string' &&
+          fields.constraint_name.includes(hint))
+      );
     }
-    current = obj.cause;
-    depth++;
+    current = fields.cause;
   }
   return false;
 }
+
+/** Violation d'unicité (`23505`), éventuellement sur une contrainte dont le nom contient `columnHint`. */
+export const isUniqueViolation = (err: unknown, columnHint?: string): boolean =>
+  hasPgViolation(err, '23505', columnHint);
+
+/** Violation d'une contrainte d'exclusion (`23P01`), par exemple `booking_no_overlap`. */
+export const isExclusionViolation = (
+  err: unknown,
+  constraintHint?: string,
+): boolean => hasPgViolation(err, '23P01', constraintHint);

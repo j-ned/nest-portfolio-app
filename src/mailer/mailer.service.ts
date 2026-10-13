@@ -2,14 +2,32 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Transporter } from 'nodemailer';
 import { AppConfigService } from '../config/app-config.service';
 import { MAIL_TRANSPORTER } from './mailer.constants';
+import { maskEmail } from './mailer.utils';
 
 const MAX_RETRIES = 3;
+
+/** Invitation calendrier : nodemailer l'ajoute en alternative `text/calendar` et en pièce jointe. */
+export type IcalEvent = {
+  method: 'REQUEST' | 'CANCEL';
+  content: string;
+};
 
 export type SendMailOptions = {
   to: string;
   subject: string;
   html: string;
+  icalEvent?: IcalEvent;
 };
+
+const maskRecipientsIn = (text: string, recipients: string): string =>
+  recipients
+    .split(',')
+    .map((address) => address.trim())
+    .filter((address) => address !== '')
+    .reduce(
+      (masked, address) => masked.replaceAll(address, maskEmail(address)),
+      text,
+    );
 
 @Injectable()
 export class MailerService {
@@ -20,7 +38,12 @@ export class MailerService {
     private readonly cfg: AppConfigService,
   ) {}
 
-  async sendMail({ to, subject, html }: SendMailOptions): Promise<void> {
+  async sendMail({
+    to,
+    subject,
+    html,
+    icalEvent,
+  }: SendMailOptions): Promise<void> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -29,6 +52,9 @@ export class MailerService {
           to,
           subject,
           html,
+          ...(icalEvent && {
+            icalEvent: { ...icalEvent, filename: 'invitation.ics' },
+          }),
         });
         return;
       } catch (err) {
@@ -38,9 +64,12 @@ export class MailerService {
         }
       }
     }
+    // Le log d'erreur remonte à Sentry : ni l'adresse en clair, ni la réponse SMTP qui la cite.
+    const trace =
+      lastError instanceof Error ? lastError.stack : String(lastError);
     this.logger.error(
-      `Failed to send email to ${to} after ${MAX_RETRIES} attempts`,
-      lastError instanceof Error ? lastError.stack : String(lastError),
+      `Failed to send email to ${maskEmail(to)} after ${MAX_RETRIES} attempts`,
+      trace && maskRecipientsIn(trace, to),
     );
     throw lastError;
   }

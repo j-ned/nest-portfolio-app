@@ -160,4 +160,43 @@ describe('validateEnv', () => {
       validateEnv({ ...baseValid, SMTP_FROM: 'not-an-email' }),
     ).toThrow(/SMTP_FROM/);
   });
+
+  it('défaut BOOKING_VIDEO_URL_BASE à meet.jit.si', () => {
+    expect(validateEnv(baseValid)).toMatchObject({
+      BOOKING_VIDEO_URL_BASE: 'https://meet.jit.si',
+    });
+  });
+
+  it('respecte BOOKING_VIDEO_URL_BASE fourni (Jitsi auto-hébergé)', () => {
+    expect(
+      validateEnv({
+        ...baseValid,
+        BOOKING_VIDEO_URL_BASE: 'https://visio.example.test',
+      }),
+    ).toMatchObject({ BOOKING_VIDEO_URL_BASE: 'https://visio.example.test' });
+  });
+
+  it('rejette BOOKING_VIDEO_URL_BASE non-URL', () => {
+    expect(() =>
+      validateEnv({ ...baseValid, BOOKING_VIDEO_URL_BASE: 'meet.jit.si' }),
+    ).toThrow(/BOOKING_VIDEO_URL_BASE/);
+  });
+
+  it('défaut PUBLIC_SITE_URL à l’origine publique du site', () => {
+    expect(validateEnv(baseValid)).toMatchObject({
+      PUBLIC_SITE_URL: 'https://nedellec-julien.fr',
+    });
+  });
+
+  it('respecte PUBLIC_SITE_URL fourni', () => {
+    expect(
+      validateEnv({ ...baseValid, PUBLIC_SITE_URL: 'http://localhost:4200' }),
+    ).toMatchObject({ PUBLIC_SITE_URL: 'http://localhost:4200' });
+  });
+
+  it('rejette PUBLIC_SITE_URL non-URL', () => {
+    expect(() =>
+      validateEnv({ ...baseValid, PUBLIC_SITE_URL: 'nedellec-julien.fr' }),
+    ).toThrow(/PUBLIC_SITE_URL/);
+  });
 });
