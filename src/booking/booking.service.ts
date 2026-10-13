@@ -4,17 +4,19 @@ import {
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { and, count, eq, gt, lt, sql } from 'drizzle-orm';
-import { isExclusionViolation } from '../common/utils';
+import { fireAndForget, isExclusionViolation } from '../common/utils';
 import { AppConfigService } from '../config/app-config.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database, DbExecutor } from '../database/drizzle.types';
 import { type Booking, bookings } from '../database/schema';
 import { AvailabilityService } from './availability.service';
+import { BookingNotifier } from './booking-notifier.service';
 import { BOOKING_POLICY } from './booking-policy';
-import { createCancelToken } from './cancel-token';
+import { createCancelToken, hashCancelToken } from './cancel-token';
 import { computeFreeSlots, overlapsBooking } from './compute-free-slots';
 import type { CreateBookingDto } from './dto/create-booking.dto';
 import { videoRoomUrl } from './video-room-url';
@@ -36,6 +38,14 @@ export type BookingConfirmation = {
   videoUrl: string | null;
 };
 
+export type CancellationPreview = {
+  startsAt: string;
+  endsAt: string;
+  format: Booking['format'];
+  status: Booking['status'];
+  cancellable: boolean;
+};
+
 @Injectable()
 export class BookingService {
   private readonly logger = new Logger(BookingService.name);
@@ -44,6 +54,7 @@ export class BookingService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly availability: AvailabilityService,
     private readonly config: AppConfigService,
+    private readonly notifier: BookingNotifier,
   ) {}
 
   /** Créneaux libres de toute la fenêtre réservable, sans aucune donnée personnelle. */
@@ -83,7 +94,7 @@ export class BookingService {
       });
     }
 
-    const row = await this.db.transaction(async (tx) => {
+    const { row, token } = await this.db.transaction(async (tx) => {
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtext('booking:create'))`,
       );
@@ -91,7 +102,7 @@ export class BookingService {
       await this.assertBelowEmailLimit(tx, dto.email, now);
       await this.assertSlotFree(tx, now, startsAt, endsAt);
 
-      const { hash } = createCancelToken();
+      const { token, hash } = createCancelToken();
       try {
         const [inserted] = await tx
           .insert(bookings)
@@ -108,14 +119,79 @@ export class BookingService {
             cancelTokenHash: hash,
           })
           .returning();
-        return inserted;
+        return { row: inserted, token };
       } catch (err) {
         if (isExclusionViolation(err, 'booking_no_overlap')) throw slotTaken();
         throw err;
       }
     });
 
+    // Après le commit : un SMTP en panne ne fait pas échouer la réservation (visible dans l'admin).
+    fireAndForget(
+      this.notifier.bookingConfirmed(row, token),
+      this.logger,
+      `Failed to send booking confirmation mails for ${row.id}`,
+    );
     return toConfirmation(row);
+  }
+
+  /** Aperçu du rendez-vous désigné par le jeton du lien d'annulation, sans donnée personnelle. */
+  async previewCancellation(token: string): Promise<CancellationPreview> {
+    const row = await this.findByCancelToken(token);
+    return {
+      startsAt: row.startsAt.toISOString(),
+      endsAt: row.endsAt.toISOString(),
+      format: row.format,
+      status: row.status,
+      cancellable:
+        row.status === 'confirmed' && Date.now() < row.startsAt.getTime(),
+    };
+  }
+
+  /**
+   * Annulation par le visiteur, idempotente : un rendez-vous déjà annulé (même passé) répond
+   * `cancelled` sans écriture ni email ; seule la mise à jour gagnante prévient les deux parties.
+   */
+  async cancelByVisitor(token: string): Promise<{ status: 'cancelled' }> {
+    const row = await this.findByCancelToken(token);
+    if (row.status === 'cancelled') return { status: 'cancelled' };
+
+    const now = new Date();
+    if (now.getTime() >= row.startsAt.getTime()) {
+      throw new ConflictException({
+        error: 'cancel_too_late',
+        message: 'Le rendez-vous a déjà commencé.',
+      });
+    }
+
+    const [cancelled] = await this.db
+      .update(bookings)
+      .set({ status: 'cancelled', cancelledAt: now, cancelledBy: 'visitor' })
+      .where(and(eq(bookings.id, row.id), eq(bookings.status, 'confirmed')))
+      .returning();
+    if (cancelled) {
+      fireAndForget(
+        this.notifier.bookingCancelled(cancelled),
+        this.logger,
+        `Failed to send booking cancellation mails for ${cancelled.id}`,
+      );
+    }
+    return { status: 'cancelled' };
+  }
+
+  /** Recherche par empreinte : le jeton en clair n'est ni stocké ni passé en paramètre SQL. */
+  private async findByCancelToken(token: string): Promise<Booking> {
+    const [row] = await this.db
+      .select()
+      .from(bookings)
+      .where(eq(bookings.cancelTokenHash, hashCancelToken(token)));
+    if (!row) {
+      throw new NotFoundException({
+        error: 'booking_not_found',
+        message: 'Rendez-vous introuvable.',
+      });
+    }
+    return row;
   }
 
   private async assertBelowEmailLimit(

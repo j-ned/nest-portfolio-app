@@ -12,4 +12,14 @@ describe('AppConfigService', () => {
 
     expect(config.bookingVideoUrlBase).toBe('https://visio.example.test');
   });
+
+  it('Given PUBLIC_SITE_URL, When le getter est lu, Then l’origine publique du site', () => {
+    const config = new AppConfigService(
+      new ConfigService<Env, true>({
+        PUBLIC_SITE_URL: 'https://site.example.test',
+      }),
+    );
+
+    expect(config.publicSiteUrl).toBe('https://site.example.test');
+  });
 });

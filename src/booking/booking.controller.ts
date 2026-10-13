@@ -1,11 +1,21 @@
-import { Body, Controller, Get, Header, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  HttpStatus,
+  Post,
+} from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { BookingCreateThrottle, PublicReadThrottle } from '../common/throttle';
 import {
   type BookingConfirmation,
   BookingService,
+  type CancellationPreview,
   type SlotsResponse,
 } from './booking.service';
+import { CancelTokenDto } from './dto/cancel-token.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 
 @ApiTags('Booking')
@@ -39,5 +49,33 @@ export class BookingController {
   @ApiResponse({ status: 429, description: 'Too many bookings from this IP' })
   create(@Body() dto: CreateBookingDto): Promise<BookingConfirmation> {
     return this.booking.create(dto);
+  }
+
+  // Jeton dans le corps, jamais dans l'URL : pino journalise `req.url` (ADR-0026).
+  @Post('bookings/cancel/preview')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Preview the booking behind a cancel token (public)',
+  })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 400, description: 'Validation failed' })
+  @ApiResponse({ status: 404, description: 'booking_not_found' })
+  previewCancellation(
+    @Body() { token }: CancelTokenDto,
+  ): Promise<CancellationPreview> {
+    return this.booking.previewCancellation(token);
+  }
+
+  @Post('bookings/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel a booking with its cancel token (public, idempotent)',
+  })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 400, description: 'Validation failed' })
+  @ApiResponse({ status: 404, description: 'booking_not_found' })
+  @ApiResponse({ status: 409, description: 'cancel_too_late' })
+  cancel(@Body() { token }: CancelTokenDto): Promise<{ status: 'cancelled' }> {
+    return this.booking.cancelByVisitor(token);
   }
 }

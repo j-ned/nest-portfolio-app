@@ -181,4 +181,22 @@ describe('validateEnv', () => {
       validateEnv({ ...baseValid, BOOKING_VIDEO_URL_BASE: 'meet.jit.si' }),
     ).toThrow(/BOOKING_VIDEO_URL_BASE/);
   });
+
+  it('défaut PUBLIC_SITE_URL à l’origine publique du site', () => {
+    expect(validateEnv(baseValid)).toMatchObject({
+      PUBLIC_SITE_URL: 'https://nedellec-julien.fr',
+    });
+  });
+
+  it('respecte PUBLIC_SITE_URL fourni', () => {
+    expect(
+      validateEnv({ ...baseValid, PUBLIC_SITE_URL: 'http://localhost:4200' }),
+    ).toMatchObject({ PUBLIC_SITE_URL: 'http://localhost:4200' });
+  });
+
+  it('rejette PUBLIC_SITE_URL non-URL', () => {
+    expect(() =>
+      validateEnv({ ...baseValid, PUBLIC_SITE_URL: 'nedellec-julien.fr' }),
+    ).toThrow(/PUBLIC_SITE_URL/);
+  });
 });

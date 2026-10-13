@@ -4,6 +4,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
 import { contactMessages, type ContactMessage } from '../database/schema';
+import { OWNER_EMAIL } from '../mailer/mailer.constants';
 import { MailerService } from '../mailer/mailer.service';
 import { loadTemplate, renderTemplate } from '../mailer/mailer.utils';
 import {
@@ -12,8 +13,6 @@ import {
 } from '../common/pagination';
 import { fireAndForget } from '../common/utils';
 import { CreateContactMessageDto } from './dto/create-contact-message.dto';
-
-const CONTACT_RECIPIENT = 'contact@nedellec-julien.fr';
 
 @Injectable()
 export class ContactService {
@@ -111,7 +110,7 @@ export class ContactService {
     };
     await Promise.all([
       this.mailer.sendMail({
-        to: CONTACT_RECIPIENT,
+        to: OWNER_EMAIL,
         subject: `Nouveau message de contact: ${msg.subject}`,
         html: renderTemplate(adminTpl, variables),
       }),

@@ -73,6 +73,8 @@ export const envSchema = z.object({
 
   // Booking : base des salles de visio (Jitsi public, ou auto-hébergé sans changer le code)
   BOOKING_VIDEO_URL_BASE: z.string().url().default('https://meet.jit.si'),
+  // Origine publique du site : liens envoyés par email (annulation d'un rendez-vous)
+  PUBLIC_SITE_URL: z.string().url().default('https://nedellec-julien.fr'),
 
   // Observability (Sentry) - all optional, empty DSN keeps Sentry disabled
   SENTRY_DSN: z.string().url().optional(),
