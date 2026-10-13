@@ -44,6 +44,29 @@ describe('MailerService', () => {
     });
   });
 
+  it.each(['REQUEST', 'CANCEL'] as const)(
+    'Given une invitation %s, When le mail part, Then nodemailer reçoit icalEvent avec la méthode, le contenu et le nom invitation.ics',
+    async (method) => {
+      transporter.sendMail.mockResolvedValueOnce({});
+      const content = `BEGIN:VCALENDAR\r\nMETHOD:${method}\r\nEND:VCALENDAR\r\n`;
+
+      await service.sendMail({
+        to: 'visitor@example.com',
+        subject: 'Rendez-vous',
+        html: '<p>rdv</p>',
+        icalEvent: { method, content },
+      });
+
+      expect(transporter.sendMail).toHaveBeenCalledWith({
+        from: 'noreply@test.local',
+        to: 'visitor@example.com',
+        subject: 'Rendez-vous',
+        html: '<p>rdv</p>',
+        icalEvent: { method, content, filename: 'invitation.ics' },
+      });
+    },
+  );
+
   it('utilise cfg.smtpFrom comme expéditeur', async () => {
     transporter.sendMail.mockResolvedValueOnce({});
     await service.sendMail({ to: 'x@y.com', subject: 's', html: 'h' });

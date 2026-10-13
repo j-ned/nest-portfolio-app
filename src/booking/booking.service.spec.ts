@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   ConflictException,
   Logger,
+  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -19,6 +20,22 @@ import {
   anAvailabilityClosure,
   anAvailabilityRule,
 } from './booking-test-builders';
+import { hashCancelToken } from './cancel-token';
+
+const aNotifierDouble = () => ({
+  bookingConfirmed: jest.fn().mockResolvedValue(undefined),
+  bookingCancelled: jest.fn().mockResolvedValue(undefined),
+});
+
+const providingNotifier =
+  (notifier: ReturnType<typeof aNotifierDouble>) => (token: unknown) => {
+    if (typeof token === 'function' && token.name === 'BookingNotifier') {
+      return notifier;
+    }
+    throw new Error(
+      `Unexpected dependency: ${typeof token === 'function' ? token.name : String(token)}`,
+    );
+  };
 
 const WEDNESDAY_9_TO_12 = anAvailabilityRule({
   weekday: 3,
@@ -54,7 +71,9 @@ describe('BookingService.getSlots', () => {
           useValue: { bookingVideoUrlBase: 'https://meet.jit.si' },
         },
       ],
-    }).compile();
+    })
+      .useMocker(providingNotifier(aNotifierDouble()))
+      .compile();
     service = module.get(BookingService);
     jest.useFakeTimers().setSystemTime(new Date('2026-11-02T08:00:00Z'));
   });
@@ -205,6 +224,7 @@ describe('BookingService.create', () => {
   let db: ReturnType<typeof createMockDb>;
   let tx: ReturnType<typeof createMockDb>;
   let availability: { listRules: jest.Mock; listClosures: jest.Mock };
+  let notifier: ReturnType<typeof aNotifierDouble>;
   let logged: jest.SpyInstance[];
   let warned: jest.SpyInstance;
 
@@ -232,6 +252,7 @@ describe('BookingService.create', () => {
       listRules: jest.fn().mockResolvedValue([WEDNESDAY_9_TO_12]),
       listClosures: jest.fn().mockResolvedValue([LATER_WEDNESDAYS_CLOSED]),
     };
+    notifier = aNotifierDouble();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BookingService,
@@ -242,7 +263,9 @@ describe('BookingService.create', () => {
           useValue: { bookingVideoUrlBase: 'https://visio.example.test/' },
         },
       ],
-    }).compile();
+    })
+      .useMocker(providingNotifier(notifier))
+      .compile();
     service = module.get(BookingService);
     logged = (['log', 'warn', 'error', 'debug', 'verbose'] as const).map(
       (level) =>
@@ -624,6 +647,450 @@ describe('BookingService.create', () => {
       await service.create(aBookingRequest({ website: '' }));
 
       expect(tx.values).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('notification', () => {
+    const flushFireAndForget = async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    };
+
+    it('Given une réservation insérée, Then le notifier reçoit la ligne insérée et le jeton en clair dont l’empreinte est stockée', async () => {
+      const inserted = aBooking({ id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' });
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+      givenInserted(inserted);
+
+      await service.create(aBookingRequest());
+      await flushFireAndForget();
+
+      expect(notifier.bookingConfirmed).toHaveBeenCalledTimes(1);
+      const [row, token] = notifier.bookingConfirmed.mock.calls[0] as [
+        unknown,
+        string,
+      ];
+      expect(row).toBe(inserted);
+      expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(hashCancelToken(token)).toBe(insertedValues().cancelTokenHash);
+    });
+
+    it('Given une réservation, Then le notifier est appelé après la fin de la transaction, jamais dedans', async () => {
+      let notifiedInsideTransaction: boolean | undefined;
+      db.transaction.mockImplementation(
+        async (fn: (t: unknown) => Promise<unknown>) => {
+          const result = await fn(tx);
+          notifiedInsideTransaction =
+            notifier.bookingConfirmed.mock.calls.length > 0;
+          return result;
+        },
+      );
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+      givenInserted(aBooking());
+
+      await service.create(aBookingRequest());
+      await flushFireAndForget();
+
+      expect(notifiedInsideTransaction).toBe(false);
+      expect(notifier.bookingConfirmed).toHaveBeenCalledTimes(1);
+    });
+
+    it('Given un envoi qui ne se termine jamais, Then la confirmation est rendue sans l’attendre', async () => {
+      notifier.bookingConfirmed.mockReturnValueOnce(new Promise(() => {}));
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+      givenInserted(aBooking({ id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' }));
+
+      await expect(service.create(aBookingRequest())).resolves.toEqual(
+        expect.objectContaining({ id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' }),
+      );
+      expect(notifier.bookingConfirmed).toHaveBeenCalledTimes(1);
+    });
+
+    it('Given un envoi en échec, Then la réservation reste confirmée et l’échec est journalisé avec l’id, sans le jeton', async () => {
+      notifier.bookingConfirmed.mockRejectedValueOnce(new Error('SMTP down'));
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+      givenInserted(aBooking({ id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' }));
+
+      await expect(service.create(aBookingRequest())).resolves.toEqual(
+        expect.objectContaining({ id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' }),
+      );
+      await flushFireAndForget();
+
+      const errored = logged[2];
+      expect(errored).toHaveBeenCalledTimes(1);
+      expect(errored).toHaveBeenCalledWith(
+        expect.stringContaining('dddddddd-dddd-4ddd-8ddd-dddddddddddd'),
+        expect.anything(),
+      );
+      const [, token] = notifier.bookingConfirmed.mock.calls[0] as [
+        unknown,
+        string,
+      ];
+      expect(loggedText()).not.toContain(token);
+    });
+
+    it('Given le champ piège puis une vraie réservation, Then une seule notification, celle de la vraie', async () => {
+      const real = aBooking({ id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' });
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+      givenInserted(real);
+
+      await service.create(aBookingRequest({ website: 'https://spam.test' }));
+      await service.create(aBookingRequest());
+      await flushFireAndForget();
+
+      expect(notifier.bookingConfirmed).toHaveBeenCalledTimes(1);
+      expect(notifier.bookingConfirmed).toHaveBeenCalledWith(
+        real,
+        expect.any(String),
+      );
+    });
+
+    it.each([
+      ['plafond atteint', () => givenUpcomingForEmail(2)],
+      [
+        'créneau pris',
+        () => {
+          givenUpcomingForEmail(0);
+          givenConfirmed([
+            aBooking({
+              startsAt: new Date('2026-11-04T10:00:00Z'),
+              endsAt: new Date('2026-11-04T10:30:00Z'),
+            }),
+          ]);
+        },
+      ],
+      [
+        'insertion refusée par la contrainte',
+        () => {
+          givenUpcomingForEmail(0);
+          givenConfirmed([]);
+          tx.returning.mockRejectedValueOnce(
+            wrappedPgError('23P01', 'booking_no_overlap'),
+          );
+        },
+      ],
+    ])(
+      'Given %s, When la création échoue, Then aucune notification',
+      async (_case, arrange) => {
+        arrange();
+
+        await rejectionOf(service.create(aBookingRequest()));
+        await flushFireAndForget();
+
+        expect(notifier.bookingConfirmed).not.toHaveBeenCalled();
+      },
+    );
+  });
+});
+
+describe('BookingService, annulation par le visiteur', () => {
+  const TOKEN = 'Qm9va2luZ0NhbmNlbFRva2VuX0Zvcl9UZXN0c18wMTI';
+  const NOW = new Date('2026-11-02T08:00:00Z');
+  const UPCOMING = aBooking({
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    startsAt: new Date('2026-11-04T10:00:00Z'),
+    endsAt: new Date('2026-11-04T10:30:00Z'),
+    format: 'phone',
+    videoUrl: null,
+    phone: '+33 6 12 34 56 78',
+    cancelTokenHash: hashCancelToken(TOKEN),
+  });
+  const CANCELLED = aBooking({
+    ...UPCOMING,
+    status: 'cancelled',
+    cancelledAt: new Date('2026-11-01T09:00:00Z'),
+    cancelledBy: 'visitor',
+  });
+
+  let service: BookingService;
+  let db: ReturnType<typeof createMockDb>;
+  let notifier: ReturnType<typeof aNotifierDouble>;
+  let logged: jest.SpyInstance[];
+
+  const givenFound = (rows: ReturnType<typeof aBooking>[]) =>
+    db.where.mockResolvedValueOnce(rows);
+  const givenUpdated = (rows: ReturnType<typeof aBooking>[]) =>
+    db.returning.mockResolvedValueOnce(rows);
+  const loggedText = () =>
+    logged
+      .flatMap((spy) => spy.mock.calls as unknown[][])
+      .map((args) => JSON.stringify(args))
+      .join('\n');
+  const flushFireAndForget = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+  const businessError = (err: unknown): unknown =>
+    (err as { getResponse(): { error?: unknown } }).getResponse().error;
+
+  beforeEach(async () => {
+    db = createMockDb();
+    notifier = aNotifierDouble();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        BookingService,
+        { provide: DRIZZLE, useValue: db },
+        {
+          provide: AvailabilityService,
+          useValue: { listRules: jest.fn(), listClosures: jest.fn() },
+        },
+        {
+          provide: AppConfigService,
+          useValue: { bookingVideoUrlBase: 'https://meet.jit.si' },
+        },
+      ],
+    })
+      .useMocker(providingNotifier(notifier))
+      .compile();
+    service = module.get(BookingService);
+    logged = (['log', 'warn', 'error', 'debug', 'verbose'] as const).map(
+      (level) =>
+        jest.spyOn(Logger.prototype, level).mockImplementation(() => {}),
+    );
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  describe('previewCancellation', () => {
+    it('Given un jeton d’un rendez-vous à venir, Then l’aperçu exact du contrat, sans donnée personnelle', async () => {
+      givenFound([UPCOMING]);
+
+      await expect(service.previewCancellation(TOKEN)).resolves.toEqual({
+        startsAt: '2026-11-04T10:00:00.000Z',
+        endsAt: '2026-11-04T10:30:00.000Z',
+        format: 'phone',
+        status: 'confirmed',
+        cancellable: true,
+      });
+    });
+
+    it('Given un jeton, Then le rendez-vous est cherché par l’empreinte, jamais par le jeton en clair', async () => {
+      givenFound([UPCOMING]);
+
+      await service.previewCancellation(TOKEN);
+
+      expect(db.from).toHaveBeenCalledWith(bookings);
+      const lookup = render((db.where.mock.calls as unknown[][])[0][0]);
+      expect(lookup.params).toContain(hashCancelToken(TOKEN));
+      expect(lookup.params).not.toContain(TOKEN);
+      expect(lookup.sql).toContain('"cancel_token_hash"');
+    });
+
+    it.each([
+      ['un rendez-vous annulé', 'cancelled', false, CANCELLED, NOW],
+      [
+        'un rendez-vous qui commence à l’instant',
+        'confirmed',
+        false,
+        UPCOMING,
+        new Date('2026-11-04T10:00:00Z'),
+      ],
+      [
+        'un rendez-vous commencé',
+        'confirmed',
+        false,
+        UPCOMING,
+        new Date('2026-11-04T10:10:00Z'),
+      ],
+      [
+        'un rendez-vous qui commence dans 1 ms',
+        'confirmed',
+        true,
+        UPCOMING,
+        new Date('2026-11-04T09:59:59.999Z'),
+      ],
+    ] as const)(
+      'Given %s, Then statut %s et annulable = %s',
+      async (_case, status, cancellable, row, now) => {
+        jest.setSystemTime(now);
+        givenFound([row]);
+
+        await expect(service.previewCancellation(TOKEN)).resolves.toEqual(
+          expect.objectContaining({ status, cancellable }),
+        );
+      },
+    );
+
+    it('Given un jeton inconnu, Then 404 booking_not_found', async () => {
+      givenFound([]);
+
+      const err = await rejectionOf(service.previewCancellation(TOKEN));
+
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect(businessError(err)).toBe('booking_not_found');
+    });
+
+    it('Given un aperçu, Then le jeton n’apparaît dans aucun log', async () => {
+      givenFound([UPCOMING]);
+
+      await service.previewCancellation(TOKEN);
+
+      expect(loggedText()).not.toContain(TOKEN);
+    });
+  });
+
+  describe('cancelByVisitor', () => {
+    it('Given un rendez-vous à venir, Then il passe annulé par le visiteur à l’heure courante et la réponse est { status: cancelled }', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED]);
+
+      await expect(service.cancelByVisitor(TOKEN)).resolves.toEqual({
+        status: 'cancelled',
+      });
+      expect(db.update).toHaveBeenCalledWith(bookings);
+      expect(db.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'cancelled',
+          cancelledAt: NOW,
+          cancelledBy: 'visitor',
+        }),
+      );
+    });
+
+    it('Given un rendez-vous à venir, Then la mise à jour ne vise que ce rendez-vous tant qu’il est confirmé', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED]);
+
+      await service.cancelByVisitor(TOKEN);
+
+      const lookup = render((db.where.mock.calls as unknown[][])[0][0]);
+      expect(lookup.params).toContain(hashCancelToken(TOKEN));
+      const guard = render((db.where.mock.calls as unknown[][])[1][0]);
+      expect(guard.params).toEqual(
+        expect.arrayContaining([UPCOMING.id, 'confirmed']),
+      );
+    });
+
+    it('Given une annulation réussie, Then le notifier reçoit la ligne annulée, après la mise à jour', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED]);
+
+      await service.cancelByVisitor(TOKEN);
+      await flushFireAndForget();
+
+      expect(notifier.bookingCancelled).toHaveBeenCalledTimes(1);
+      expect(notifier.bookingCancelled).toHaveBeenCalledWith(CANCELLED);
+      expect(
+        notifier.bookingCancelled.mock.invocationCallOrder[0],
+      ).toBeGreaterThan(db.returning.mock.invocationCallOrder[0]);
+    });
+
+    it('Given un envoi qui ne se termine jamais, Then la réponse est rendue sans l’attendre', async () => {
+      notifier.bookingCancelled.mockReturnValueOnce(new Promise(() => {}));
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED]);
+
+      await expect(service.cancelByVisitor(TOKEN)).resolves.toEqual({
+        status: 'cancelled',
+      });
+      expect(notifier.bookingCancelled).toHaveBeenCalledTimes(1);
+    });
+
+    it('Given un envoi en échec, Then l’annulation tient et l’échec est journalisé avec l’id, sans le jeton', async () => {
+      notifier.bookingCancelled.mockRejectedValueOnce(new Error('SMTP down'));
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED]);
+
+      await expect(service.cancelByVisitor(TOKEN)).resolves.toEqual({
+        status: 'cancelled',
+      });
+      await flushFireAndForget();
+
+      expect(logged[2]).toHaveBeenCalledWith(
+        expect.stringContaining(UPCOMING.id),
+        expect.anything(),
+      );
+      expect(loggedText()).not.toContain(TOKEN);
+    });
+
+    it('Given un rendez-vous déjà annulé, Then { status: cancelled } sans mise à jour ni email (idempotent)', async () => {
+      givenFound([CANCELLED]);
+
+      await expect(service.cancelByVisitor(TOKEN)).resolves.toEqual({
+        status: 'cancelled',
+      });
+      await flushFireAndForget();
+
+      expect(db.update).not.toHaveBeenCalled();
+      expect(notifier.bookingCancelled).not.toHaveBeenCalled();
+    });
+
+    it('Given un rendez-vous déjà annulé et passé, Then { status: cancelled } plutôt que cancel_too_late', async () => {
+      jest.setSystemTime(new Date('2026-11-05T08:00:00Z'));
+      givenFound([CANCELLED]);
+
+      await expect(service.cancelByVisitor(TOKEN)).resolves.toEqual({
+        status: 'cancelled',
+      });
+    });
+
+    it('Given une annulation concurrente gagnée par un autre appel, Then { status: cancelled } sans second email', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([]);
+
+      await expect(service.cancelByVisitor(TOKEN)).resolves.toEqual({
+        status: 'cancelled',
+      });
+      await flushFireAndForget();
+
+      expect(notifier.bookingCancelled).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['qui commence à l’instant', new Date('2026-11-04T10:00:00Z')],
+      ['commencé depuis 10 min', new Date('2026-11-04T10:10:00Z')],
+      ['terminé', new Date('2026-11-05T08:00:00Z')],
+    ])(
+      'Given un rendez-vous confirmé %s, Then 409 cancel_too_late sans mise à jour ni email',
+      async (_case, now) => {
+        jest.setSystemTime(now);
+        givenFound([UPCOMING]);
+
+        const err = await rejectionOf(service.cancelByVisitor(TOKEN));
+        await flushFireAndForget();
+
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(businessError(err)).toBe('cancel_too_late');
+        expect(db.update).not.toHaveBeenCalled();
+        expect(notifier.bookingCancelled).not.toHaveBeenCalled();
+      },
+    );
+
+    it('Given un rendez-vous qui commence dans 1 ms, Then il est encore annulable', async () => {
+      jest.setSystemTime(new Date('2026-11-04T09:59:59.999Z'));
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED]);
+
+      await expect(service.cancelByVisitor(TOKEN)).resolves.toEqual({
+        status: 'cancelled',
+      });
+      expect(db.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('Given un jeton inconnu, Then 404 booking_not_found sans mise à jour', async () => {
+      givenFound([]);
+
+      const err = await rejectionOf(service.cancelByVisitor(TOKEN));
+
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect(businessError(err)).toBe('booking_not_found');
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('Given une annulation réussie, Then le jeton n’apparaît dans aucun log', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED]);
+
+      await service.cancelByVisitor(TOKEN);
+      await flushFireAndForget();
+
+      expect(loggedText()).not.toContain(TOKEN);
     });
   });
 });

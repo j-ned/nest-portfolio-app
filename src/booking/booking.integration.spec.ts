@@ -55,6 +55,10 @@ const errorCode = (reason: unknown): unknown =>
     let client: ReturnType<typeof postgres>;
     let db: Database;
     let service: BookingService;
+    const notifier = {
+      bookingConfirmed: jest.fn().mockResolvedValue(undefined),
+      bookingCancelled: jest.fn().mockResolvedValue(undefined),
+    };
 
     const rowCount = async () => (await db.select().from(bookings)).length;
     const insertBooking = (
@@ -92,7 +96,16 @@ const errorCode = (reason: unknown): unknown =>
             useValue: { bookingVideoUrlBase: 'https://meet.jit.si' },
           },
         ],
-      }).compile();
+      })
+        .useMocker((token) => {
+          if (typeof token === 'function' && token.name === 'BookingNotifier') {
+            return notifier;
+          }
+          throw new Error(
+            `Unexpected dependency: ${typeof token === 'function' ? token.name : String(token)}`,
+          );
+        })
+        .compile();
       service = module.get(BookingService);
     });
 
@@ -102,6 +115,8 @@ const errorCode = (reason: unknown): unknown =>
     });
 
     beforeEach(async () => {
+      notifier.bookingConfirmed.mockClear();
+      notifier.bookingCancelled.mockClear();
       await db.delete(bookings);
       await db.delete(availabilityClosures);
       await db.delete(availabilityRules);
@@ -257,6 +272,39 @@ const errorCode = (reason: unknown): unknown =>
         service.create(aBookingRequest({ startsAt, email: 'b@example.com' })),
       ).resolves.toEqual(expect.objectContaining({ startsAt }));
       expect(await rowCount()).toBe(2);
+    });
+
+    it('Given un rendez-vous annulé par le visiteur avec son jeton, When une nouvelle réservation vise le même horaire, Then elle réussit', async () => {
+      const startsAt = inDays(6, 14).toISOString();
+      const first = await service.create(
+        aBookingRequest({ startsAt, email: 'a@example.com' }),
+      );
+      expect(notifier.bookingConfirmed).toHaveBeenCalledTimes(1);
+      const [, token] = notifier.bookingConfirmed.mock.calls[0] as [
+        unknown,
+        string,
+      ];
+
+      await expect(service.cancelByVisitor(token)).resolves.toEqual({
+        status: 'cancelled',
+      });
+      await expect(
+        service.create(aBookingRequest({ startsAt, email: 'b@example.com' })),
+      ).resolves.toEqual(expect.objectContaining({ startsAt }));
+
+      const [cancelled] = await db
+        .select()
+        .from(bookings)
+        .where(eq(bookings.id, first.id));
+      expect(cancelled).toEqual(
+        expect.objectContaining({
+          status: 'cancelled',
+          cancelledBy: 'visitor',
+        }),
+      );
+      expect(cancelled.cancelledAt).toBeInstanceOf(Date);
+      expect(await rowCount()).toBe(2);
+      expect(notifier.bookingCancelled).toHaveBeenCalledTimes(1);
     });
 
     it('Given le champ piège rempli, When la création arrive, Then rien n’est écrit en base', async () => {

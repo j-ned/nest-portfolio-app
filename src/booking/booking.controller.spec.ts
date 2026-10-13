@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import {
   ConflictException,
   type INestApplication,
+  NotFoundException,
   RequestMethod,
   UnprocessableEntityException,
   ValidationPipe,
@@ -43,7 +44,12 @@ const routeHandler = (
 
 describe('BookingController (HTTP)', () => {
   let app: INestApplication<App>;
-  const booking = { getSlots: jest.fn(), create: jest.fn() };
+  const booking = {
+    getSlots: jest.fn(),
+    create: jest.fn(),
+    previewCancellation: jest.fn(),
+    cancelByVisitor: jest.fn(),
+  };
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -222,6 +228,116 @@ describe('BookingController (HTTP)', () => {
       );
       expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, handler!)).toBe(
         600_000,
+      );
+    });
+  });
+
+  describe.each([
+    ['bookings/cancel/preview', 'previewCancellation'],
+    ['bookings/cancel', 'cancelByVisitor'],
+  ] as const)('POST %s', (path, method) => {
+    const TOKEN = 'Qm9va2luZ0NhbmNlbFRva2VuX0Zvcl9UZXN0c18wMTI';
+    const url = `/booking/${path}`;
+
+    it.each([
+      ['42 caractères', { token: TOKEN.slice(1) }],
+      ['44 caractères', { token: `${TOKEN}A` }],
+      ['un caractère hors base64url', { token: `${TOKEN.slice(1)}+` }],
+      ['un jeton absent', {}],
+      ['un champ inconnu', { token: TOKEN, id: 'x' }],
+    ])(
+      'Given %s, When la demande arrive, Then 400 sans appel au service',
+      async (_case, body) => {
+        const res = await request(app.getHttpServer()).post(url).send(body);
+
+        expect(res.status).toBe(400);
+        expect(booking[method]).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      [
+        404,
+        'booking_not_found',
+        new NotFoundException({
+          error: 'booking_not_found',
+          message: 'Rendez-vous introuvable.',
+        }),
+      ],
+      [
+        409,
+        'cancel_too_late',
+        new ConflictException({
+          error: 'cancel_too_late',
+          message: 'Le rendez-vous a commencé.',
+        }),
+      ],
+    ])(
+      'Given le service refuse, Then %i avec le code métier %s dans error, sans jeton dans le chemin',
+      async (status, code, failure) => {
+        booking[method].mockRejectedValueOnce(failure);
+
+        const res = await request(app.getHttpServer())
+          .post(url)
+          .send({ token: TOKEN });
+
+        expect(res.status).toBe(status);
+        expect(res.body).toEqual(
+          expect.objectContaining({
+            statusCode: status,
+            error: code,
+            path: url,
+          }),
+        );
+      },
+    );
+
+    it('Given la route, Then elle est publique, sans limite propre (limite globale)', () => {
+      const handler = routeHandler(RequestMethod.POST, path);
+
+      expect(handler).toBeDefined();
+      expect(Reflect.getMetadata(GUARDS_METADATA, handler!)).toBeUndefined();
+      expect(
+        Reflect.getMetadata(`${THROTTLER_LIMIT}default`, handler!),
+      ).toBeUndefined();
+    });
+  });
+
+  describe('POST bookings/cancel/preview', () => {
+    it('Given un jeton valide, Then 200 avec l’aperçu du service, jeton transmis depuis le corps', async () => {
+      const preview = {
+        startsAt: '2026-11-04T10:00:00.000Z',
+        endsAt: '2026-11-04T10:30:00.000Z',
+        format: 'video',
+        status: 'confirmed',
+        cancellable: true,
+      };
+      booking.previewCancellation.mockResolvedValueOnce(preview);
+
+      const res = await request(app.getHttpServer())
+        .post('/booking/bookings/cancel/preview')
+        .send({ token: 'Qm9va2luZ0NhbmNlbFRva2VuX0Zvcl9UZXN0c18wMTI' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(preview);
+      expect(booking.previewCancellation).toHaveBeenCalledWith(
+        'Qm9va2luZ0NhbmNlbFRva2VuX0Zvcl9UZXN0c18wMTI',
+      );
+    });
+  });
+
+  describe('POST bookings/cancel', () => {
+    it('Given un jeton valide, Then 200 { status: cancelled }, jeton transmis depuis le corps', async () => {
+      booking.cancelByVisitor.mockResolvedValueOnce({ status: 'cancelled' });
+
+      const res = await request(app.getHttpServer())
+        .post('/booking/bookings/cancel')
+        .send({ token: 'Qm9va2luZ0NhbmNlbFRva2VuX0Zvcl9UZXN0c18wMTI' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ status: 'cancelled' });
+      expect(booking.cancelByVisitor).toHaveBeenCalledWith(
+        'Qm9va2luZ0NhbmNlbFRva2VuX0Zvcl9UZXN0c18wMTI',
       );
     });
   });

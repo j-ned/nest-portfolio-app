@@ -5,10 +5,17 @@ import { MAIL_TRANSPORTER } from './mailer.constants';
 
 const MAX_RETRIES = 3;
 
+/** Invitation calendrier : nodemailer l'ajoute en alternative `text/calendar` et en pièce jointe. */
+export type IcalEvent = {
+  method: 'REQUEST' | 'CANCEL';
+  content: string;
+};
+
 export type SendMailOptions = {
   to: string;
   subject: string;
   html: string;
+  icalEvent?: IcalEvent;
 };
 
 @Injectable()
@@ -20,7 +27,12 @@ export class MailerService {
     private readonly cfg: AppConfigService,
   ) {}
 
-  async sendMail({ to, subject, html }: SendMailOptions): Promise<void> {
+  async sendMail({
+    to,
+    subject,
+    html,
+    icalEvent,
+  }: SendMailOptions): Promise<void> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -29,6 +41,9 @@ export class MailerService {
           to,
           subject,
           html,
+          ...(icalEvent && {
+            icalEvent: { ...icalEvent, filename: 'invitation.ics' },
+          }),
         });
         return;
       } catch (err) {

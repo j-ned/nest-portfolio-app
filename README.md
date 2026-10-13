@@ -79,6 +79,7 @@ Toute la config passe par les variables d'env, validées au boot par Zod (`src/c
 | `SMTP_PASS`                 | string                                             | _(requis)_                   | Password SMTP                                                                                   |
 | `SMTP_FROM`                 | email                                              | _(requis)_                   | Expéditeur des mails                                                                            |
 | `BOOKING_VIDEO_URL_BASE`    | URL                                                | `https://meet.jit.si`        | Base des salles de visio des rendez-vous (Jitsi public ou auto-hébergé)                         |
+| `PUBLIC_SITE_URL`           | URL                                                | `https://nedellec-julien.fr` | Origine publique du site, base du lien d'annulation envoyé par email au visiteur                |
 | `SENTRY_DSN`                | URL                                                | _(optionnel)_                | DSN backend ; vide = Sentry désactivé                                                           |
 | `SENTRY_RELEASE`            | string                                             | _(optionnel)_                | Tag de release Sentry                                                                           |
 | `SENTRY_TRACES_SAMPLE_RATE` | float 0-1                                          | `0.2` prod / `1.0` dev       | Sample rate tracing                                                                             |
@@ -329,7 +330,7 @@ Formulaire de contact public + gestion admin des messages.
 
 **Stratégie mails** : fire-and-forget après le `db.insert` (helper `fireAndForget` dans `src/common/utils.ts`) - le visiteur reçoit 201 dès la persistance garantie ; un échec SMTP (3 retries épuisés) est loggé mais invisible côté visiteur, le message reste consultable côté admin.
 
-**Destinataire admin codé en dur** : `CONTACT_RECIPIENT = 'contact@nedellec-julien.fr'` dans `src/contact/contact.service.ts` - pas de variable d'env dédiée. `SMTP_FROM` reste l'expéditeur (rôle distinct).
+**Destinataire admin codé en dur** : `OWNER_EMAIL = 'contact@nedellec-julien.fr'` dans `src/mailer/mailer.constants.ts` (partagé par le contact et les rendez-vous) - pas de variable d'env dédiée. `SMTP_FROM` reste l'expéditeur (rôle distinct).
 
 **Templates** : `src/contact/mail-templates/contact-notification.html` (admin) et `contact-confirmation.html` (visiteur). Variables : `{{name}}`, `{{email}}`, `{{subject}}`, `{{message}}`.
 
