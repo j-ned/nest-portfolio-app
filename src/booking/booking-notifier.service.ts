@@ -97,6 +97,16 @@ export class BookingNotifier {
     ]);
   }
 
+  /** Rappel la veille, au visiteur seul : sans lien d'annulation (le jeton n'est pas conservé). */
+  async bookingReminder(row: Booking): Promise<void> {
+    const variables = this.commonVariables(row);
+    await this.mailer.sendMail({
+      to: row.email,
+      subject: `Rappel de rendez-vous : ${variables.when}`,
+      html: render('booking-reminder.html', variables),
+    });
+  }
+
   private siteUrl(): string {
     return this.config.publicSiteUrl.replace(/\/+$/, '');
   }

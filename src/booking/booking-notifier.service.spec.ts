@@ -411,4 +411,86 @@ describe('BookingNotifier', () => {
       }
     });
   });
+
+  describe('bookingReminder', () => {
+    const REMINDED = aBooking({
+      ...VIDEO_BOOKING,
+      reminderSentAt: new Date('2026-11-03T10:00:00Z'),
+    });
+
+    it('Given un rendez-vous à rappeler, Then un seul email part, au visiteur', async () => {
+      await notifier.bookingReminder(REMINDED);
+
+      expect(sent().map((mail) => mail.to)).toEqual(['camille@example.com']);
+    });
+
+    it.each([
+      [
+        'heure d’hiver',
+        '2026-11-04T10:00:00Z',
+        'mercredi 4 novembre 2026 à 11:00',
+      ],
+      ['heure d’été', '2026-10-19T07:00:00Z', 'lundi 19 octobre 2026 à 09:00'],
+    ])(
+      'Given un rendez-vous en %s, Then le rappel le date en français à l’heure de Paris',
+      async (_case, startsAt, label) => {
+        const start = new Date(startsAt);
+        await notifier.bookingReminder(
+          aBooking({
+            ...REMINDED,
+            startsAt: start,
+            endsAt: new Date(start.getTime() + 30 * 60_000),
+          }),
+        );
+
+        expect(sent()[0]?.subject).toContain(label);
+        expect(sent()[0]?.html).toContain(label);
+      },
+    );
+
+    it('Given un rendez-vous en visio, Then le rappel donne le lien de visio', async () => {
+      await notifier.bookingReminder(REMINDED);
+
+      expect(sent()[0]?.html).toContain(VIDEO_URL);
+    });
+
+    it('Given un rendez-vous par téléphone, Then le rappel donne le numéro, sans lien de visio', async () => {
+      await notifier.bookingReminder(
+        aBooking({ ...PHONE_BOOKING, reminderSentAt: REMINDED.reminderSentAt }),
+      );
+
+      expect(sent()[0]?.html).toContain('+33 6 12 34 56 78');
+      expect(sent()[0]?.html).not.toContain('meet.jit.si');
+    });
+
+    it('Given un rendez-vous à rappeler, Then le rappel ne contient ni lien d’annulation ni l’empreinte du jeton', async () => {
+      await notifier.bookingReminder(REMINDED);
+
+      const mail = sent()[0];
+      expect(mail?.html).not.toContain('/rendez-vous/annulation');
+      for (const text of [
+        mail?.html,
+        mail?.subject,
+        mail?.icalEvent?.content,
+      ]) {
+        expect(text ?? '').not.toContain(REMINDED.cancelTokenHash);
+      }
+    });
+
+    it('Given un nom contenant du HTML, Then il est échappé dans le rappel', async () => {
+      await notifier.bookingReminder(
+        aBooking({ ...REMINDED, name: 'Camille <b>Martin</b>' }),
+      );
+
+      expect(sent()[0]?.html).not.toContain('<b>Martin</b>');
+      expect(sent()[0]?.html).toContain('Camille &lt;b&gt;Martin&lt;/b&gt;');
+    });
+
+    it('Given un envoi qui échoue, Then l’échec remonte à l’appelant', async () => {
+      const failure = new Error('SMTP down');
+      mailer.sendMail.mockRejectedValue(failure);
+
+      await expect(notifier.bookingReminder(REMINDED)).rejects.toBe(failure);
+    });
+  });
 });
