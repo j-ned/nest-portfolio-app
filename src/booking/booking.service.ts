@@ -7,7 +7,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { and, count, eq, gt, lt, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, lt, lte, sql } from 'drizzle-orm';
 import { fireAndForget, isExclusionViolation } from '../common/utils';
 import { AppConfigService } from '../config/app-config.service';
 import { DRIZZLE } from '../database/drizzle.constants';
@@ -45,6 +45,28 @@ export type CancellationPreview = {
   status: Booking['status'];
   cancellable: boolean;
 };
+
+/** Rendez-vous vu par l'admin : coordonnées en clair, instants ISO, jamais l'empreinte du jeton. */
+export type AdminBooking = {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  company: string | null;
+  message: string;
+  format: Booking['format'];
+  videoUrl: string | null;
+  status: Booking['status'];
+  cancelledAt: string | null;
+  cancelledBy: Booking['cancelledBy'];
+  cancelReason: string | null;
+  reminderSentAt: string | null;
+  createdAt: string;
+};
+
+export type BookingScope = 'upcoming' | 'past';
 
 @Injectable()
 export class BookingService {
@@ -157,12 +179,7 @@ export class BookingService {
     if (row.status === 'cancelled') return { status: 'cancelled' };
 
     const now = new Date();
-    if (now.getTime() >= row.startsAt.getTime()) {
-      throw new ConflictException({
-        error: 'cancel_too_late',
-        message: 'Le rendez-vous a déjà commencé.',
-      });
-    }
+    assertNotStarted(row, now);
 
     const [cancelled] = await this.db
       .update(bookings)
@@ -179,18 +196,82 @@ export class BookingService {
     return { status: 'cancelled' };
   }
 
+  /** `upcoming` : fin après maintenant, croissant ; `past` : le reste, décroissant ; les deux statuts. */
+  async listBookings(scope: BookingScope): Promise<AdminBooking[]> {
+    const now = new Date();
+    const rows = await this.db
+      .select()
+      .from(bookings)
+      .where(
+        scope === 'upcoming'
+          ? gt(bookings.endsAt, now)
+          : lte(bookings.endsAt, now),
+      )
+      .orderBy(
+        scope === 'upcoming' ? asc(bookings.startsAt) : desc(bookings.startsAt),
+      );
+    return rows.map(toAdminBooking);
+  }
+
+  async countUpcoming(): Promise<{ count: number }> {
+    const [{ count: upcoming }] = await this.db
+      .select({ count: count() })
+      .from(bookings)
+      .where(
+        and(eq(bookings.status, 'confirmed'), gt(bookings.endsAt, new Date())),
+      );
+    return { count: upcoming };
+  }
+
+  /**
+   * Annulation par le propriétaire, idempotente comme celle du visiteur : un rendez-vous déjà
+   * annulé est rendu tel quel (motif non écrasé) ; seule la mise à jour gagnante prévient les deux
+   * parties.
+   */
+  async cancelByOwner(id: string, reason?: string): Promise<AdminBooking> {
+    const [row] = await this.db
+      .select()
+      .from(bookings)
+      .where(eq(bookings.id, id));
+    if (!row) throw bookingNotFound();
+    if (row.status === 'cancelled') return toAdminBooking(row);
+
+    const now = new Date();
+    assertNotStarted(row, now);
+
+    const [cancelled] = await this.db
+      .update(bookings)
+      .set({
+        status: 'cancelled',
+        cancelledAt: now,
+        cancelledBy: 'owner',
+        cancelReason: reason || null,
+      })
+      .where(and(eq(bookings.id, id), eq(bookings.status, 'confirmed')))
+      .returning();
+    if (!cancelled) {
+      // Course perdue (annulation visiteur concurrente) : on rend l'état gagnant, sans email.
+      const [current] = await this.db
+        .select()
+        .from(bookings)
+        .where(eq(bookings.id, id));
+      return toAdminBooking(current);
+    }
+    fireAndForget(
+      this.notifier.bookingCancelled(cancelled),
+      this.logger,
+      `Failed to send booking cancellation mails for ${cancelled.id}`,
+    );
+    return toAdminBooking(cancelled);
+  }
+
   /** Recherche par empreinte : le jeton en clair n'est ni stocké ni passé en paramètre SQL. */
   private async findByCancelToken(token: string): Promise<Booking> {
     const [row] = await this.db
       .select()
       .from(bookings)
       .where(eq(bookings.cancelTokenHash, hashCancelToken(token)));
-    if (!row) {
-      throw new NotFoundException({
-        error: 'booking_not_found',
-        message: 'Rendez-vous introuvable.',
-      });
-    }
+    if (!row) throw bookingNotFound();
     return row;
   }
 
@@ -285,6 +366,22 @@ const slotTaken = () =>
     message: 'Ce créneau vient d’être réservé.',
   });
 
+const bookingNotFound = () =>
+  new NotFoundException({
+    error: 'booking_not_found',
+    message: 'Rendez-vous introuvable.',
+  });
+
+/** Un rendez-vous commencé (ou passé) ne s'annule plus, par aucune des parties. */
+const assertNotStarted = (row: Pick<Booking, 'startsAt'>, now: Date): void => {
+  if (now.getTime() >= row.startsAt.getTime()) {
+    throw new ConflictException({
+      error: 'cancel_too_late',
+      message: 'Le rendez-vous a déjà commencé.',
+    });
+  }
+};
+
 const toConfirmation = (
   row: Pick<Booking, 'id' | 'startsAt' | 'endsAt' | 'format' | 'videoUrl'>,
 ): BookingConfirmation => ({
@@ -293,4 +390,23 @@ const toConfirmation = (
   endsAt: row.endsAt.toISOString(),
   format: row.format,
   videoUrl: row.videoUrl,
+});
+
+const toAdminBooking = (row: Booking): AdminBooking => ({
+  id: row.id,
+  startsAt: row.startsAt.toISOString(),
+  endsAt: row.endsAt.toISOString(),
+  name: row.name,
+  email: row.email,
+  phone: row.phone,
+  company: row.company,
+  message: row.message,
+  format: row.format,
+  videoUrl: row.videoUrl,
+  status: row.status,
+  cancelledAt: row.cancelledAt?.toISOString() ?? null,
+  cancelledBy: row.cancelledBy,
+  cancelReason: row.cancelReason,
+  reminderSentAt: row.reminderSentAt?.toISOString() ?? null,
+  createdAt: row.createdAt.toISOString(),
 });

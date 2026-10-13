@@ -3,6 +3,7 @@ import type {
   AvailabilityRule,
   Booking,
 } from '../database/schema';
+import type { AdminBooking } from './booking.service';
 
 const CREATED_AT = new Date('2026-10-01T08:00:00Z');
 
@@ -48,5 +49,27 @@ export const aBooking = (overrides: Partial<Booking> = {}): Booking => ({
   reminderSentAt: null,
   createdAt: CREATED_AT,
   updatedAt: CREATED_AT,
+  ...overrides,
+});
+
+export const anAdminBooking = (
+  overrides: Partial<AdminBooking> = {},
+): AdminBooking => ({
+  id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  startsAt: '2026-11-04T09:00:00.000Z',
+  endsAt: '2026-11-04T09:30:00.000Z',
+  name: 'Visiteur Test',
+  email: 'visiteur@example.com',
+  phone: null,
+  company: null,
+  message: 'Un projet Angular à cadrer.',
+  format: 'video',
+  videoUrl: 'https://meet.jit.si/nedellec-abcdefgh12345678',
+  status: 'confirmed',
+  cancelledAt: null,
+  cancelledBy: null,
+  cancelReason: null,
+  reminderSentAt: null,
+  createdAt: CREATED_AT.toISOString(),
   ...overrides,
 });

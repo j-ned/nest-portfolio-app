@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  BadRequestException,
   ConflictException,
   Logger,
   UnprocessableEntityException,
@@ -43,6 +44,13 @@ const inDays = (days: number, hour: number, minute = 0): Date => {
   );
 };
 
+const PARIS_TIME = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Paris',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
 const errorCode = (reason: unknown): unknown =>
   reason instanceof ConflictException ||
   reason instanceof UnprocessableEntityException
@@ -55,6 +63,7 @@ const errorCode = (reason: unknown): unknown =>
     let client: ReturnType<typeof postgres>;
     let db: Database;
     let service: BookingService;
+    let availability: AvailabilityService;
     const notifier = {
       bookingConfirmed: jest.fn().mockResolvedValue(undefined),
       bookingCancelled: jest.fn().mockResolvedValue(undefined),
@@ -107,6 +116,7 @@ const errorCode = (reason: unknown): unknown =>
         })
         .compile();
       service = module.get(BookingService);
+      availability = module.get(AvailabilityService);
     });
 
     afterAll(async () => {
@@ -316,6 +326,107 @@ const errorCode = (reason: unknown): unknown =>
       );
 
       expect(await rowCount()).toBe(0);
+    });
+    it('Given des plages remplacées, Then les créneaux libres suivent aussitôt le nouveau bloc', async () => {
+      const everyDay = (startMinute: number, endMinute: number) =>
+        [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({
+          weekday,
+          startMinute,
+          endMinute,
+        }));
+      const parisTimes = async () =>
+        new Set(
+          (await service.getSlots()).slots.map((slot) =>
+            PARIS_TIME.format(new Date(slot.startsAt)),
+          ),
+        );
+
+      await availability.replaceRules(everyDay(600, 660));
+      const morning = await parisTimes();
+      await availability.replaceRules(everyDay(840, 900));
+      const afternoon = await parisTimes();
+
+      expect([...morning].sort()).toEqual(['10:00', '10:30']);
+      expect([...afternoon].sort()).toEqual(['14:00', '14:30']);
+      expect(await db.select().from(availabilityRules)).toHaveLength(7);
+    });
+
+    it('Given des plages qui se chevauchent, Then le remplacement est refusé et l’ancien bloc reste intact', async () => {
+      const failure = await availability
+        .replaceRules([
+          { weekday: 1, startMinute: 540, endMinute: 720 },
+          { weekday: 1, startMinute: 660, endMinute: 780 },
+        ])
+        .then(
+          () => null,
+          (err: unknown) => err,
+        );
+
+      expect(failure).toBeInstanceOf(BadRequestException);
+      expect(await db.select().from(availabilityRules)).toHaveLength(7);
+    });
+
+    it('Given un rendez-vous annulé par le propriétaire, Then il porte le motif, le visiteur est prévenu et le créneau est de nouveau réservable', async () => {
+      const startsAt = inDays(7, 12).toISOString();
+      const first = await service.create(
+        aBookingRequest({ startsAt, email: 'a@example.com' }),
+      );
+
+      await expect(
+        service.cancelByOwner(first.id, 'Imprévu de mon côté.'),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: first.id,
+          status: 'cancelled',
+          cancelledBy: 'owner',
+          cancelReason: 'Imprévu de mon côté.',
+        }),
+      );
+      await expect(
+        service.create(aBookingRequest({ startsAt, email: 'b@example.com' })),
+      ).resolves.toEqual(expect.objectContaining({ startsAt }));
+
+      expect(notifier.bookingCancelled).toHaveBeenCalledTimes(1);
+      expect(notifier.bookingCancelled).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: first.id,
+          cancelledBy: 'owner',
+          cancelReason: 'Imprévu de mon côté.',
+        }),
+      );
+      expect(await rowCount()).toBe(2);
+    });
+
+    it('Given des rendez-vous passés, à venir et annulés, Then les listes admin et le compteur les répartissent', async () => {
+      const later = await service.create(
+        aBookingRequest({
+          startsAt: inDays(9, 12).toISOString(),
+          email: 'a@example.com',
+        }),
+      );
+      const sooner = await service.create(
+        aBookingRequest({
+          startsAt: inDays(8, 12).toISOString(),
+          email: 'b@example.com',
+        }),
+      );
+      await service.cancelByOwner(later.id, undefined);
+      await insertBooking(inDays(-3, 9), 30, 'confirmed');
+      await insertBooking(inDays(-2, 9), 30, 'confirmed');
+
+      const upcoming = await service.listBookings('upcoming');
+      const past = await service.listBookings('past');
+
+      expect(upcoming.map((row) => row.id)).toEqual([sooner.id, later.id]);
+      expect(upcoming.map((row) => row.status)).toEqual([
+        'confirmed',
+        'cancelled',
+      ]);
+      expect(past.map((row) => row.startsAt)).toEqual([
+        inDays(-2, 9).toISOString(),
+        inDays(-3, 9).toISOString(),
+      ]);
+      await expect(service.countUpcoming()).resolves.toEqual({ count: 1 });
     });
   },
 );
