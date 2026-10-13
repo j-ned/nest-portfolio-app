@@ -1094,3 +1094,386 @@ describe('BookingService, annulation par le visiteur', () => {
     });
   });
 });
+
+describe('BookingService, administration', () => {
+  const NOW = new Date('2026-11-02T08:00:00Z');
+  const ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const UPCOMING = aBooking({
+    id: ID,
+    startsAt: new Date('2026-11-04T10:00:00Z'),
+    endsAt: new Date('2026-11-04T10:30:00Z'),
+    name: 'Camille Martin',
+    email: 'camille@example.com',
+    format: 'phone',
+    videoUrl: null,
+    phone: '+33 6 12 34 56 78',
+    company: 'Société Exemple',
+    message: 'Refonte de notre application Angular.',
+  });
+  const CANCELLED_BY_OWNER = aBooking({
+    ...UPCOMING,
+    status: 'cancelled',
+    cancelledAt: NOW,
+    cancelledBy: 'owner',
+    cancelReason: 'Imprévu de mon côté.',
+    updatedAt: NOW,
+  });
+  const CANCELLED_BY_VISITOR = aBooking({
+    ...UPCOMING,
+    status: 'cancelled',
+    cancelledAt: new Date('2026-11-01T09:00:00Z'),
+    cancelledBy: 'visitor',
+  });
+
+  let service: BookingService;
+  let db: ReturnType<typeof createMockDb>;
+  let notifier: ReturnType<typeof aNotifierDouble>;
+  let logged: jest.SpyInstance[];
+
+  const flushFireAndForget = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+  const businessError = (err: unknown): unknown =>
+    (err as { getResponse(): { error?: unknown } }).getResponse().error;
+  const givenFound = (rows: ReturnType<typeof aBooking>[]) =>
+    db.where.mockResolvedValueOnce(rows);
+  const givenUpdated = (rows: ReturnType<typeof aBooking>[]) =>
+    db.returning.mockResolvedValueOnce(rows);
+
+  beforeEach(async () => {
+    db = createMockDb();
+    notifier = aNotifierDouble();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        BookingService,
+        { provide: DRIZZLE, useValue: db },
+        {
+          provide: AvailabilityService,
+          useValue: { listRules: jest.fn(), listClosures: jest.fn() },
+        },
+        {
+          provide: AppConfigService,
+          useValue: { bookingVideoUrlBase: 'https://meet.jit.si' },
+        },
+      ],
+    })
+      .useMocker(providingNotifier(notifier))
+      .compile();
+    service = module.get(BookingService);
+    logged = (['log', 'warn', 'error', 'debug', 'verbose'] as const).map(
+      (level) =>
+        jest.spyOn(Logger.prototype, level).mockImplementation(() => {}),
+    );
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  describe('listBookings', () => {
+    it('Given des rendez-vous lus en base, Then les lignes admin exactes : coordonnées et annulation en clair, instants ISO, jamais l’empreinte du jeton', async () => {
+      db.orderBy.mockResolvedValueOnce([
+        UPCOMING,
+        aBooking({
+          ...CANCELLED_BY_OWNER,
+          id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          reminderSentAt: new Date('2026-11-03T10:00:00Z'),
+        }),
+      ]);
+
+      await expect(service.listBookings('upcoming')).resolves.toEqual([
+        {
+          id: ID,
+          startsAt: '2026-11-04T10:00:00.000Z',
+          endsAt: '2026-11-04T10:30:00.000Z',
+          name: 'Camille Martin',
+          email: 'camille@example.com',
+          phone: '+33 6 12 34 56 78',
+          company: 'Société Exemple',
+          message: 'Refonte de notre application Angular.',
+          format: 'phone',
+          videoUrl: null,
+          status: 'confirmed',
+          cancelledAt: null,
+          cancelledBy: null,
+          cancelReason: null,
+          reminderSentAt: null,
+          createdAt: '2026-10-01T08:00:00.000Z',
+        },
+        {
+          id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          startsAt: '2026-11-04T10:00:00.000Z',
+          endsAt: '2026-11-04T10:30:00.000Z',
+          name: 'Camille Martin',
+          email: 'camille@example.com',
+          phone: '+33 6 12 34 56 78',
+          company: 'Société Exemple',
+          message: 'Refonte de notre application Angular.',
+          format: 'phone',
+          videoUrl: null,
+          status: 'cancelled',
+          cancelledAt: '2026-11-02T08:00:00.000Z',
+          cancelledBy: 'owner',
+          cancelReason: 'Imprévu de mon côté.',
+          reminderSentAt: '2026-11-03T10:00:00.000Z',
+          createdAt: '2026-10-01T08:00:00.000Z',
+        },
+      ]);
+    });
+
+    it.each([
+      ['upcoming', '"ends_at" >', '"starts_at" asc'],
+      ['past', '"ends_at" <=', '"starts_at" desc'],
+    ] as const)(
+      'Given scope=%s, Then filtre %s maintenant et tri %s, les deux statuts compris',
+      async (scope, filter, order) => {
+        db.orderBy.mockResolvedValueOnce([]);
+
+        await service.listBookings(scope);
+
+        expect(db.from).toHaveBeenCalledWith(bookings);
+        const where = render((db.where.mock.calls as unknown[][])[0][0]);
+        expect(where.sql).toContain(filter);
+        expect(where.sql).not.toContain('"status"');
+        expect(where.params).toEqual([NOW.toISOString()]);
+        const orderBy = render((db.orderBy.mock.calls as unknown[][])[0][0]);
+        expect(orderBy.sql).toContain(order);
+      },
+    );
+
+    it('Given aucun rendez-vous, Then une liste vide', async () => {
+      db.orderBy.mockResolvedValueOnce([]);
+
+      await expect(service.listBookings('past')).resolves.toEqual([]);
+    });
+  });
+
+  describe('countUpcoming', () => {
+    it('Given trois rendez-vous confirmés à venir, Then { count: 3 }', async () => {
+      db.where.mockResolvedValueOnce([{ count: 3 }]);
+
+      await expect(service.countUpcoming()).resolves.toEqual({ count: 3 });
+    });
+
+    it('Given le compteur, Then seuls les rendez-vous confirmés qui finissent après maintenant comptent', async () => {
+      db.where.mockResolvedValueOnce([{ count: 0 }]);
+
+      await service.countUpcoming();
+
+      expect(db.from).toHaveBeenCalledWith(bookings);
+      const where = render((db.where.mock.calls as unknown[][])[0][0]);
+      expect(where.sql).toContain('"status" =');
+      expect(where.sql).toContain('"ends_at" >');
+      expect(where.params).toEqual(
+        expect.arrayContaining(['confirmed', NOW.toISOString()]),
+      );
+    });
+  });
+
+  describe('cancelByOwner', () => {
+    it('Given un rendez-vous à venir et un motif, Then il passe annulé par le propriétaire à l’heure courante avec le motif', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED_BY_OWNER]);
+
+      await service.cancelByOwner(ID, 'Imprévu de mon côté.');
+
+      expect(db.update).toHaveBeenCalledWith(bookings);
+      expect(db.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'cancelled',
+          cancelledAt: NOW,
+          cancelledBy: 'owner',
+          cancelReason: 'Imprévu de mon côté.',
+        }),
+      );
+    });
+
+    it('Given une annulation réussie, Then la ligne admin du rendez-vous annulé est rendue', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED_BY_OWNER]);
+
+      await expect(
+        service.cancelByOwner(ID, 'Imprévu de mon côté.'),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: ID,
+          status: 'cancelled',
+          cancelledAt: '2026-11-02T08:00:00.000Z',
+          cancelledBy: 'owner',
+          cancelReason: 'Imprévu de mon côté.',
+          email: 'camille@example.com',
+        }),
+      );
+    });
+
+    it('Given une annulation réussie, Then la réponse ne contient jamais l’empreinte du jeton', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED_BY_OWNER]);
+
+      const result = await service.cancelByOwner(ID, 'Imprévu');
+
+      expect(result).not.toHaveProperty('cancelTokenHash');
+      expect(JSON.stringify(result)).not.toContain(UPCOMING.cancelTokenHash);
+    });
+
+    it.each([
+      ['sans motif', undefined],
+      ['avec un motif vide', ''],
+    ])(
+      'Given une annulation %s, Then le motif est enregistré à null',
+      async (_case, reason) => {
+        givenFound([UPCOMING]);
+        givenUpdated([aBooking({ ...CANCELLED_BY_OWNER, cancelReason: null })]);
+
+        await service.cancelByOwner(ID, reason);
+
+        expect(db.set).toHaveBeenCalledWith(
+          expect.objectContaining({ cancelReason: null, cancelledBy: 'owner' }),
+        );
+      },
+    );
+
+    it('Given un id, Then le rendez-vous est lu par son id et la mise à jour ne vise que lui tant qu’il est confirmé', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED_BY_OWNER]);
+
+      await service.cancelByOwner(ID, 'Imprévu');
+
+      const lookup = render((db.where.mock.calls as unknown[][])[0][0]);
+      expect(lookup.params).toEqual([ID]);
+      const guard = render((db.where.mock.calls as unknown[][])[1][0]);
+      expect(guard.params).toEqual(expect.arrayContaining([ID, 'confirmed']));
+    });
+
+    it('Given une annulation réussie, Then le notifier reçoit la ligne annulée par le propriétaire, après la mise à jour', async () => {
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED_BY_OWNER]);
+
+      await service.cancelByOwner(ID, 'Imprévu de mon côté.');
+      await flushFireAndForget();
+
+      expect(notifier.bookingCancelled).toHaveBeenCalledTimes(1);
+      expect(notifier.bookingCancelled).toHaveBeenCalledWith(
+        CANCELLED_BY_OWNER,
+      );
+      expect(
+        notifier.bookingCancelled.mock.invocationCallOrder[0],
+      ).toBeGreaterThan(db.returning.mock.invocationCallOrder[0]);
+    });
+
+    it('Given un envoi qui ne se termine jamais, Then la réponse est rendue sans l’attendre', async () => {
+      notifier.bookingCancelled.mockReturnValueOnce(new Promise(() => {}));
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED_BY_OWNER]);
+
+      await expect(service.cancelByOwner(ID, 'Imprévu')).resolves.toEqual(
+        expect.objectContaining({ id: ID, status: 'cancelled' }),
+      );
+      expect(notifier.bookingCancelled).toHaveBeenCalledTimes(1);
+    });
+
+    it('Given un envoi en échec, Then l’annulation tient et l’échec est journalisé avec l’id', async () => {
+      notifier.bookingCancelled.mockRejectedValueOnce(new Error('SMTP down'));
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED_BY_OWNER]);
+
+      await expect(service.cancelByOwner(ID, 'Imprévu')).resolves.toEqual(
+        expect.objectContaining({ status: 'cancelled' }),
+      );
+      await flushFireAndForget();
+
+      expect(logged[2]).toHaveBeenCalledWith(
+        expect.stringContaining(ID),
+        expect.anything(),
+      );
+    });
+
+    it.each([
+      ['annulé par le visiteur', NOW],
+      ['annulé et passé', new Date('2026-11-05T08:00:00Z')],
+    ])(
+      'Given un rendez-vous déjà %s, Then sa ligne admin inchangée, sans mise à jour ni email, motif non écrasé (idempotent)',
+      async (_case, now) => {
+        jest.setSystemTime(now);
+        givenFound([CANCELLED_BY_VISITOR]);
+
+        const result = await service.cancelByOwner(ID, 'Autre motif');
+        await flushFireAndForget();
+
+        expect(result).toEqual(
+          expect.objectContaining({
+            id: ID,
+            status: 'cancelled',
+            cancelledBy: 'visitor',
+            cancelReason: null,
+            cancelledAt: '2026-11-01T09:00:00.000Z',
+          }),
+        );
+        expect(db.update).not.toHaveBeenCalled();
+        expect(notifier.bookingCancelled).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['qui commence à l’instant', new Date('2026-11-04T10:00:00Z')],
+      ['commencé depuis 10 min', new Date('2026-11-04T10:10:00Z')],
+      ['passé', new Date('2026-11-05T08:00:00Z')],
+    ])(
+      'Given un rendez-vous confirmé %s, Then 409 cancel_too_late sans mise à jour ni email',
+      async (_case, now) => {
+        jest.setSystemTime(now);
+        givenFound([UPCOMING]);
+
+        const err = await rejectionOf(service.cancelByOwner(ID, 'Imprévu'));
+        await flushFireAndForget();
+
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(businessError(err)).toBe('cancel_too_late');
+        expect(db.update).not.toHaveBeenCalled();
+        expect(notifier.bookingCancelled).not.toHaveBeenCalled();
+      },
+    );
+
+    it('Given un rendez-vous qui commence dans 1 ms, Then il est encore annulable', async () => {
+      jest.setSystemTime(new Date('2026-11-04T09:59:59.999Z'));
+      givenFound([UPCOMING]);
+      givenUpdated([CANCELLED_BY_OWNER]);
+
+      await service.cancelByOwner(ID, 'Imprévu');
+
+      expect(db.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('Given un id inconnu, Then 404 booking_not_found sans mise à jour', async () => {
+      givenFound([]);
+
+      const err = await rejectionOf(service.cancelByOwner(ID, 'Imprévu'));
+
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect(businessError(err)).toBe('booking_not_found');
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('Given une annulation concurrente gagnée par le visiteur, Then la ligne relue est rendue, sans email', async () => {
+      db.where
+        .mockResolvedValueOnce([UPCOMING])
+        .mockReturnValueOnce(db)
+        .mockResolvedValueOnce([CANCELLED_BY_VISITOR]);
+      givenUpdated([]);
+
+      const result = await service.cancelByOwner(ID, 'Imprévu');
+      await flushFireAndForget();
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: ID,
+          status: 'cancelled',
+          cancelledBy: 'visitor',
+        }),
+      );
+      expect(notifier.bookingCancelled).not.toHaveBeenCalled();
+    });
+  });
+});

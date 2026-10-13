@@ -1,0 +1,617 @@
+import 'reflect-metadata';
+import {
+  BadRequestException,
+  ConflictException,
+  type INestApplication,
+  NotFoundException,
+  RequestMethod,
+  ValidationPipe,
+} from '@nestjs/common';
+import {
+  GUARDS_METADATA,
+  METHOD_METADATA,
+  PATH_METADATA,
+} from '@nestjs/common/constants';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+import type { App } from 'supertest/types';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { HttpExceptionFilter } from '../common/filters/http-exception.filter';
+import { AvailabilityService } from './availability.service';
+import { BookingAdminController } from './booking-admin.controller';
+import { BookingService } from './booking.service';
+import {
+  anAdminBooking,
+  anAvailabilityClosure,
+  anAvailabilityRule,
+} from './booking-test-builders';
+
+const BOOKING_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const CLOSURE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+const routeHandler = (
+  method: RequestMethod,
+  path: string,
+): object | undefined => {
+  const prototype = BookingAdminController.prototype as unknown as Record<
+    string,
+    unknown
+  >;
+  return Object.getOwnPropertyNames(prototype)
+    .map((name) => prototype[name])
+    .find(
+      (candidate): candidate is object =>
+        typeof candidate === 'function' &&
+        Reflect.getMetadata(PATH_METADATA, candidate) === path &&
+        Reflect.getMetadata(METHOD_METADATA, candidate) === method,
+    );
+};
+
+describe('BookingAdminController (HTTP)', () => {
+  let app: INestApplication<App>;
+  const availability = {
+    listRules: jest.fn(),
+    replaceRules: jest.fn(),
+    listClosures: jest.fn(),
+    createClosure: jest.fn(),
+    deleteClosure: jest.fn(),
+  };
+  const booking = {
+    listBookings: jest.fn(),
+    countUpcoming: jest.fn(),
+    cancelByOwner: jest.fn(),
+  };
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      controllers: [BookingAdminController],
+      providers: [
+        { provide: AvailabilityService, useValue: availability },
+        { provide: BookingService, useValue: booking },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+    app = module.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    );
+    app.useGlobalFilters(new HttpExceptionFilter());
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(() => jest.clearAllMocks());
+
+  describe('accès', () => {
+    it('Given le contrôleur admin, Then JwtAuthGuard garde la classe entière', () => {
+      expect(
+        Reflect.getMetadata(GUARDS_METADATA, BookingAdminController),
+      ).toEqual([JwtAuthGuard]);
+    });
+
+    it.each([
+      [RequestMethod.GET, 'availability/rules'],
+      [RequestMethod.PUT, 'availability/rules'],
+      [RequestMethod.GET, 'availability/closures'],
+      [RequestMethod.POST, 'availability/closures'],
+      [RequestMethod.DELETE, 'availability/closures/:id'],
+      [RequestMethod.GET, 'bookings'],
+      [RequestMethod.GET, 'bookings/upcoming-count'],
+      [RequestMethod.PATCH, 'bookings/:id/cancel'],
+    ])(
+      'Given la route %s %s, Then elle est déclarée sur le contrôleur gardé',
+      (method, path) => {
+        expect(routeHandler(method, path)).toBeDefined();
+      },
+    );
+  });
+
+  describe('GET availability/rules', () => {
+    it('Given des plages en base, Then 200 { data } réduit au jour et aux minutes, dans l’ordre du service', async () => {
+      availability.listRules.mockResolvedValueOnce([
+        anAvailabilityRule({ weekday: 1, startMinute: 540, endMinute: 720 }),
+        anAvailabilityRule({ weekday: 3, startMinute: 840, endMinute: 1080 }),
+      ]);
+
+      const res = await request(app.getHttpServer()).get(
+        '/booking/availability/rules',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [
+          { weekday: 1, startMinute: 540, endMinute: 720 },
+          { weekday: 3, startMinute: 840, endMinute: 1080 },
+        ],
+      });
+      expect(availability.listRules).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('PUT availability/rules', () => {
+    const RULES = [
+      { weekday: 1, startMinute: 540, endMinute: 720 },
+      { weekday: 7, startMinute: 0, endMinute: 1440 },
+    ];
+
+    it('Given des plages valides, Then 200 { data } des plages enregistrées, demande transmise au service', async () => {
+      availability.replaceRules.mockResolvedValueOnce(
+        RULES.map((rule) => anAvailabilityRule(rule)),
+      );
+
+      const res = await request(app.getHttpServer())
+        .put('/booking/availability/rules')
+        .send({ rules: RULES });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ data: RULES });
+      expect(availability.replaceRules).toHaveBeenCalledTimes(1);
+      expect(availability.replaceRules).toHaveBeenCalledWith(RULES);
+    });
+
+    it('Given une liste vide, Then elle est transmise : toutes les plages sont retirées', async () => {
+      availability.replaceRules.mockResolvedValueOnce([]);
+
+      const res = await request(app.getHttpServer())
+        .put('/booking/availability/rules')
+        .send({ rules: [] });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ data: [] });
+      expect(availability.replaceRules).toHaveBeenCalledWith([]);
+    });
+
+    it.each([
+      ['un jour 0', [{ weekday: 0, startMinute: 540, endMinute: 600 }]],
+      ['un jour 8', [{ weekday: 8, startMinute: 540, endMinute: 600 }]],
+      ['un jour décimal', [{ weekday: 1.5, startMinute: 540, endMinute: 600 }]],
+      ['un début négatif', [{ weekday: 1, startMinute: -30, endMinute: 600 }]],
+      [
+        'une fin après minuit',
+        [{ weekday: 1, startMinute: 540, endMinute: 1470 }],
+      ],
+      [
+        'un début hors pas de 30',
+        [{ weekday: 1, startMinute: 545, endMinute: 600 }],
+      ],
+      [
+        'une fin hors pas de 30',
+        [{ weekday: 1, startMinute: 540, endMinute: 615 }],
+      ],
+      ['une fin absente', [{ weekday: 1, startMinute: 540 }]],
+      [
+        'un champ inconnu dans une plage',
+        [{ weekday: 1, startMinute: 540, endMinute: 600, id: 'x' }],
+      ],
+      ['une plage qui n’est pas un objet', ['lundi']],
+    ])('Given %s, Then 400 sans appel au service', async (_case, rules) => {
+      const res = await request(app.getHttpServer())
+        .put('/booking/availability/rules')
+        .send({ rules });
+
+      expect(res.status).toBe(400);
+      expect(availability.replaceRules).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['rules absent', {}],
+      ['rules qui n’est pas une liste', { rules: { weekday: 1 } }],
+      [
+        '51 plages',
+        {
+          rules: Array.from({ length: 51 }, () => ({
+            weekday: 1,
+            startMinute: 0,
+            endMinute: 30,
+          })),
+        },
+      ],
+      ['un champ inconnu à la racine', { rules: [], replace: true }],
+    ])('Given %s, Then 400 sans appel au service', async (_case, body) => {
+      const res = await request(app.getHttpServer())
+        .put('/booking/availability/rules')
+        .send(body);
+
+      expect(res.status).toBe(400);
+      expect(availability.replaceRules).not.toHaveBeenCalled();
+    });
+
+    it('Given 50 plages, Then elles franchissent la validation', async () => {
+      availability.replaceRules.mockResolvedValueOnce([]);
+      const rules = Array.from({ length: 50 }, (_, i) => ({
+        weekday: (i % 7) + 1,
+        startMinute: Math.floor(i / 7) * 60,
+        endMinute: Math.floor(i / 7) * 60 + 30,
+      }));
+
+      const res = await request(app.getHttpServer())
+        .put('/booking/availability/rules')
+        .send({ rules });
+
+      expect(res.status).toBe(200);
+      expect(availability.replaceRules).toHaveBeenCalledWith(rules);
+    });
+
+    it('Given le service refuse des plages qui se chevauchent, Then 400 avec le code métier rules_overlap', async () => {
+      availability.replaceRules.mockRejectedValueOnce(
+        new BadRequestException({
+          error: 'rules_overlap',
+          message: 'Deux plages du même jour se chevauchent.',
+        }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .put('/booking/availability/rules')
+        .send({ rules: RULES });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual(
+        expect.objectContaining({
+          statusCode: 400,
+          error: 'rules_overlap',
+          path: '/booking/availability/rules',
+        }),
+      );
+    });
+  });
+
+  describe('GET availability/closures', () => {
+    it('Given des fermetures à venir, Then 200 { data } réduit à id, dates et motif', async () => {
+      availability.listClosures.mockResolvedValueOnce([
+        anAvailabilityClosure({
+          id: CLOSURE_ID,
+          startsOn: '2026-12-24',
+          endsOn: '2026-12-26',
+          reason: 'Noël',
+        }),
+        anAvailabilityClosure({
+          id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          startsOn: '2027-01-04',
+          endsOn: '2027-01-04',
+          reason: null,
+        }),
+      ]);
+
+      const res = await request(app.getHttpServer()).get(
+        '/booking/availability/closures',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        data: [
+          {
+            id: CLOSURE_ID,
+            startsOn: '2026-12-24',
+            endsOn: '2026-12-26',
+            reason: 'Noël',
+          },
+          {
+            id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+            startsOn: '2027-01-04',
+            endsOn: '2027-01-04',
+            reason: null,
+          },
+        ],
+      });
+    });
+  });
+
+  describe('POST availability/closures', () => {
+    it('Given une fermeture valide, Then 201 avec la fermeture créée, demande transmise au service', async () => {
+      availability.createClosure.mockResolvedValueOnce(
+        anAvailabilityClosure({
+          id: CLOSURE_ID,
+          startsOn: '2026-12-24',
+          endsOn: '2026-12-26',
+          reason: 'Noël',
+        }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .post('/booking/availability/closures')
+        .send({ startsOn: '2026-12-24', endsOn: '2026-12-26', reason: 'Noël' });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual({
+        id: CLOSURE_ID,
+        startsOn: '2026-12-24',
+        endsOn: '2026-12-26',
+        reason: 'Noël',
+      });
+      expect(availability.createClosure).toHaveBeenCalledWith({
+        startsOn: '2026-12-24',
+        endsOn: '2026-12-26',
+        reason: 'Noël',
+      });
+    });
+
+    it('Given une fermeture sans motif, Then elle franchit la validation, motif absent', async () => {
+      availability.createClosure.mockResolvedValueOnce(
+        anAvailabilityClosure({ id: CLOSURE_ID, reason: null }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .post('/booking/availability/closures')
+        .send({ startsOn: '2026-12-24', endsOn: '2026-12-24' });
+
+      expect(res.status).toBe(201);
+      const [input] = availability.createClosure.mock.calls[0] as [
+        Record<string, unknown>,
+      ];
+      expect(input.startsOn).toBe('2026-12-24');
+      expect(input.endsOn).toBe('2026-12-24');
+      expect(input.reason).toBeUndefined();
+    });
+
+    it('Given un motif de 500 caractères, Then il franchit la validation', async () => {
+      availability.createClosure.mockResolvedValueOnce(
+        anAvailabilityClosure({ id: CLOSURE_ID }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .post('/booking/availability/closures')
+        .send({
+          startsOn: '2026-12-24',
+          endsOn: '2026-12-26',
+          reason: 'a'.repeat(500),
+        });
+
+      expect(res.status).toBe(201);
+    });
+
+    it.each([
+      ['un début absent', { endsOn: '2026-12-26' }],
+      ['une fin absente', { startsOn: '2026-12-24' }],
+      ['une date française', { startsOn: '24/12/2026', endsOn: '2026-12-26' }],
+      [
+        'un instant au lieu d’une date',
+        { startsOn: '2026-12-24T00:00:00Z', endsOn: '2026-12-26' },
+      ],
+      [
+        'une date inexistante',
+        { startsOn: '2026-02-30', endsOn: '2026-03-02' },
+      ],
+      ['un mois 13', { startsOn: '2026-12-24', endsOn: '2026-13-01' }],
+      [
+        'un motif de 501 caractères',
+        {
+          startsOn: '2026-12-24',
+          endsOn: '2026-12-26',
+          reason: 'a'.repeat(501),
+        },
+      ],
+      [
+        'un champ inconnu',
+        { startsOn: '2026-12-24', endsOn: '2026-12-26', id: CLOSURE_ID },
+      ],
+    ])('Given %s, Then 400 sans appel au service', async (_case, body) => {
+      const res = await request(app.getHttpServer())
+        .post('/booking/availability/closures')
+        .send(body);
+
+      expect(res.status).toBe(400);
+      expect(availability.createClosure).not.toHaveBeenCalled();
+    });
+
+    it('Given le service refuse une fin avant le début, Then 400', async () => {
+      availability.createClosure.mockRejectedValueOnce(
+        new BadRequestException('La fin précède le début.'),
+      );
+
+      const res = await request(app.getHttpServer())
+        .post('/booking/availability/closures')
+        .send({ startsOn: '2026-12-26', endsOn: '2026-12-24' });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('DELETE availability/closures/:id', () => {
+    it('Given une fermeture existante, Then 204 sans corps, id transmis', async () => {
+      availability.deleteClosure.mockResolvedValueOnce(undefined);
+
+      const res = await request(app.getHttpServer()).delete(
+        `/booking/availability/closures/${CLOSURE_ID}`,
+      );
+
+      expect(res.status).toBe(204);
+      expect(res.text).toBe('');
+      expect(availability.deleteClosure).toHaveBeenCalledWith(CLOSURE_ID);
+    });
+
+    it('Given un id qui n’est pas un UUID, Then 400 sans appel au service', async () => {
+      const res = await request(app.getHttpServer()).delete(
+        '/booking/availability/closures/noel',
+      );
+
+      expect(res.status).toBe(400);
+      expect(availability.deleteClosure).not.toHaveBeenCalled();
+    });
+
+    it('Given une fermeture inconnue, Then 404', async () => {
+      availability.deleteClosure.mockRejectedValueOnce(
+        new NotFoundException('Fermeture introuvable.'),
+      );
+
+      const res = await request(app.getHttpServer()).delete(
+        `/booking/availability/closures/${CLOSURE_ID}`,
+      );
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('GET bookings', () => {
+    it.each(['upcoming', 'past'] as const)(
+      'Given scope=%s, Then 200 { data } des rendez-vous du service, coordonnées comprises',
+      async (scope) => {
+        const rows = [
+          anAdminBooking({
+            id: BOOKING_ID,
+            phone: '+33 6 12 34 56 78',
+            format: 'phone',
+            videoUrl: null,
+            company: 'Société Exemple',
+          }),
+          anAdminBooking({
+            status: 'cancelled',
+            cancelledAt: '2026-11-01T09:00:00.000Z',
+            cancelledBy: 'owner',
+            cancelReason: 'Imprévu',
+          }),
+        ];
+        booking.listBookings.mockResolvedValueOnce(rows);
+
+        const res = await request(app.getHttpServer())
+          .get('/booking/bookings')
+          .query({ scope });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ data: rows });
+        expect(booking.listBookings).toHaveBeenCalledWith(scope);
+      },
+    );
+
+    it.each([
+      ['scope absent', {}],
+      ['scope hors liste', { scope: 'all' }],
+      ['un paramètre inconnu', { scope: 'upcoming', page: 2 }],
+    ])('Given %s, Then 400 sans appel au service', async (_case, query) => {
+      const res = await request(app.getHttpServer())
+        .get('/booking/bookings')
+        .query(query);
+
+      expect(res.status).toBe(400);
+      expect(booking.listBookings).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET bookings/upcoming-count', () => {
+    it('Given trois rendez-vous à venir, Then 200 { count: 3 }', async () => {
+      booking.countUpcoming.mockResolvedValueOnce({ count: 3 });
+
+      const res = await request(app.getHttpServer()).get(
+        '/booking/bookings/upcoming-count',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ count: 3 });
+      expect(booking.listBookings).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PATCH bookings/:id/cancel', () => {
+    const url = `/booking/bookings/${BOOKING_ID}/cancel`;
+
+    it('Given un motif, Then 200 avec le rendez-vous annulé, id et motif transmis', async () => {
+      const cancelled = anAdminBooking({
+        id: BOOKING_ID,
+        status: 'cancelled',
+        cancelledAt: '2026-11-02T08:00:00.000Z',
+        cancelledBy: 'owner',
+        cancelReason: 'Imprévu de mon côté.',
+      });
+      booking.cancelByOwner.mockResolvedValueOnce(cancelled);
+
+      const res = await request(app.getHttpServer())
+        .patch(url)
+        .send({ reason: 'Imprévu de mon côté.' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(cancelled);
+      expect(booking.cancelByOwner).toHaveBeenCalledWith(
+        BOOKING_ID,
+        'Imprévu de mon côté.',
+      );
+    });
+
+    it('Given aucun motif, Then 200, motif absent transmis au service', async () => {
+      booking.cancelByOwner.mockResolvedValueOnce(
+        anAdminBooking({ id: BOOKING_ID, status: 'cancelled' }),
+      );
+
+      const res = await request(app.getHttpServer()).patch(url).send({});
+
+      expect(res.status).toBe(200);
+      const [id, reason] = booking.cancelByOwner.mock.calls[0] as unknown[];
+      expect(id).toBe(BOOKING_ID);
+      expect(reason).toBeUndefined();
+    });
+
+    it('Given un motif de 500 caractères, Then il franchit la validation', async () => {
+      booking.cancelByOwner.mockResolvedValueOnce(
+        anAdminBooking({ id: BOOKING_ID, status: 'cancelled' }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .patch(url)
+        .send({ reason: 'a'.repeat(500) });
+
+      expect(res.status).toBe(200);
+      expect(booking.cancelByOwner).toHaveBeenCalledWith(
+        BOOKING_ID,
+        'a'.repeat(500),
+      );
+    });
+
+    it.each([
+      ['un motif de 501 caractères', url, { reason: 'a'.repeat(501) }],
+      ['un champ inconnu', url, { reason: 'x', status: 'cancelled' }],
+      ['un id qui n’est pas un UUID', '/booking/bookings/abc/cancel', {}],
+    ])(
+      'Given %s, Then 400 sans appel au service',
+      async (_case, path, body) => {
+        const res = await request(app.getHttpServer()).patch(path).send(body);
+
+        expect(res.status).toBe(400);
+        expect(booking.cancelByOwner).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      [
+        404,
+        'booking_not_found',
+        new NotFoundException({
+          error: 'booking_not_found',
+          message: 'Rendez-vous introuvable.',
+        }),
+      ],
+      [
+        409,
+        'cancel_too_late',
+        new ConflictException({
+          error: 'cancel_too_late',
+          message: 'Le rendez-vous a déjà commencé.',
+        }),
+      ],
+    ])(
+      'Given le service refuse, Then %i avec le code métier %s dans error',
+      async (status, code, failure) => {
+        booking.cancelByOwner.mockRejectedValueOnce(failure);
+
+        const res = await request(app.getHttpServer())
+          .patch(url)
+          .send({ reason: 'Imprévu' });
+
+        expect(res.status).toBe(status);
+        expect(res.body).toEqual(
+          expect.objectContaining({
+            statusCode: status,
+            error: code,
+            path: url,
+          }),
+        );
+      },
+    );
+  });
+});

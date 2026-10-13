@@ -40,6 +40,12 @@ const CANCELLED_BY_VISITOR = aBooking({
   cancelledBy: 'visitor',
 });
 
+const CANCELLED_BY_OWNER = aBooking({
+  ...CANCELLED_BY_VISITOR,
+  cancelledBy: 'owner',
+  cancelReason: 'Un imprévu de mon côté.',
+});
+
 const unfold = (ics: string): string => ics.replace(/\r\n[ \t]/g, '');
 const icsLines = (mail: SentMail | undefined): string[] =>
   unfold(mail?.icalEvent?.content ?? '').split('\r\n');
@@ -302,6 +308,107 @@ describe('BookingNotifier', () => {
       expect(mailTo(OWNER)?.html).toContain(
         'Camille &lt;b&gt;Martin&lt;/b&gt;',
       );
+    });
+  });
+  describe('bookingCancelled par le propriétaire', () => {
+    const htmlOf = async (row: ReturnType<typeof aBooking>, to: string) => {
+      mailer.sendMail.mockClear();
+      await notifier.bookingCancelled(row);
+      return mailTo(to)?.html ?? '';
+    };
+
+    it('Given une annulation par le propriétaire, Then le visiteur et le propriétaire reçoivent chacun une invitation CANCEL du même UID', async () => {
+      await notifier.bookingCancelled(CANCELLED_BY_OWNER);
+
+      expect(
+        sent()
+          .map((mail) => mail.to)
+          .sort(),
+      ).toEqual(['camille@example.com', OWNER]);
+      for (const mail of sent()) {
+        expect(mail.icalEvent?.method).toBe('CANCEL');
+        expect(icsLines(mail)).toEqual(
+          expect.arrayContaining([
+            'METHOD:CANCEL',
+            'SEQUENCE:1',
+            'STATUS:CANCELLED',
+            'UID:dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          ]),
+        );
+        expect(mail.subject).toContain('mercredi 4 novembre 2026 à 11:00');
+      }
+    });
+
+    it('Given un motif, Then il figure dans l’email du visiteur et dans celui du propriétaire', async () => {
+      await notifier.bookingCancelled(CANCELLED_BY_OWNER);
+
+      for (const to of ['camille@example.com', OWNER]) {
+        expect(mailTo(to)?.html).toContain('Motif');
+        expect(mailTo(to)?.html).toContain('Un imprévu de mon côté.');
+      }
+    });
+
+    it('Given un motif contenant du HTML, Then il est échappé dans les deux emails', async () => {
+      await notifier.bookingCancelled(
+        aBooking({
+          ...CANCELLED_BY_OWNER,
+          cancelReason: '<a href="https://evil.test">urgent</a>',
+        }),
+      );
+
+      for (const mail of sent()) {
+        expect(mail.html).not.toContain('<a href="https://evil.test">');
+        expect(mail.html).toContain(
+          '&lt;a href=&quot;https://evil.test&quot;&gt;urgent&lt;/a&gt;',
+        );
+      }
+    });
+
+    it('Given une annulation par le propriétaire sans motif, Then aucun email ne parle de motif', async () => {
+      await notifier.bookingCancelled(
+        aBooking({ ...CANCELLED_BY_OWNER, cancelReason: null }),
+      );
+
+      for (const mail of sent()) {
+        expect(mail.html).not.toContain('Motif');
+      }
+    });
+
+    it('Given une annulation par le visiteur, Then aucun email ne parle de motif', async () => {
+      await notifier.bookingCancelled(CANCELLED_BY_VISITOR);
+
+      for (const mail of sent()) {
+        expect(mail.html).not.toContain('Motif');
+      }
+    });
+
+    it.each(['camille@example.com', OWNER])(
+      'Given la même annulation sans motif par l’une ou l’autre partie, Then l’email à %s n’est pas rédigé de la même façon',
+      async (to) => {
+        const byVisitor = await htmlOf(CANCELLED_BY_VISITOR, to);
+        const byOwner = await htmlOf(
+          aBooking({ ...CANCELLED_BY_OWNER, cancelReason: null }),
+          to,
+        );
+
+        expect(byOwner).not.toBe('');
+        expect(byOwner).not.toEqual(byVisitor);
+      },
+    );
+
+    it('Given une annulation par le propriétaire, Then son email ne l’attribue pas au visiteur', async () => {
+      await notifier.bookingCancelled(CANCELLED_BY_OWNER);
+
+      expect(mailTo(OWNER)?.html).not.toContain('a annulé son rendez-vous');
+      expect(mailTo(OWNER)?.html).toContain('Camille Martin');
+    });
+
+    it('Given une annulation par le propriétaire, Then aucun email ne contient de lien d’annulation', async () => {
+      await notifier.bookingCancelled(CANCELLED_BY_OWNER);
+
+      for (const mail of sent()) {
+        expect(mail.html).not.toContain('/rendez-vous/annulation');
+      }
     });
   });
 });

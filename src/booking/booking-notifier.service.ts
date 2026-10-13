@@ -42,7 +42,7 @@ export class BookingNotifier {
         subject: `Rendez-vous confirmé : ${variables.when}`,
         html: render('booking-confirmation.html', {
           ...variables,
-          cancelUrl: `${this.config.publicSiteUrl.replace(/\/+$/, '')}/rendez-vous/annulation#${token}`,
+          cancelUrl: `${this.siteUrl()}/rendez-vous/annulation#${token}`,
         }),
         icalEvent,
       }),
@@ -60,32 +60,45 @@ export class BookingNotifier {
     ]);
   }
 
+  /** Rédaction déclinée selon la partie qui annule ; le motif du propriétaire figure aux deux emails. */
   async bookingCancelled(row: Booking): Promise<void> {
     const variables = this.commonVariables(row);
     const icalEvent = this.invitation(row, 'CANCEL');
+    const byOwner = row.cancelledBy === 'owner';
+    const reason = (byOwner && row.cancelReason) || '';
+    const template = cancelledTemplate(reason !== '');
     await Promise.all([
       this.mailer.sendMail({
         to: row.email,
         subject: `Rendez-vous annulé : ${variables.when}`,
-        html: render('booking-cancelled.html', {
+        html: renderTemplate(template, {
           ...variables,
+          reason,
           greeting: `Bonjour ${row.name},`,
-          intro:
-            'Votre rendez-vous est bien annulé. Il est retiré de votre agenda si vous l’y aviez ajouté.',
+          intro: byOwner
+            ? `Je dois malheureusement annuler notre rendez-vous. Il est retiré de votre agenda si vous l’y aviez ajouté. Vous pouvez réserver un autre créneau sur ${this.siteUrl()}/rendez-vous.`
+            : 'Votre rendez-vous est bien annulé. Il est retiré de votre agenda si vous l’y aviez ajouté.',
         }),
         icalEvent,
       }),
       this.mailer.sendMail({
         to: OWNER_EMAIL,
         subject: `Rendez-vous annulé : ${row.name}, ${variables.when}`,
-        html: render('booking-cancelled.html', {
+        html: renderTemplate(template, {
           ...variables,
+          reason,
           greeting: 'Rendez-vous annulé',
-          intro: `${row.name} (${row.email}) a annulé son rendez-vous.`,
+          intro: byOwner
+            ? `Vous avez annulé le rendez-vous de ${row.name} (${row.email}) ; un email d’annulation lui a été envoyé.`
+            : `${row.name} (${row.email}) a annulé son rendez-vous.`,
         }),
         icalEvent,
       }),
     ]);
+  }
+
+  private siteUrl(): string {
+    return this.config.publicSiteUrl.replace(/\/+$/, '');
   }
 
   private commonVariables(row: Booking) {
@@ -142,5 +155,15 @@ const meetingOf = (row: Booking): Meeting => {
   };
 };
 
-const render = (template: string, variables: Record<string, string>): string =>
-  renderTemplate(loadTemplate(resolve(TEMPLATES_DIR, template)), variables);
+const templateOf = (name: string): string =>
+  loadTemplate(resolve(TEMPLATES_DIR, name));
+
+const render = (name: string, variables: Record<string, string>): string =>
+  renderTemplate(templateOf(name), variables);
+
+/** Ligne « Motif » composée avant le rendu : le motif passe par l'échappement de `renderTemplate`. */
+const cancelledTemplate = (withReason: boolean): string =>
+  templateOf('booking-cancelled.html').replace(
+    '{{reasonRow}}',
+    withReason ? templateOf('booking-cancelled-reason.html').trim() : '',
+  );
