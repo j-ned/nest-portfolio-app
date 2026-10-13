@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsIn,
@@ -11,6 +12,10 @@ import {
   ValidateIf,
 } from 'class-validator';
 import type { Booking } from '../../database/schema';
+
+/** Rogne avant validation : un texte fait d'espaces seuls échoue à `@IsNotEmpty`. */
+const trim = ({ value }: { value: unknown }): unknown =>
+  typeof value === 'string' ? value.trim() : value;
 
 const BOOKING_FORMATS = [
   'video',
@@ -26,6 +31,7 @@ export class CreateBookingDto {
   startsAt!: string;
 
   @ApiProperty({ maxLength: 200 })
+  @Transform(trim)
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)
@@ -55,6 +61,7 @@ export class CreateBookingDto {
   company?: string;
 
   @ApiProperty({ maxLength: 1000 })
+  @Transform(trim)
   @IsString()
   @IsNotEmpty()
   @MaxLength(1000)

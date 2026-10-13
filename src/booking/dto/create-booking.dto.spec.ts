@@ -65,12 +65,14 @@ describe('CreateBookingDto', () => {
       'startsAt',
     ],
     ['nom vide', { name: '' }, 'name'],
+    ['nom composé d’espaces', { name: '   ' }, 'name'],
     ['nom de 201 caractères', { name: 'a'.repeat(201) }, 'name'],
     ['email invalide', { email: 'camille.example.com' }, 'email'],
     ['format inconnu', { format: 'visio' }, 'format'],
     ['entreprise de 201 caractères', { company: 'a'.repeat(201) }, 'company'],
     ['message absent', { message: undefined }, 'message'],
     ['message vide', { message: '' }, 'message'],
+    ['message composé d’espaces', { message: ' \n\t ' }, 'message'],
     ['message de 1001 caractères', { message: 'a'.repeat(1001) }, 'message'],
     ['champ piège de 201 caractères', { website: 'a'.repeat(201) }, 'website'],
     ['champ piège non textuel', { website: 42 }, 'website'],
@@ -99,6 +101,17 @@ describe('CreateBookingDto', () => {
       ).resolves.toEqual([]);
     },
   );
+
+  it('Given un nom et un message entourés d’espaces, When la demande est transformée, Then ils sont rognés', () => {
+    const dto = plainToInstance(CreateBookingDto, {
+      ...VIDEO_REQUEST,
+      name: '  Camille Martin ',
+      message: '\n Refonte. \t',
+    });
+
+    expect(dto.name).toBe('Camille Martin');
+    expect(dto.message).toBe('Refonte.');
+  });
 
   describe('téléphone', () => {
     it('Given le format téléphone sans numéro, When la demande est validée, Then le téléphone est requis', async () => {

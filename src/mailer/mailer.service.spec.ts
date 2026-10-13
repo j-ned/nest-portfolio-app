@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MailerService } from './mailer.service';
 import { MAIL_TRANSPORTER } from './mailer.constants';
@@ -134,5 +135,26 @@ describe('MailerService', () => {
         html,
       }),
     );
+  });
+
+  it('Given trois échecs, When l’erreur est journalisée, Then l’adresse du destinataire est masquée, message et trace compris', async () => {
+    const errorLog = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => {});
+    transporter.sendMail.mockRejectedValue(
+      new Error('550 5.1.1 <camille@example.com>: Recipient address rejected'),
+    );
+    jest.useFakeTimers();
+    const caught = service
+      .sendMail({ to: 'camille@example.com', subject: 's', html: 'h' })
+      .catch((e: unknown) => e);
+    await jest.advanceTimersByTimeAsync(3000);
+    await caught;
+    jest.useRealTimers();
+
+    const logged = JSON.stringify(errorLog.mock.calls);
+    expect(logged).not.toContain('camille@example.com');
+    expect(logged).toContain('c***@example.com');
+    errorLog.mockRestore();
   });
 });
