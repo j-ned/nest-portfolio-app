@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminWriteThrottle } from '../common/throttle';
 import type { AvailabilityClosure, AvailabilityRule } from '../database/schema';
 import {
   AvailabilityService,
@@ -43,7 +44,8 @@ type ClosureView = Pick<
 >;
 
 /**
- * Administration des rendez-vous. Throttle : limite globale, comme les routes admin du contact.
+ * Administration des rendez-vous. Throttle : limite globale, comme les routes admin du contact,
+ * sauf le calendrier (un clic = une écriture, un mois = une lecture) en `AdminWriteThrottle`.
  */
 @ApiTags('Booking (admin)')
 @ApiBearerAuth()
@@ -109,6 +111,7 @@ export class BookingAdminController {
     status: 400,
     description: 'Validation failed | month_out_of_range',
   })
+  @AdminWriteThrottle()
   getCalendar(
     @Query() { month }: CalendarQueryDto,
   ): Promise<CalendarMonthResponse> {
@@ -119,6 +122,7 @@ export class BookingAdminController {
   @ApiOperation({ summary: 'Close or open French public holidays' })
   @ApiResponse({ status: 200, description: 'The stored setting' })
   @ApiResponse({ status: 400, description: 'Validation failed' })
+  @AdminWriteThrottle()
   async updateSettings(
     @Body() { closePublicHolidays }: UpdateBookingSettingsDto,
   ): Promise<{ closePublicHolidays: boolean }> {
@@ -137,6 +141,7 @@ export class BookingAdminController {
   @ApiResponse({ status: 400, description: 'Validation failed' })
   @ApiResponse({ status: 409, description: 'day_in_closure' })
   @ApiResponse({ status: 422, description: 'day_in_past | day_out_of_range' })
+  @AdminWriteThrottle()
   setDayOpen(
     @Param() { date }: DayParamDto,
     @Body() { open }: SetDayOpenDto,
