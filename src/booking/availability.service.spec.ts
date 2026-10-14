@@ -1,4 +1,9 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getTableName, type SQL, type Table } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
@@ -9,8 +14,10 @@ import { createMockDb } from '../database/test-utils';
 import { AvailabilityService } from './availability.service';
 import {
   anAvailabilityClosure,
+  anAvailabilityOverride,
   anAvailabilityRule,
 } from './booking-test-builders';
+import type { DayOverrideKind } from './resolve-day';
 
 const render = (fragment: unknown) =>
   new PgDialect({ casing: 'snake_case' }).sqlToQuery(fragment as SQL);
@@ -62,6 +69,73 @@ describe('AvailabilityService (lecture)', () => {
         expect(render(condition).params).toEqual([parisToday]);
       },
     );
+  });
+
+  describe('listOverrides', () => {
+    it('Given des exceptions en base, When listOverrides, Then une table date → sorte', async () => {
+      db.where.mockResolvedValueOnce([
+        anAvailabilityOverride({ day: '2026-11-12', kind: 'closed' }),
+        anAvailabilityOverride({ day: '2026-11-11', kind: 'open' }),
+      ]);
+
+      await expect(
+        service.listOverrides(
+          db as unknown as DbExecutor,
+          '2026-11-02',
+          '2026-11-23',
+        ),
+      ).resolves.toEqual(
+        new Map([
+          ['2026-11-12', 'closed'],
+          ['2026-11-11', 'open'],
+        ]),
+      );
+    });
+
+    it('Given une fenêtre de dates, Then availability_override est lue entre ses deux bornes', async () => {
+      db.where.mockResolvedValueOnce([]);
+
+      await service.listOverrides(
+        db as unknown as DbExecutor,
+        '2026-11-02',
+        '2026-11-23',
+      );
+
+      expect(db.from).toHaveBeenCalledTimes(1);
+      const [table] = db.from.mock.calls[0] as [Table];
+      expect(getTableName(table)).toBe('availability_override');
+      const [condition] = db.where.mock.calls[0] as [unknown];
+      expect(render(condition).params).toEqual(['2026-11-02', '2026-11-23']);
+    });
+
+    it('Given aucune exception dans la fenêtre, Then une table vide', async () => {
+      db.where.mockResolvedValueOnce([]);
+
+      const overrides = await service.listOverrides(
+        db as unknown as DbExecutor,
+        '2026-11-02',
+        '2026-11-23',
+      );
+
+      expect(overrides.size).toBe(0);
+    });
+
+    it('Given un exécuteur de transaction, Then les exceptions sont lues par lui, jamais par la connexion partagée', async () => {
+      const tx = createMockDb();
+      tx.where.mockResolvedValueOnce([
+        anAvailabilityOverride({ day: '2026-11-12', kind: 'closed' }),
+      ]);
+
+      await expect(
+        service.listOverrides(
+          tx as unknown as DbExecutor,
+          '2026-11-12',
+          '2026-11-12',
+        ),
+      ).resolves.toEqual(new Map([['2026-11-12', 'closed']]));
+      expect(tx.select).toHaveBeenCalledTimes(1);
+      expect(db.select).not.toHaveBeenCalled();
+    });
   });
 
   describe('readClosePublicHolidays', () => {
@@ -382,5 +456,332 @@ describe('AvailabilityService (écriture)', () => {
         NotFoundException,
       );
     });
+  });
+});
+
+describe('AvailabilityService.setDayOpen', () => {
+  const EVERY_DAY_9_TO_11 = [1, 2, 3, 4, 5, 6, 7].map((weekday) =>
+    anAvailabilityRule({ weekday, startMinute: 540, endMinute: 660 }),
+  );
+  const ORDINARY = '2026-11-12';
+  const ARMISTICE = '2026-11-11';
+
+  let service: AvailabilityService;
+  let db: ReturnType<typeof createMockDb>;
+  let tx: ReturnType<typeof createMockDb>;
+  let reads: {
+    listRules: jest.SpyInstance;
+    listClosures: jest.SpyInstance;
+    readClosePublicHolidays: jest.SpyInstance;
+    listOverrides: jest.SpyInstance;
+  };
+
+  const givenAfterWrite = (overrides: [string, DayOverrideKind][]) =>
+    reads.listOverrides.mockResolvedValue(new Map(overrides));
+  const givenClosures = (
+    closures: ReturnType<typeof anAvailabilityClosure>[],
+  ) => reads.listClosures.mockResolvedValue(closures);
+  const lastCall = (mock: jest.Mock | jest.SpyInstance): number =>
+    Math.max(...mock.mock.invocationCallOrder);
+  const expectNoWrite = () => {
+    expect(tx.delete).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  };
+
+  beforeEach(async () => {
+    db = createMockDb();
+    tx = createMockDb();
+    db.transaction.mockImplementation((fn: (t: unknown) => unknown) =>
+      Promise.resolve(fn(tx)),
+    );
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [AvailabilityService, { provide: DRIZZLE, useValue: db }],
+    }).compile();
+    service = module.get(AvailabilityService);
+    reads = {
+      listRules: jest
+        .spyOn(service, 'listRules')
+        .mockResolvedValue(EVERY_DAY_9_TO_11),
+      listClosures: jest.spyOn(service, 'listClosures').mockResolvedValue([]),
+      readClosePublicHolidays: jest
+        .spyOn(service, 'readClosePublicHolidays')
+        .mockResolvedValue(true),
+      listOverrides: jest
+        .spyOn(service, 'listOverrides')
+        .mockResolvedValue(new Map()),
+    };
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-10T09:00:00Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  describe('état souhaité', () => {
+    it.each([
+      ['un jour ordinaire sans exception', ORDINARY, true, false, 'closed'],
+      [
+        'un férié, interrupteur actif, sans exception',
+        ARMISTICE,
+        true,
+        true,
+        'open',
+      ],
+      [
+        'un férié fermé à la main, interrupteur actif',
+        ARMISTICE,
+        true,
+        true,
+        'open',
+      ],
+      [
+        'un férié, interrupteur inactif, sans exception',
+        ARMISTICE,
+        false,
+        false,
+        'closed',
+      ],
+    ] as const)(
+      'Given %s (%s, interrupteur %s), When open: %s, Then l’exception %s est écrite par insertion ou remplacement',
+      async (_case, date, closePublicHolidays, open, kind) => {
+        reads.readClosePublicHolidays.mockResolvedValue(closePublicHolidays);
+        givenAfterWrite([[date, kind]]);
+
+        await service.setDayOpen(date, open);
+
+        expect(tx.insert).toHaveBeenCalledTimes(1);
+        const [table] = tx.insert.mock.calls[0] as [Table];
+        expect(getTableName(table)).toBe('availability_override');
+        expect(tx.values).toHaveBeenCalledWith({ day: date, kind });
+        expect(tx.onConflictDoUpdate).toHaveBeenCalledTimes(1);
+        const [conflict] = tx.onConflictDoUpdate.mock.calls[0] as [
+          { target: { name: string }; set: Record<string, unknown> },
+        ];
+        expect(conflict.target.name).toBe('day');
+        expect(Object.keys(conflict.set)).toEqual(['kind']);
+        expect(tx.delete).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['un jour ordinaire fermé à la main', ORDINARY, true, true],
+      ['un jour ordinaire sans exception', ORDINARY, true, true],
+      ['un férié rouvert, interrupteur actif', ARMISTICE, true, false],
+      [
+        'un férié fermé à la main, interrupteur inactif',
+        ARMISTICE,
+        false,
+        true,
+      ],
+    ] as const)(
+      'Given %s (%s, interrupteur %s), When open: %s, Then l’exception est supprimée : le jour revient à la règle',
+      async (_case, date, closePublicHolidays, open) => {
+        reads.readClosePublicHolidays.mockResolvedValue(closePublicHolidays);
+
+        await service.setDayOpen(date, open);
+
+        expect(tx.delete).toHaveBeenCalledTimes(1);
+        const [table] = tx.delete.mock.calls[0] as [Table];
+        expect(getTableName(table)).toBe('availability_override');
+        const [condition] = tx.where.mock.calls.at(-1) as [unknown];
+        expect(render(condition).params).toEqual([date]);
+        expect(tx.insert).not.toHaveBeenCalled();
+      },
+    );
+
+    it('Given une écriture, Then elle passe par une seule transaction, jamais par la connexion partagée', async () => {
+      await service.setDayOpen(ORDINARY, false);
+
+      expect(db.transaction).toHaveBeenCalledTimes(1);
+      expect(tx.insert).toHaveBeenCalledTimes(1);
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.delete).not.toHaveBeenCalled();
+    });
+
+    it('Given une écriture, Then règles, fermetures et interrupteur sont lus par la transaction', async () => {
+      await service.setDayOpen(ORDINARY, false);
+
+      expect(reads.readClosePublicHolidays).toHaveBeenCalledWith(tx);
+      expect(reads.listClosures).toHaveBeenCalledWith(tx);
+      expect(reads.listRules).toHaveBeenCalledWith(tx);
+    });
+
+    it('Given une écriture, Then l’exception du jour est relue par la transaction après l’écriture', async () => {
+      await service.setDayOpen(ORDINARY, false);
+
+      expect(reads.listOverrides).toHaveBeenCalledWith(tx, ORDINARY, ORDINARY);
+      expect(lastCall(reads.listOverrides)).toBeGreaterThan(
+        lastCall(tx.insert),
+      );
+    });
+  });
+
+  describe('réponse', () => {
+    it('Given un jour ordinaire fermé, Then le jour relu : fermé, créneaux de la semaine type comptés', async () => {
+      givenAfterWrite([[ORDINARY, 'closed']]);
+
+      await expect(service.setDayOpen(ORDINARY, false)).resolves.toEqual({
+        date: ORDINARY,
+        state: 'closed',
+        holiday: null,
+        slotCount: 4,
+        closure: null,
+      });
+    });
+
+    it('Given un férié rouvert, Then le jour relu : ouvert, nom du férié gardé', async () => {
+      givenAfterWrite([[ARMISTICE, 'open']]);
+
+      await expect(service.setDayOpen(ARMISTICE, true)).resolves.toEqual({
+        date: ARMISTICE,
+        state: 'open',
+        holiday: 'Armistice 1918',
+        slotCount: 4,
+        closure: null,
+      });
+    });
+
+    it('Given un férié revenu à la règle, interrupteur actif, Then le jour relu : férié fermé', async () => {
+      givenAfterWrite([]);
+
+      await expect(service.setDayOpen(ARMISTICE, false)).resolves.toEqual({
+        date: ARMISTICE,
+        state: 'holiday',
+        holiday: 'Armistice 1918',
+        slotCount: 4,
+        closure: null,
+      });
+    });
+  });
+
+  describe('refus', () => {
+    const businessErrorOf = (err: unknown) =>
+      (err as { getResponse(): { error?: unknown } }).getResponse().error;
+
+    it.each([
+      ['hier', '2026-11-10T09:00:00Z', '2026-11-09'],
+      [
+        'la veille en date de Paris, déjà le lendemain à 00:30',
+        '2026-10-25T23:30:00Z',
+        '2026-10-25',
+      ],
+    ])(
+      'Given %s (maintenant %s, jour %s), Then 422 day_in_past sans écriture',
+      async (_case, now, date) => {
+        jest.setSystemTime(new Date(now));
+
+        const err = await rejectionOf(service.setDayOpen(date, false));
+
+        expect(err).toBeInstanceOf(UnprocessableEntityException);
+        expect(businessErrorOf(err)).toBe('day_in_past');
+        expectNoWrite();
+      },
+    );
+
+    it.each([
+      [
+        'le lendemain du dernier jour du mois courant + 12',
+        '2026-11-10T09:00:00Z',
+        '2027-12-01',
+      ],
+      [
+        'le lendemain de la borne, mois courant pris à Paris',
+        '2026-10-31T23:30:00Z',
+        '2027-12-01',
+      ],
+      ['un an et demi plus tard', '2026-11-10T09:00:00Z', '2028-05-02'],
+    ])(
+      'Given %s (maintenant %s, jour %s), Then 422 day_out_of_range sans écriture',
+      async (_case, now, date) => {
+        jest.setSystemTime(new Date(now));
+
+        const err = await rejectionOf(service.setDayOpen(date, false));
+
+        expect(err).toBeInstanceOf(UnprocessableEntityException);
+        expect(businessErrorOf(err)).toBe('day_out_of_range');
+        expectNoWrite();
+      },
+    );
+
+    it.each([
+      ['aujourd’hui', '2026-11-10T09:00:00Z', '2026-11-10'],
+      [
+        'le dernier jour du mois courant + 12',
+        '2026-11-10T09:00:00Z',
+        '2027-11-30',
+      ],
+      [
+        'le dernier jour autorisé, mois courant pris à Paris',
+        '2026-10-31T23:30:00Z',
+        '2027-11-30',
+      ],
+    ])(
+      'Given %s (maintenant %s, jour %s), Then l’écriture a lieu',
+      async (_case, now, date) => {
+        jest.setSystemTime(new Date(now));
+
+        await service.setDayOpen(date, false);
+
+        expect(tx.insert).toHaveBeenCalledTimes(1);
+        expect(tx.values).toHaveBeenCalledWith({ day: date, kind: 'closed' });
+      },
+    );
+
+    it.each([
+      ['le premier jour', '2026-11-24'],
+      ['le dernier jour', '2026-11-26'],
+    ])(
+      'Given une fermeture du 2026-11-24 au 2026-11-26, When %s (%s), Then 409 day_in_closure sans écriture',
+      async (_case, date) => {
+        givenClosures([
+          anAvailabilityClosure({
+            startsOn: '2026-11-24',
+            endsOn: '2026-11-26',
+          }),
+        ]);
+
+        const err = await rejectionOf(service.setDayOpen(date, false));
+
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(businessErrorOf(err)).toBe('day_in_closure');
+        expectNoWrite();
+      },
+    );
+
+    it('Given une fermeture du 2026-11-24 au 2026-11-26, When le lendemain, Then l’écriture a lieu', async () => {
+      givenClosures([
+        anAvailabilityClosure({ startsOn: '2026-11-24', endsOn: '2026-11-26' }),
+      ]);
+
+      await service.setDayOpen('2026-11-27', false);
+
+      expect(tx.values).toHaveBeenCalledWith({
+        day: '2026-11-27',
+        kind: 'closed',
+      });
+    });
+
+    it.each([
+      ['un jour passé sous fermeture', '2026-11-09', 'day_in_past'],
+      ['un jour hors limite sous fermeture', '2027-12-01', 'day_out_of_range'],
+    ])(
+      'Given %s (%s), Then %s : passé et borne passent avant la fermeture',
+      async (_case, date, code) => {
+        givenClosures([
+          anAvailabilityClosure({
+            startsOn: '2026-11-01',
+            endsOn: '2027-12-31',
+          }),
+        ]);
+
+        const err = await rejectionOf(service.setDayOpen(date, true));
+
+        expect(err).toBeInstanceOf(UnprocessableEntityException);
+        expect(businessErrorOf(err)).toBe(code);
+      },
+    );
   });
 });

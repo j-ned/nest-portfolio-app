@@ -68,3 +68,58 @@ export function templateSlotsOn(
   }
   return slots;
 }
+
+export type CalendarDayState = DayClosedReason | 'open' | 'empty';
+
+export type CalendarDay = {
+  readonly date: string;
+  readonly state: CalendarDayState;
+  readonly holiday: string | null;
+  readonly slotCount: number;
+  readonly closure: {
+    readonly startsOn: string;
+    readonly endsOn: string;
+    readonly reason: string | null;
+  } | null;
+};
+
+/**
+ * État d'un jour pour le calendrier de l'admin : raison de fermeture, sinon `open` ou `empty` selon
+ * la semaine type. `holiday` et `slotCount` sont rendus quel que soit l'état ; `closure` (la
+ * fermeture qui commence le plus tôt) seulement en `closed-period`.
+ */
+export function toCalendarDay(
+  date: string,
+  ctx: DayContext,
+  rules: readonly Pick<
+    AvailabilityRule,
+    'weekday' | 'startMinute' | 'endMinute'
+  >[],
+  closures: readonly Pick<
+    AvailabilityClosure,
+    'startsOn' | 'endsOn' | 'reason'
+  >[],
+): CalendarDay {
+  const slotCount = templateSlotsOn(date, rules).length;
+  const reason = closedReason(date, ctx);
+  const state = reason ?? (slotCount > 0 ? 'open' : 'empty');
+  const [covering] =
+    state === 'closed-period'
+      ? closures
+          .filter(({ startsOn, endsOn }) => startsOn <= date && date <= endsOn)
+          .sort((a, b) => a.startsOn.localeCompare(b.startsOn))
+      : [];
+  return {
+    date,
+    state,
+    holiday: publicHolidayName(date),
+    slotCount,
+    closure: covering
+      ? {
+          startsOn: covering.startsOn,
+          endsOn: covering.endsOn,
+          reason: covering.reason,
+        }
+      : null,
+  };
+}

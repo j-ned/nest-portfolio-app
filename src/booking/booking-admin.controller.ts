@@ -25,8 +25,11 @@ import { AvailabilityService } from './availability.service';
 import { type AdminBooking, BookingService } from './booking.service';
 import { CancelBookingByOwnerDto } from './dto/cancel-booking-by-owner.dto';
 import { CreateAvailabilityClosureDto } from './dto/create-availability-closure.dto';
+import { DayParamDto } from './dto/day-param.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 import { ReplaceAvailabilityRulesDto } from './dto/replace-availability-rules.dto';
+import { SetDayOpenDto } from './dto/set-day-open.dto';
+import type { CalendarDay } from './resolve-day';
 
 type RuleView = Pick<AvailabilityRule, 'weekday' | 'startMinute' | 'endMinute'>;
 type ClosureView = Pick<
@@ -90,6 +93,22 @@ export class BookingAdminController {
   @ApiResponse({ status: 404, description: 'Not found' })
   deleteClosure(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.availability.deleteClosure(id);
+  }
+
+  @Put('availability/days/:date')
+  @ApiOperation({
+    summary:
+      'Set the wanted state of a Paris date (override written or removed)',
+  })
+  @ApiResponse({ status: 200, description: 'The day after the write' })
+  @ApiResponse({ status: 400, description: 'Validation failed' })
+  @ApiResponse({ status: 409, description: 'day_in_closure' })
+  @ApiResponse({ status: 422, description: 'day_in_past | day_out_of_range' })
+  setDayOpen(
+    @Param() { date }: DayParamDto,
+    @Body() { open }: SetDayOpenDto,
+  ): Promise<CalendarDay> {
+    return this.availability.setDayOpen(date, open);
   }
 
   @Get('bookings')

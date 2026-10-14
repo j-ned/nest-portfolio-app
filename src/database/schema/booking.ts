@@ -85,6 +85,27 @@ export const bookingSettings = pgTable(
 );
 
 /**
+ * Exception d'un jour à la semaine type, en état souhaité (ADR-0027) : `closed` ferme un jour qui
+ * serait ouvert, `open` rouvre un férié fermé par l'interrupteur. Jamais de ligne égale à la règle.
+ */
+export const availabilityOverrides = pgTable(
+  'availability_override',
+  {
+    day: date('day', { mode: 'string' }).primaryKey(),
+    kind: text('kind', { enum: ['open', 'closed'] }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    kindCheck: check(
+      'availability_override_kind_check',
+      sql`${t.kind} in ('open', 'closed')`,
+    ),
+  }),
+);
+
+/**
  * Rendez-vous : instants UTC (ADR-0026 §1). Le non-chevauchement des rendez-vous confirmés est
  * garanti par la contrainte d'exclusion `booking_no_overlap`, posée à la main par une migration
  * (drizzle-kit ne sait pas l'exprimer).
@@ -145,5 +166,6 @@ export const bookings = pgTable(
 export type AvailabilityRule = typeof availabilityRules.$inferSelect;
 export type AvailabilityClosure = typeof availabilityClosures.$inferSelect;
 export type BookingSetting = typeof bookingSettings.$inferSelect;
+export type AvailabilityOverride = typeof availabilityOverrides.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
 export type NewBooking = typeof bookings.$inferInsert;

@@ -4,6 +4,7 @@ import {
   anAvailabilityRule,
 } from './booking-test-builders';
 import { computeFreeSlots } from './compute-free-slots';
+import type { DayOverrideKind } from './resolve-day';
 
 type Slot = { readonly startsAt: Date; readonly endsAt: Date };
 
@@ -529,6 +530,63 @@ describe('computeFreeSlots', () => {
       expect(
         startsBetween(slots, '2027-03-29T22:00:00Z', '2027-03-30T22:00:00Z'),
       ).toHaveLength(48);
+    });
+  });
+
+  describe('exceptions par date', () => {
+    const EVERY_DAY_9_TO_10 = [1, 2, 3, 4, 5, 6, 7].map((weekday) =>
+      anAvailabilityRule({ weekday, startMinute: 540, endMinute: 600 }),
+    );
+    const between10And13 = (slots: readonly Slot[]) =>
+      startsBetween(slots, '2026-11-09T23:00:00Z', '2026-11-12T23:00:00Z');
+    const slotsWith = (
+      overrides: ReadonlyMap<string, DayOverrideKind>,
+      closures: readonly ReturnType<typeof anAvailabilityClosure>[] = [],
+    ) =>
+      computeFreeSlots({
+        now: NOW,
+        rules: EVERY_DAY_9_TO_10,
+        closures,
+        bookings: [],
+        overrides,
+        closePublicHolidays: true,
+      });
+
+    it('Given une exception fermée le 12/11, Then ce jour n’a plus aucun créneau, ses voisins gardent les leurs', () => {
+      const slots = slotsWith(new Map([['2026-11-12', 'closed']]));
+
+      expect(between10And13(slots)).toEqual([
+        '2026-11-10T08:00:00.000Z',
+        '2026-11-10T08:30:00.000Z',
+      ]);
+      expect(slots).toHaveLength(37);
+    });
+
+    it('Given l’interrupteur actif et une exception ouverte le 11/11, Then le férié rouvert propose ses créneaux', () => {
+      const slots = slotsWith(new Map([['2026-11-11', 'open']]));
+
+      expect(between10And13(slots)).toEqual([
+        '2026-11-10T08:00:00.000Z',
+        '2026-11-10T08:30:00.000Z',
+        '2026-11-11T08:00:00.000Z',
+        '2026-11-11T08:30:00.000Z',
+        '2026-11-12T08:00:00.000Z',
+        '2026-11-12T08:30:00.000Z',
+      ]);
+      expect(slots).toHaveLength(41);
+    });
+
+    it('Given une exception ouverte le 11/11 sous une fermeture, Then la fermeture l’emporte', () => {
+      const slots = slotsWith(new Map([['2026-11-11', 'open']]), [
+        anAvailabilityClosure({ startsOn: '2026-11-11', endsOn: '2026-11-11' }),
+      ]);
+
+      expect(between10And13(slots)).toEqual([
+        '2026-11-10T08:00:00.000Z',
+        '2026-11-10T08:30:00.000Z',
+        '2026-11-12T08:00:00.000Z',
+        '2026-11-12T08:30:00.000Z',
+      ]);
     });
   });
 });

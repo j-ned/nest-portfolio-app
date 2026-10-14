@@ -19,6 +19,7 @@ import { BOOKING_POLICY } from './booking-policy';
 import { createCancelToken, hashCancelToken } from './cancel-token';
 import { computeFreeSlots, overlapsBooking } from './compute-free-slots';
 import type { CreateBookingDto } from './dto/create-booking.dto';
+import { toParisDate } from './paris-time';
 import { videoRoomUrl } from './video-room-url';
 
 const MINUTE_MS = 60_000;
@@ -321,20 +322,26 @@ export class BookingService {
   }
 
   private async freeSlots(executor: DbExecutor, now: Date) {
-    const [rules, closures, closePublicHolidays, confirmed] = await Promise.all(
-      [
+    const [rules, closures, closePublicHolidays, overrides, confirmed] =
+      await Promise.all([
         this.availability.listRules(executor),
         this.availability.listClosures(executor),
         this.availability.readClosePublicHolidays(executor),
+        this.availability.listOverrides(
+          executor,
+          toParisDate(now),
+          toParisDate(
+            new Date(now.getTime() + BOOKING_POLICY.maxAdvanceDays * DAY_MS),
+          ),
+        ),
         this.confirmedBookingsAround(executor, now),
-      ],
-    );
+      ]);
     const slots = computeFreeSlots({
       now,
       rules,
       closures,
       bookings: confirmed,
-      overrides: new Map(),
+      overrides,
       closePublicHolidays,
     });
     return { slots, confirmed };
