@@ -7,6 +7,7 @@ import { BOOKING_POLICY } from './booking-policy';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 
 const PARIS_PARTS = new Intl.DateTimeFormat('en-CA', {
   timeZone: BOOKING_POLICY.timeZone,
@@ -64,6 +65,12 @@ export function parisWallTimeToUtc(
   }
   return null;
 }
+
+/** Date calendaire décalée de `days` jours (négatif accepté), sans fuseau : arithmétique UTC. */
+export const addDays = (date: string, days: number): string =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
 
 /** Jour ISO d'une date calendaire (lundi = 1, dimanche = 7). */
 export function isoWeekday(date: string): number {

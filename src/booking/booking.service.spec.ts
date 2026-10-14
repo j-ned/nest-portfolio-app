@@ -53,6 +53,8 @@ describe('BookingService.getSlots', () => {
   let availability: {
     listRules: jest.Mock;
     listClosures: jest.Mock;
+    readClosePublicHolidays: jest.Mock;
+    listOverrides: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -60,6 +62,8 @@ describe('BookingService.getSlots', () => {
     availability = {
       listRules: jest.fn().mockResolvedValue([WEDNESDAY_9_TO_12]),
       listClosures: jest.fn().mockResolvedValue([LATER_WEDNESDAYS_CLOSED]),
+      readClosePublicHolidays: jest.fn().mockResolvedValue(false),
+      listOverrides: jest.fn().mockResolvedValue(new Map()),
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -183,6 +187,84 @@ describe('BookingService.getSlots', () => {
       slots: [],
     });
   });
+
+  it.each([
+    ['actif', true, ['2026-11-04', '2026-11-18']],
+    ['inactif', false, ['2026-11-04', '2026-11-11', '2026-11-18']],
+  ])(
+    'Given des plages le mercredi, aucune fermeture et le réglage des fériés %s (%s), When getSlots, Then les jours proposés sont %j',
+    async (_case, closePublicHolidays, expected) => {
+      availability.listClosures.mockResolvedValueOnce([]);
+      availability.readClosePublicHolidays.mockResolvedValueOnce(
+        closePublicHolidays,
+      );
+      db.where.mockResolvedValueOnce([]);
+
+      const { slots } = await service.getSlots();
+
+      expect([
+        ...new Set(slots.map((slot) => slot.startsAt.slice(0, 10))),
+      ]).toEqual(expected);
+    },
+  );
+
+  it('Given getSlots, Then le réglage des fériés est lu sur la connexion partagée', async () => {
+    db.where.mockResolvedValueOnce([]);
+
+    await service.getSlots();
+
+    expect(availability.readClosePublicHolidays).toHaveBeenCalledTimes(1);
+    expect(availability.readClosePublicHolidays).toHaveBeenCalledWith(db);
+  });
+
+  it.each([
+    [
+      'le réglage des fériés inactif et le 11/11 fermé à la main',
+      false,
+      'closed',
+      ['2026-11-04', '2026-11-18'],
+    ],
+    [
+      'le réglage des fériés actif et le 11/11 rouvert',
+      true,
+      'open',
+      ['2026-11-04', '2026-11-11', '2026-11-18'],
+    ],
+  ] as const)(
+    'Given des plages le mercredi, aucune fermeture et %s (réglage %s, exception %s), When getSlots, Then les jours proposés sont %j',
+    async (_case, closePublicHolidays, kind, expected) => {
+      availability.listClosures.mockResolvedValueOnce([]);
+      availability.readClosePublicHolidays.mockResolvedValueOnce(
+        closePublicHolidays,
+      );
+      availability.listOverrides.mockResolvedValueOnce(
+        new Map([['2026-11-11', kind]]),
+      );
+      db.where.mockResolvedValueOnce([]);
+
+      const { slots } = await service.getSlots();
+
+      expect([
+        ...new Set(slots.map((slot) => slot.startsAt.slice(0, 10))),
+      ]).toEqual(expected);
+    },
+  );
+
+  it.each([
+    ['2026-11-02T08:00:00Z', '2026-11-02', '2026-11-23'],
+    ['2026-11-02T23:30:00Z', '2026-11-03', '2026-11-24'],
+  ])(
+    'Given il est %s, When getSlots, Then les exceptions sont lues une fois, sur la connexion partagée, du %s au %s (dates de Paris)',
+    async (now, from, to) => {
+      jest.setSystemTime(new Date(now));
+      db.where.mockResolvedValueOnce([]);
+
+      await service.getSlots();
+
+      expect(availability.listOverrides).toHaveBeenCalledTimes(1);
+      expect(availability.listOverrides).toHaveBeenCalledWith(db, from, to);
+    },
+  );
 });
 
 const CONFIRMED_AT_10_PARIS = aBooking({
@@ -223,7 +305,12 @@ describe('BookingService.create', () => {
   let service: BookingService;
   let db: ReturnType<typeof createMockDb>;
   let tx: ReturnType<typeof createMockDb>;
-  let availability: { listRules: jest.Mock; listClosures: jest.Mock };
+  let availability: {
+    listRules: jest.Mock;
+    listClosures: jest.Mock;
+    readClosePublicHolidays: jest.Mock;
+    listOverrides: jest.Mock;
+  };
   let notifier: ReturnType<typeof aNotifierDouble>;
   let logged: jest.SpyInstance[];
   let warned: jest.SpyInstance;
@@ -251,6 +338,8 @@ describe('BookingService.create', () => {
     availability = {
       listRules: jest.fn().mockResolvedValue([WEDNESDAY_9_TO_12]),
       listClosures: jest.fn().mockResolvedValue([LATER_WEDNESDAYS_CLOSED]),
+      readClosePublicHolidays: jest.fn().mockResolvedValue(false),
+      listOverrides: jest.fn().mockResolvedValue(new Map()),
     };
     notifier = aNotifierDouble();
     const module: TestingModule = await Test.createTestingModule({
@@ -427,6 +516,38 @@ describe('BookingService.create', () => {
       expect(lockedAt).toBeLessThan(firstCall(availability.listClosures));
     });
 
+    it('Given une création, Then le réglage des fériés est lu par la transaction, après le verrou', async () => {
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+      givenInserted(aBooking());
+
+      await service.create(aBookingRequest());
+
+      expect(availability.readClosePublicHolidays).toHaveBeenCalledTimes(1);
+      expect(availability.readClosePublicHolidays).toHaveBeenCalledWith(tx);
+      expect(firstCall(tx.execute)).toBeLessThan(
+        firstCall(availability.readClosePublicHolidays),
+      );
+    });
+
+    it('Given une création, Then les exceptions de la fenêtre sont lues par la transaction, après le verrou', async () => {
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+      givenInserted(aBooking());
+
+      await service.create(aBookingRequest());
+
+      expect(availability.listOverrides).toHaveBeenCalledTimes(1);
+      expect(availability.listOverrides).toHaveBeenCalledWith(
+        tx,
+        '2026-11-02',
+        '2026-11-23',
+      );
+      expect(firstCall(tx.execute)).toBeLessThan(
+        firstCall(availability.listOverrides),
+      );
+    });
+
     it('Given une création, Then lectures de rendez-vous et insertion passent par la transaction, jamais par la connexion partagée', async () => {
       givenUpcomingForEmail(0);
       givenConfirmed([]);
@@ -532,6 +653,100 @@ describe('BookingService.create', () => {
         expect(tx.insert).not.toHaveBeenCalled();
       },
     );
+
+    it('Given le réglage des fériés actif et aucune fermeture, When le visiteur demande le 11 novembre à 10:00 de Paris, Then 422 slot_unavailable sans insertion', async () => {
+      availability.listClosures.mockResolvedValueOnce([]);
+      availability.readClosePublicHolidays.mockResolvedValueOnce(true);
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+
+      const err = await rejectionOf(
+        service.create(
+          aBookingRequest({ startsAt: '2026-11-11T09:00:00.000Z' }),
+        ),
+      );
+
+      expect(err).toBeInstanceOf(UnprocessableEntityException);
+      expect((err as UnprocessableEntityException).getResponse()).toEqual(
+        expect.objectContaining({ error: 'slot_unavailable' }),
+      );
+      expect(tx.insert).not.toHaveBeenCalled();
+    });
+
+    it('Given le réglage des fériés inactif et aucune fermeture, When le visiteur demande le 11 novembre à 10:00 de Paris, Then le rendez-vous est inséré', async () => {
+      availability.listClosures.mockResolvedValueOnce([]);
+      availability.readClosePublicHolidays.mockResolvedValueOnce(false);
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+      givenInserted(
+        aBooking({
+          startsAt: new Date('2026-11-11T09:00:00Z'),
+          endsAt: new Date('2026-11-11T09:30:00Z'),
+        }),
+      );
+
+      await service.create(
+        aBookingRequest({ startsAt: '2026-11-11T09:00:00.000Z' }),
+      );
+
+      expect(insertedValues()).toEqual(
+        expect.objectContaining({
+          startsAt: new Date('2026-11-11T09:00:00Z'),
+          endsAt: new Date('2026-11-11T09:30:00Z'),
+        }),
+      );
+    });
+
+    it('Given le 04/11 fermé à la main, When le visiteur demande le 04/11 à 09:00 de Paris, Then 422 slot_unavailable sans insertion', async () => {
+      availability.listOverrides.mockResolvedValueOnce(
+        new Map([['2026-11-04', 'closed']]),
+      );
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+
+      const err = await rejectionOf(
+        service.create(
+          aBookingRequest({ startsAt: '2026-11-04T08:00:00.000Z' }),
+        ),
+      );
+
+      expect(err).toBeInstanceOf(UnprocessableEntityException);
+      expect((err as UnprocessableEntityException).getResponse()).toEqual(
+        expect.objectContaining({ error: 'slot_unavailable' }),
+      );
+      expect(tx.insert).not.toHaveBeenCalled();
+    });
+
+    it('Given le réglage des fériés actif et le 11/11 rouvert, When le visiteur demande le 11/11 à 10:00 de Paris, Then le rendez-vous est inséré', async () => {
+      availability.listClosures.mockResolvedValueOnce([]);
+      availability.readClosePublicHolidays.mockResolvedValueOnce(true);
+      availability.listOverrides.mockResolvedValueOnce(
+        new Map([['2026-11-11', 'open']]),
+      );
+      givenUpcomingForEmail(0);
+      givenConfirmed([]);
+      givenInserted(
+        aBooking({
+          startsAt: new Date('2026-11-11T09:00:00Z'),
+          endsAt: new Date('2026-11-11T09:30:00Z'),
+        }),
+      );
+
+      await expect(
+        service.create(
+          aBookingRequest({ startsAt: '2026-11-11T09:00:00.000Z' }),
+        ),
+      ).resolves.toEqual(
+        expect.objectContaining({ startsAt: '2026-11-11T09:00:00.000Z' }),
+      );
+
+      expect(insertedValues()).toEqual(
+        expect.objectContaining({
+          startsAt: new Date('2026-11-11T09:00:00Z'),
+          endsAt: new Date('2026-11-11T09:30:00Z'),
+        }),
+      );
+    });
 
     it('Given l’horloge à 23 h 30 d’un créneau de la plage, When le visiteur le demande, Then 422 slot_unavailable (préavis)', async () => {
       jest.setSystemTime(new Date('2026-11-03T08:30:00Z'));
