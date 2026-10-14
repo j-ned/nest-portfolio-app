@@ -16,7 +16,12 @@ import {
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import {
+  THROTTLER_LIMIT,
+  THROTTLER_TTL,
+} from '@nestjs/throttler/dist/throttler.constants';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ADMIN_WRITE_THROTTLE } from '../common/throttle';
 import { HttpExceptionFilter } from '../common/filters/http-exception.filter';
 import { AvailabilityService } from './availability.service';
 import { BookingAdminController } from './booking-admin.controller';
@@ -118,6 +123,25 @@ describe('BookingAdminController (HTTP)', () => {
       'Given la route %s %s, Then elle est déclarée sur le contrôleur gardé',
       (method, path) => {
         expect(routeHandler(method, path)).toBeDefined();
+      },
+    );
+
+    it.each([
+      [RequestMethod.PUT, 'availability/days/:date'],
+      [RequestMethod.GET, 'availability/calendar'],
+      [RequestMethod.PUT, 'availability/settings'],
+    ])(
+      'Given la route du calendrier %s %s, When le propriétaire clique ou change de mois en rafale, Then elle suit la limite des écritures admin et non la limite globale de 10/min',
+      (method, path) => {
+        const handler = routeHandler(method, path);
+
+        expect(handler).toBeDefined();
+        expect(Reflect.getMetadata(`${THROTTLER_LIMIT}default`, handler!)).toBe(
+          ADMIN_WRITE_THROTTLE.default.limit,
+        );
+        expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, handler!)).toBe(
+          ADMIN_WRITE_THROTTLE.default.ttl,
+        );
       },
     );
   });
