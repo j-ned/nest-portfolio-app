@@ -43,9 +43,9 @@ export class AvailabilityRuleDto {
 }
 
 export class ReplaceAvailabilityRulesDto {
-  @ApiProperty({ type: [AvailabilityRuleDto], maxItems: 50 })
+  @ApiProperty({ type: [AvailabilityRuleDto], maxItems: 168 })
   @IsArray()
-  @ArrayMaxSize(50)
+  @ArrayMaxSize(168)
   @ValidateNested({ each: true })
   @Type(() => AvailabilityRuleDto)
   rules!: AvailabilityRuleDto[];

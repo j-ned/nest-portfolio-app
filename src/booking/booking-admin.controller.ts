@@ -21,14 +21,19 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AvailabilityClosure, AvailabilityRule } from '../database/schema';
-import { AvailabilityService } from './availability.service';
+import {
+  AvailabilityService,
+  type CalendarMonthResponse,
+} from './availability.service';
 import { type AdminBooking, BookingService } from './booking.service';
+import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { CancelBookingByOwnerDto } from './dto/cancel-booking-by-owner.dto';
 import { CreateAvailabilityClosureDto } from './dto/create-availability-closure.dto';
 import { DayParamDto } from './dto/day-param.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 import { ReplaceAvailabilityRulesDto } from './dto/replace-availability-rules.dto';
 import { SetDayOpenDto } from './dto/set-day-open.dto';
+import { UpdateBookingSettingsDto } from './dto/update-booking-settings.dto';
 import type { CalendarDay } from './resolve-day';
 
 type RuleView = Pick<AvailabilityRule, 'weekday' | 'startMinute' | 'endMinute'>;
@@ -93,6 +98,34 @@ export class BookingAdminController {
   @ApiResponse({ status: 404, description: 'Not found' })
   deleteClosure(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.availability.deleteClosure(id);
+  }
+
+  @Get('availability/calendar')
+  @ApiOperation({
+    summary: 'Paris month resolved day by day (current month to current + 12)',
+  })
+  @ApiResponse({ status: 200, description: 'The resolved month' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed | month_out_of_range',
+  })
+  getCalendar(
+    @Query() { month }: CalendarQueryDto,
+  ): Promise<CalendarMonthResponse> {
+    return this.availability.getCalendar(month);
+  }
+
+  @Put('availability/settings')
+  @ApiOperation({ summary: 'Close or open French public holidays' })
+  @ApiResponse({ status: 200, description: 'The stored setting' })
+  @ApiResponse({ status: 400, description: 'Validation failed' })
+  async updateSettings(
+    @Body() { closePublicHolidays }: UpdateBookingSettingsDto,
+  ): Promise<{ closePublicHolidays: boolean }> {
+    return {
+      closePublicHolidays:
+        await this.availability.setClosePublicHolidays(closePublicHolidays),
+    };
   }
 
   @Put('availability/days/:date')
