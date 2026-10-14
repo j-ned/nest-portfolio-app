@@ -1,14 +1,17 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
-import { asc, eq, gte } from 'drizzle-orm';
+import { asc, between, eq, gte } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database, DbExecutor } from '../database/drizzle.types';
 import {
   availabilityClosures,
+  availabilityOverrides,
   availabilityRules,
   BOOKING_SETTING_ROW_ID,
   bookingSettings,
@@ -16,7 +19,14 @@ import {
   type AvailabilityClosure,
   type AvailabilityRule,
 } from '../database/schema';
+import { lastAllowedDay } from './calendar-month';
+import { publicHolidayName } from './french-public-holidays';
 import { toParisDate } from './paris-time';
+import {
+  type CalendarDay,
+  type DayOverrideKind,
+  toCalendarDay,
+} from './resolve-day';
 
 export type AvailabilityRuleInput = Pick<
   AvailabilityRule,
@@ -62,6 +72,87 @@ export class AvailabilityService {
       .where(eq(bookingSettings.id, BOOKING_SETTING_ROW_ID))
       .limit(1);
     return setting?.closePublicHolidays ?? DEFAULT_CLOSE_PUBLIC_HOLIDAYS;
+  }
+
+  /** Exceptions par date de `from` à `to` inclus (dates de Paris). */
+  async listOverrides(
+    executor: DbExecutor,
+    from: string,
+    to: string,
+  ): Promise<ReadonlyMap<string, DayOverrideKind>> {
+    const rows = await executor
+      .select({
+        day: availabilityOverrides.day,
+        kind: availabilityOverrides.kind,
+      })
+      .from(availabilityOverrides)
+      .where(between(availabilityOverrides.day, from, to));
+    return new Map(rows.map(({ day, kind }) => [day, kind]));
+  }
+
+  /**
+   * Écrit l'état souhaité d'un jour (ADR-0027) : l'exception est supprimée si le jour aurait cet
+   * état sans elle, insérée ou remplacée sinon. Refus avant toute écriture, dans l'ordre : passé,
+   * au-delà du calendrier, sous une fermeture. Rend le jour relu dans la même transaction.
+   */
+  setDayOpen(date: string, open: boolean): Promise<CalendarDay> {
+    return this.db.transaction(async (tx) => {
+      const today = toParisDate(new Date());
+      // Dates `YYYY-MM-DD` : l'ordre lexical est l'ordre chronologique.
+      if (date < today) {
+        throw new UnprocessableEntityException({
+          error: 'day_in_past',
+          message: 'Ce jour est passé.',
+        });
+      }
+      if (date > lastAllowedDay(today)) {
+        throw new UnprocessableEntityException({
+          error: 'day_out_of_range',
+          message: 'Ce jour est au-delà du calendrier.',
+        });
+      }
+      const [closePublicHolidays, closures, rules] = await Promise.all([
+        this.readClosePublicHolidays(tx),
+        this.listClosures(tx),
+        this.listRules(tx),
+      ]);
+      if (
+        closures.some(
+          ({ startsOn, endsOn }) => startsOn <= date && date <= endsOn,
+        )
+      ) {
+        throw new ConflictException({
+          error: 'day_in_closure',
+          message: 'Ce jour est couvert par une fermeture.',
+        });
+      }
+
+      const openByRule = !(
+        closePublicHolidays && publicHolidayName(date) !== null
+      );
+      if (open === openByRule) {
+        await tx
+          .delete(availabilityOverrides)
+          .where(eq(availabilityOverrides.day, date));
+      } else {
+        const kind: DayOverrideKind = open ? 'open' : 'closed';
+        await tx
+          .insert(availabilityOverrides)
+          .values({ day: date, kind })
+          .onConflictDoUpdate({
+            target: availabilityOverrides.day,
+            set: { kind },
+          });
+      }
+
+      const overrides = await this.listOverrides(tx, date, date);
+      return toCalendarDay(
+        date,
+        { today, closures, overrides, closePublicHolidays },
+        rules,
+        closures,
+      );
+    });
   }
 
   /**

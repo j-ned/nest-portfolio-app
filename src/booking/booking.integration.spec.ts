@@ -26,6 +26,8 @@ import { AvailabilityService } from './availability.service';
 import { BookingService } from './booking.service';
 import { aBookingRequest } from './booking-request-test-builder';
 import { aBooking, anAvailabilityRule } from './booking-test-builders';
+import { publicHolidayName } from './french-public-holidays';
+import { addDays, toParisDate } from './paris-time';
 
 // Base jetable uniquement : les migrations y sont appliquées et les tables booking vidées.
 const DATABASE_URL = process.env.BOOKING_IT_DATABASE_URL;
@@ -130,6 +132,7 @@ const errorCode = (reason: unknown): unknown =>
       await db.delete(bookings);
       await db.delete(availabilityClosures);
       await db.delete(availabilityRules);
+      await db.execute(sql`delete from availability_override`);
       await db.execute(
         sql`insert into booking_setting (id, close_public_holidays) values ('main', false) on conflict (id) do update set close_public_holidays = excluded.close_public_holidays`,
       );
@@ -221,6 +224,149 @@ const errorCode = (reason: unknown): unknown =>
       );
 
       await expect(availability.readClosePublicHolidays()).resolves.toBe(false);
+    });
+
+    it('Given les migrations jouées, Then la table availability_override de 0025 existe avec sa contrainte de sorte', async () => {
+      const journal = JSON.parse(
+        readFileSync(
+          resolve(__dirname, '../../drizzle/meta/_journal.json'),
+          'utf8',
+        ),
+      ) as { entries: { tag: string }[] };
+      const constraints = await db.execute<{
+        conname: string;
+        contype: string;
+      }>(
+        sql`select conname, contype from pg_constraint where conname = 'availability_override_kind_check'`,
+      );
+
+      expect(journal.entries.map((entry) => entry.tag)).toContain(
+        '0025_availability_override',
+      );
+      expect([...constraints]).toEqual([
+        { conname: 'availability_override_kind_check', contype: 'c' },
+      ]);
+    });
+
+    describe('exceptions par date', () => {
+      const overrideRows = async () => [
+        ...(await db.execute<{ day: string; kind: string }>(
+          sql`select day::text as day, kind from availability_override order by day`,
+        )),
+      ];
+      const slotsOn = async (date: string) =>
+        (await service.getSlots()).slots
+          .map((slot) => slot.startsAt)
+          .filter((startsAt) => toParisDate(new Date(startsAt)) === date);
+      const nextPublicHoliday = (): string => {
+        let date = addDays(toParisDate(new Date()), 1);
+        while (publicHolidayName(date) === null) date = addDays(date, 1);
+        return date;
+      };
+
+      it('Given un jour ouvert, When il est fermé, Then plus aucun créneau ce jour-là et une réservation y est refusée en 422 slot_unavailable', async () => {
+        const day = toParisDate(inDays(5, 12));
+        const before = await slotsOn(day);
+
+        await expect(availability.setDayOpen(day, false)).resolves.toEqual(
+          expect.objectContaining({ date: day, state: 'closed' }),
+        );
+
+        expect(before.length).toBeGreaterThan(0);
+        expect(await slotsOn(day)).toEqual([]);
+        expect(await overrideRows()).toEqual([{ day, kind: 'closed' }]);
+        const refusal = await service
+          .create(aBookingRequest({ startsAt: inDays(5, 12).toISOString() }))
+          .then(
+            () => null,
+            (err: unknown) => err,
+          );
+        expect(errorCode(refusal)).toBe('slot_unavailable');
+        expect(await rowCount()).toBe(0);
+      });
+
+      it('Given un jour fermé à la main, When il est rouvert, Then ses créneaux reviennent et aucune exception ne reste en base', async () => {
+        const day = toParisDate(inDays(5, 12));
+        const before = await slotsOn(day);
+        await availability.setDayOpen(day, false);
+
+        await expect(availability.setDayOpen(day, true)).resolves.toEqual(
+          expect.objectContaining({ date: day, state: 'open' }),
+        );
+
+        expect(await slotsOn(day)).toEqual(before);
+        expect(await overrideRows()).toEqual([]);
+      });
+
+      it('Given la même fermeture écrite deux fois, Then une seule exception et deux réponses identiques', async () => {
+        const day = toParisDate(inDays(6, 12));
+
+        const first = await availability.setDayOpen(day, false);
+        const second = await availability.setDayOpen(day, false);
+
+        expect(second).toEqual(first);
+        expect(await overrideRows()).toEqual([{ day, kind: 'closed' }]);
+      });
+
+      it('Given un jour ordinaire sans exception, When il est rouvert deux fois, Then aucune erreur et aucune exception écrite', async () => {
+        const day = toParisDate(inDays(6, 12));
+
+        await availability.setDayOpen(day, true);
+        await expect(availability.setDayOpen(day, true)).resolves.toEqual(
+          expect.objectContaining({ date: day, state: 'open' }),
+        );
+
+        expect(await overrideRows()).toEqual([]);
+      });
+
+      it('Given les fériés fermés, When le prochain férié est rouvert puis refermé, Then une exception open, puis plus aucune', async () => {
+        await db.execute(
+          sql`update booking_setting set close_public_holidays = true where id = 'main'`,
+        );
+        const holiday = nextPublicHoliday();
+
+        await expect(availability.setDayOpen(holiday, true)).resolves.toEqual(
+          expect.objectContaining({
+            date: holiday,
+            state: 'open',
+            holiday: publicHolidayName(holiday),
+          }),
+        );
+        expect(await overrideRows()).toEqual([{ day: holiday, kind: 'open' }]);
+
+        await expect(availability.setDayOpen(holiday, false)).resolves.toEqual(
+          expect.objectContaining({ date: holiday, state: 'holiday' }),
+        );
+        expect(await overrideRows()).toEqual([]);
+      });
+
+      it('Given un jour couvert par une fermeture, Then 409 day_in_closure et aucune exception écrite', async () => {
+        const day = toParisDate(inDays(7, 12));
+        await db
+          .insert(availabilityClosures)
+          .values({ startsOn: day, endsOn: day, reason: null });
+
+        const refusal = await availability.setDayOpen(day, false).then(
+          () => null,
+          (err: unknown) => err,
+        );
+
+        expect(refusal).toBeInstanceOf(ConflictException);
+        expect(errorCode(refusal)).toBe('day_in_closure');
+        expect(await overrideRows()).toEqual([]);
+      });
+
+      it('Given hier, Then 422 day_in_past et aucune exception écrite', async () => {
+        const yesterday = addDays(toParisDate(new Date()), -1);
+
+        const refusal = await availability.setDayOpen(yesterday, false).then(
+          () => null,
+          (err: unknown) => err,
+        );
+
+        expect(errorCode(refusal)).toBe('day_in_past');
+        expect(await overrideRows()).toEqual([]);
+      });
     });
 
     it('Given 10 créations simultanées du même créneau, Then une seule réussit, les 9 autres sont slot_taken', async () => {

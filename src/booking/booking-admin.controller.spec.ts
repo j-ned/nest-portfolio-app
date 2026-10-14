@@ -5,6 +5,7 @@ import {
   type INestApplication,
   NotFoundException,
   RequestMethod,
+  UnprocessableEntityException,
   ValidationPipe,
 } from '@nestjs/common';
 import {
@@ -55,6 +56,7 @@ describe('BookingAdminController (HTTP)', () => {
     listClosures: jest.fn(),
     createClosure: jest.fn(),
     deleteClosure: jest.fn(),
+    setDayOpen: jest.fn(),
   };
   const booking = {
     listBookings: jest.fn(),
@@ -104,6 +106,7 @@ describe('BookingAdminController (HTTP)', () => {
       [RequestMethod.GET, 'availability/closures'],
       [RequestMethod.POST, 'availability/closures'],
       [RequestMethod.DELETE, 'availability/closures/:id'],
+      [RequestMethod.PUT, 'availability/days/:date'],
       [RequestMethod.GET, 'bookings'],
       [RequestMethod.GET, 'bookings/upcoming-count'],
       [RequestMethod.PATCH, 'bookings/:id/cancel'],
@@ -448,6 +451,125 @@ describe('BookingAdminController (HTTP)', () => {
 
       expect(res.status).toBe(404);
     });
+  });
+
+  describe('PUT availability/days/:date', () => {
+    const url = '/booking/availability/days/2026-11-12';
+    const CLOSED_DAY = {
+      date: '2026-11-12',
+      state: 'closed',
+      holiday: null,
+      slotCount: 4,
+      closure: null,
+    };
+
+    it('Given open: false, Then 200 avec le jour relu par le service, date et état souhaité transmis', async () => {
+      availability.setDayOpen.mockResolvedValueOnce(CLOSED_DAY);
+
+      const res = await request(app.getHttpServer())
+        .put(url)
+        .send({ open: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(CLOSED_DAY);
+      expect(availability.setDayOpen).toHaveBeenCalledTimes(1);
+      expect(availability.setDayOpen).toHaveBeenCalledWith('2026-11-12', false);
+    });
+
+    it('Given open: true sur un férié, Then 200 avec le férié rouvert, open transmis en booléen', async () => {
+      const reopened = {
+        date: '2026-11-11',
+        state: 'open',
+        holiday: 'Armistice 1918',
+        slotCount: 4,
+        closure: null,
+      };
+      availability.setDayOpen.mockResolvedValueOnce(reopened);
+
+      const res = await request(app.getHttpServer())
+        .put('/booking/availability/days/2026-11-11')
+        .send({ open: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(reopened);
+      expect(availability.setDayOpen).toHaveBeenCalledWith('2026-11-11', true);
+    });
+
+    it.each([
+      ['une date française', '/booking/availability/days/12-11-2026'],
+      ['une date inexistante', '/booking/availability/days/2026-02-30'],
+      ['un mois 13', '/booking/availability/days/2026-13-01'],
+      ['un mot', '/booking/availability/days/demain'],
+      ['une date sans zéro', '/booking/availability/days/2026-11-2'],
+    ])(
+      'Given %s dans le chemin, Then 400 sans appel au service',
+      async (_case, path) => {
+        const res = await request(app.getHttpServer())
+          .put(path)
+          .send({ open: false });
+
+        expect(res.status).toBe(400);
+        expect(availability.setDayOpen).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['open absent', {}],
+      ['open null', { open: null }],
+      ['open en chaîne « false »', { open: 'false' }],
+      ['open en nombre', { open: 0 }],
+      ['un champ inconnu', { open: false, kind: 'closed' }],
+    ])('Given %s, Then 400 sans appel au service', async (_case, body) => {
+      const res = await request(app.getHttpServer()).put(url).send(body);
+
+      expect(res.status).toBe(400);
+      expect(availability.setDayOpen).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        422,
+        'day_in_past',
+        new UnprocessableEntityException({
+          error: 'day_in_past',
+          message: 'Ce jour est passé.',
+        }),
+      ],
+      [
+        422,
+        'day_out_of_range',
+        new UnprocessableEntityException({
+          error: 'day_out_of_range',
+          message: 'Ce jour est trop loin.',
+        }),
+      ],
+      [
+        409,
+        'day_in_closure',
+        new ConflictException({
+          error: 'day_in_closure',
+          message: 'Ce jour est couvert par une fermeture.',
+        }),
+      ],
+    ])(
+      'Given le service refuse, Then %i avec le code métier %s dans error',
+      async (status, code, failure) => {
+        availability.setDayOpen.mockRejectedValueOnce(failure);
+
+        const res = await request(app.getHttpServer())
+          .put(url)
+          .send({ open: false });
+
+        expect(res.status).toBe(status);
+        expect(res.body).toEqual(
+          expect.objectContaining({
+            statusCode: status,
+            error: code,
+            path: url,
+          }),
+        );
+      },
+    );
   });
 
   describe('GET bookings', () => {

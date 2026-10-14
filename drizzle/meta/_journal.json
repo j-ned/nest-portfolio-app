@@ -176,6 +176,13 @@
       "when": 1791996872782,
       "tag": "0024_booking_setting",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791998092919,
+      "tag": "0025_availability_override",
+      "breakpoints": true
     }
   ]
 }
