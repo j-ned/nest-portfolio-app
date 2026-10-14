@@ -1,8 +1,9 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { type SQL } from 'drizzle-orm';
+import { getTableName, type SQL, type Table } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { DRIZZLE } from '../database/drizzle.constants';
+import type { DbExecutor } from '../database/drizzle.types';
 import { availabilityClosures, availabilityRules } from '../database/schema';
 import { createMockDb } from '../database/test-utils';
 import { AvailabilityService } from './availability.service';
@@ -61,6 +62,43 @@ describe('AvailabilityService (lecture)', () => {
         expect(render(condition).params).toEqual([parisToday]);
       },
     );
+  });
+
+  describe('readClosePublicHolidays', () => {
+    it.each([
+      ['aucune ligne de réglage', [], true],
+      ['un réglage à faux', [{ closePublicHolidays: false }], false],
+      ['un réglage à vrai', [{ closePublicHolidays: true }], true],
+    ])(
+      'Given %s (%j), When readClosePublicHolidays, Then %s',
+      async (_case, rows, expected) => {
+        db.limit.mockResolvedValueOnce(rows);
+
+        await expect(service.readClosePublicHolidays()).resolves.toBe(expected);
+      },
+    );
+
+    it('Given la ligne unique du réglage, Then elle est lue dans booking_setting par son id main', async () => {
+      db.limit.mockResolvedValueOnce([{ closePublicHolidays: false }]);
+
+      await service.readClosePublicHolidays();
+
+      const [table] = db.from.mock.calls[0] as [Table];
+      expect(getTableName(table)).toBe('booking_setting');
+      const [condition] = db.where.mock.calls[0] as [unknown];
+      expect(render(condition).params).toEqual(['main']);
+    });
+
+    it('Given un exécuteur de transaction, Then le réglage est lu par lui, jamais par la connexion partagée', async () => {
+      const tx = createMockDb();
+      tx.limit.mockResolvedValueOnce([{ closePublicHolidays: false }]);
+
+      await expect(
+        service.readClosePublicHolidays(tx as unknown as DbExecutor),
+      ).resolves.toBe(false);
+      expect(tx.select).toHaveBeenCalledTimes(1);
+      expect(db.select).not.toHaveBeenCalled();
+    });
   });
 });
 

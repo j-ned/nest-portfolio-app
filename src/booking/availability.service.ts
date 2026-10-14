@@ -10,6 +10,9 @@ import type { Database, DbExecutor } from '../database/drizzle.types';
 import {
   availabilityClosures,
   availabilityRules,
+  BOOKING_SETTING_ROW_ID,
+  bookingSettings,
+  DEFAULT_CLOSE_PUBLIC_HOLIDAYS,
   type AvailabilityClosure,
   type AvailabilityRule,
 } from '../database/schema';
@@ -47,6 +50,18 @@ export class AvailabilityService {
       .from(availabilityClosures)
       .where(gte(availabilityClosures.endsOn, toParisDate(new Date())))
       .orderBy(asc(availabilityClosures.startsOn));
+  }
+
+  /** Interrupteur des fériés ; ligne absente → défaut du schéma (fériés fermés). */
+  async readClosePublicHolidays(
+    executor: DbExecutor = this.db,
+  ): Promise<boolean> {
+    const [setting] = await executor
+      .select({ closePublicHolidays: bookingSettings.closePublicHolidays })
+      .from(bookingSettings)
+      .where(eq(bookingSettings.id, BOOKING_SETTING_ROW_ID))
+      .limit(1);
+    return setting?.closePublicHolidays ?? DEFAULT_CLOSE_PUBLIC_HOLIDAYS;
   }
 
   /**

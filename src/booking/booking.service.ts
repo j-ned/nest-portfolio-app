@@ -321,16 +321,21 @@ export class BookingService {
   }
 
   private async freeSlots(executor: DbExecutor, now: Date) {
-    const [rules, closures, confirmed] = await Promise.all([
-      this.availability.listRules(executor),
-      this.availability.listClosures(executor),
-      this.confirmedBookingsAround(executor, now),
-    ]);
+    const [rules, closures, closePublicHolidays, confirmed] = await Promise.all(
+      [
+        this.availability.listRules(executor),
+        this.availability.listClosures(executor),
+        this.availability.readClosePublicHolidays(executor),
+        this.confirmedBookingsAround(executor, now),
+      ],
+    );
     const slots = computeFreeSlots({
       now,
       rules,
       closures,
       bookings: confirmed,
+      overrides: new Map(),
+      closePublicHolidays,
     });
     return { slots, confirmed };
   }

@@ -130,6 +130,9 @@ const errorCode = (reason: unknown): unknown =>
       await db.delete(bookings);
       await db.delete(availabilityClosures);
       await db.delete(availabilityRules);
+      await db.execute(
+        sql`insert into booking_setting (id, close_public_holidays) values ('main', false) on conflict (id) do update set close_public_holidays = excluded.close_public_holidays`,
+      );
       await db.insert(availabilityRules).values(
         [1, 2, 3, 4, 5, 6, 7].map((weekday) =>
           anAvailabilityRule({
@@ -162,6 +165,62 @@ const errorCode = (reason: unknown): unknown =>
       expect([...constraints]).toEqual([
         { conname: 'booking_no_overlap', contype: 'x' },
       ]);
+    });
+
+    it('Given les migrations jouées, Then la table booking_setting de 0024 existe avec sa contrainte de ligne unique', async () => {
+      const journal = JSON.parse(
+        readFileSync(
+          resolve(__dirname, '../../drizzle/meta/_journal.json'),
+          'utf8',
+        ),
+      ) as { entries: { tag: string }[] };
+      const constraints = await db.execute<{
+        conname: string;
+        contype: string;
+      }>(
+        sql`select conname, contype from pg_constraint where conname = 'booking_setting_single_row'`,
+      );
+
+      expect(journal.entries.map((entry) => entry.tag)).toContain(
+        '0024_booking_setting',
+      );
+      expect([...constraints]).toEqual([
+        { conname: 'booking_setting_single_row', contype: 'c' },
+      ]);
+    });
+
+    it('Given une seconde ligne de réglage, When elle est insérée en SQL direct, Then la contrainte booking_setting_single_row la refuse', async () => {
+      const failure = await db
+        .execute(
+          sql`insert into booking_setting (id, close_public_holidays) values ('other', true)`,
+        )
+        .then(
+          () => null,
+          (err: unknown) => err,
+        );
+
+      const pgError = (failure as { cause?: unknown } | null)?.cause ?? failure;
+      expect(pgError).toEqual(
+        expect.objectContaining({
+          code: '23514',
+          constraint_name: 'booking_setting_single_row',
+        }),
+      );
+    });
+
+    it('Given aucune ligne de réglage, When readClosePublicHolidays, Then les fériés sont fermés par défaut', async () => {
+      await db.execute(sql`delete from booking_setting`);
+
+      await expect(availability.readClosePublicHolidays()).resolves.toBe(true);
+    });
+
+    it('Given une ligne de réglage à faux insérée en SQL direct, When readClosePublicHolidays, Then faux', async () => {
+      await db.execute(sql`delete from booking_setting`);
+      await db.execute(
+        sql`insert into booking_setting (id, close_public_holidays) values ('main', false)`,
+      );
+
+      await expect(availability.readClosePublicHolidays()).resolves.toBe(false);
     });
 
     it('Given 10 créations simultanées du même créneau, Then une seule réussit, les 9 autres sont slot_taken', async () => {

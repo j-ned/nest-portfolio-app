@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   date,
   index,
@@ -57,6 +58,29 @@ export const availabilityClosures = pgTable(
       'availability_closure_range_check',
       sql`${t.endsOn} >= ${t.startsOn}`,
     ),
+  }),
+);
+
+/** Seule ligne autorisée du réglage de la prise de rendez-vous. */
+export const BOOKING_SETTING_ROW_ID = 'main';
+
+/** Fériés fermés par défaut, y compris tant que la ligne du réglage n'existe pas (ADR-0027). */
+export const DEFAULT_CLOSE_PUBLIC_HOLIDAYS = true;
+
+/** Réglage de la prise de rendez-vous : une ligne (modèle `profile_content`). */
+export const bookingSettings = pgTable(
+  'booking_setting',
+  {
+    id: text('id').primaryKey().default(BOOKING_SETTING_ROW_ID),
+    closePublicHolidays: boolean('close_public_holidays')
+      .notNull()
+      .default(DEFAULT_CLOSE_PUBLIC_HOLIDAYS),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    singleRow: check('booking_setting_single_row', sql`${t.id} = 'main'`),
   }),
 );
 
@@ -120,5 +144,6 @@ export const bookings = pgTable(
 
 export type AvailabilityRule = typeof availabilityRules.$inferSelect;
 export type AvailabilityClosure = typeof availabilityClosures.$inferSelect;
+export type BookingSetting = typeof bookingSettings.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
 export type NewBooking = typeof bookings.$inferInsert;

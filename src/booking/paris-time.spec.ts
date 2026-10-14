@@ -1,4 +1,5 @@
 import {
+  addDays,
   formatParisLong,
   isoWeekday,
   parisWallTimeToUtc,
@@ -87,6 +88,27 @@ describe('paris-time', () => {
       'Given l’instant %s, When ramené à Paris, Then la date est %s',
       (instant, expected) => {
         expect(toParisDate(new Date(instant))).toBe(expected);
+      },
+    );
+  });
+
+  describe('addDays', () => {
+    it.each([
+      ['2026-11-10', 1, '2026-11-11'],
+      ['2026-11-30', 1, '2026-12-01'],
+      ['2026-12-31', 1, '2027-01-01'],
+      ['2028-02-28', 1, '2028-02-29'],
+      ['2027-02-28', 1, '2027-03-01'],
+      ['2026-10-24', 1, '2026-10-25'],
+      ['2026-10-25', 1, '2026-10-26'],
+      ['2027-03-28', 1, '2027-03-29'],
+      ['2026-04-05', 50, '2026-05-25'],
+      ['2026-03-01', -1, '2026-02-28'],
+      ['2026-11-12', 0, '2026-11-12'],
+    ] as const)(
+      'Given la date %s, When on ajoute %i jour(s), Then la date est %s',
+      (date, days, expected) => {
+        expect(addDays(date, days)).toBe(expected);
       },
     );
   });
