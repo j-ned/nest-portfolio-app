@@ -57,6 +57,8 @@ describe('BookingAdminController (HTTP)', () => {
     createClosure: jest.fn(),
     deleteClosure: jest.fn(),
     setDayOpen: jest.fn(),
+    getCalendar: jest.fn(),
+    setClosePublicHolidays: jest.fn(),
   };
   const booking = {
     listBookings: jest.fn(),
@@ -107,6 +109,8 @@ describe('BookingAdminController (HTTP)', () => {
       [RequestMethod.POST, 'availability/closures'],
       [RequestMethod.DELETE, 'availability/closures/:id'],
       [RequestMethod.PUT, 'availability/days/:date'],
+      [RequestMethod.GET, 'availability/calendar'],
+      [RequestMethod.PUT, 'availability/settings'],
       [RequestMethod.GET, 'bookings'],
       [RequestMethod.GET, 'bookings/upcoming-count'],
       [RequestMethod.PATCH, 'bookings/:id/cancel'],
@@ -209,9 +213,9 @@ describe('BookingAdminController (HTTP)', () => {
       ['rules absent', {}],
       ['rules qui n’est pas une liste', { rules: { weekday: 1 } }],
       [
-        '51 plages',
+        '169 plages',
         {
-          rules: Array.from({ length: 51 }, () => ({
+          rules: Array.from({ length: 169 }, () => ({
             weekday: 1,
             startMinute: 0,
             endMinute: 30,
@@ -228,9 +232,9 @@ describe('BookingAdminController (HTTP)', () => {
       expect(availability.replaceRules).not.toHaveBeenCalled();
     });
 
-    it('Given 50 plages, Then elles franchissent la validation', async () => {
+    it('Given 168 plages, Then elles franchissent la validation', async () => {
       availability.replaceRules.mockResolvedValueOnce([]);
-      const rules = Array.from({ length: 50 }, (_, i) => ({
+      const rules = Array.from({ length: 168 }, (_, i) => ({
         weekday: (i % 7) + 1,
         startMinute: Math.floor(i / 7) * 60,
         endMinute: Math.floor(i / 7) * 60 + 30,
@@ -570,6 +574,142 @@ describe('BookingAdminController (HTTP)', () => {
         );
       },
     );
+  });
+
+  describe('GET availability/calendar', () => {
+    const url = '/booking/availability/calendar';
+    const MONTH = {
+      month: '2026-11',
+      today: '2026-11-10',
+      previousMonth: null,
+      nextMonth: '2026-12',
+      closePublicHolidays: true,
+      days: [
+        {
+          date: '2026-11-11',
+          state: 'holiday',
+          holiday: 'Armistice 1918',
+          slotCount: 4,
+          closure: null,
+        },
+        {
+          date: '2026-11-24',
+          state: 'closed-period',
+          holiday: null,
+          slotCount: 4,
+          closure: {
+            startsOn: '2026-11-24',
+            endsOn: '2026-11-26',
+            reason: 'Congés',
+          },
+        },
+      ],
+    };
+
+    it('Given aucun mois, Then 200 avec le mois rendu par le service, mois absent transmis', async () => {
+      availability.getCalendar.mockResolvedValueOnce(MONTH);
+
+      const res = await request(app.getHttpServer()).get(url);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(MONTH);
+      expect(availability.getCalendar).toHaveBeenCalledTimes(1);
+      const [month] = availability.getCalendar.mock.calls[0] as unknown[];
+      expect(month).toBeUndefined();
+    });
+
+    it('Given month=2027-02, Then 200 et le mois transmis tel quel', async () => {
+      availability.getCalendar.mockResolvedValueOnce({
+        ...MONTH,
+        month: '2027-02',
+        days: [],
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(url)
+        .query({ month: '2027-02' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ...MONTH, month: '2027-02', days: [] });
+      expect(availability.getCalendar).toHaveBeenCalledWith('2027-02');
+    });
+
+    it.each([
+      ['un mois 13', 'month=2026-13'],
+      ['un mois 00', 'month=2026-00'],
+      ['un mois sans zéro', 'month=2026-1'],
+      ['une année sur deux chiffres', 'month=26-11'],
+      ['une date complète', 'month=2026-11-01'],
+      ['un mot', 'month=novembre'],
+      ['un mois vide', 'month='],
+      ['deux mois', 'month=2026-11&month=2026-12'],
+      ['un paramètre inconnu', 'month=2026-11&page=2'],
+    ])(
+      'Given %s (%s), Then 400 sans appel au service',
+      async (_case, query) => {
+        const res = await request(app.getHttpServer()).get(`${url}?${query}`);
+
+        expect(res.status).toBe(400);
+        expect(availability.getCalendar).not.toHaveBeenCalled();
+      },
+    );
+
+    it('Given le service refuse un mois hors du calendrier, Then 400 avec le code métier month_out_of_range', async () => {
+      availability.getCalendar.mockRejectedValueOnce(
+        new BadRequestException({
+          error: 'month_out_of_range',
+          message: 'Ce mois est hors du calendrier.',
+        }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get(url)
+        .query({ month: '2027-12' });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual(
+        expect.objectContaining({
+          statusCode: 400,
+          error: 'month_out_of_range',
+          path: '/booking/availability/calendar?month=2027-12',
+        }),
+      );
+    });
+  });
+
+  describe('PUT availability/settings', () => {
+    const url = '/booking/availability/settings';
+
+    it.each([false, true])(
+      'Given closePublicHolidays: %s, Then 200 avec la valeur enregistrée, transmise en booléen',
+      async (value) => {
+        availability.setClosePublicHolidays.mockResolvedValueOnce(value);
+
+        const res = await request(app.getHttpServer())
+          .put(url)
+          .send({ closePublicHolidays: value });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ closePublicHolidays: value });
+        expect(availability.setClosePublicHolidays).toHaveBeenCalledTimes(1);
+        expect(availability.setClosePublicHolidays).toHaveBeenCalledWith(value);
+      },
+    );
+
+    it.each([
+      ['un corps vide', {}],
+      ['la valeur null', { closePublicHolidays: null }],
+      ['la chaîne « false »', { closePublicHolidays: 'false' }],
+      ['la chaîne « true »', { closePublicHolidays: 'true' }],
+      ['le nombre 0', { closePublicHolidays: 0 }],
+      ['le nombre 1', { closePublicHolidays: 1 }],
+      ['un champ inconnu', { closePublicHolidays: false, id: 'main' }],
+    ])('Given %s, Then 400 sans appel au service', async (_case, body) => {
+      const res = await request(app.getHttpServer()).put(url).send(body);
+
+      expect(res.status).toBe(400);
+      expect(availability.setClosePublicHolidays).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET bookings', () => {

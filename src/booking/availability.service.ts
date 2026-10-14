@@ -19,7 +19,13 @@ import {
   type AvailabilityClosure,
   type AvailabilityRule,
 } from '../database/schema';
-import { lastAllowedDay } from './calendar-month';
+import {
+  addMonths,
+  CALENDAR_MONTHS_AHEAD,
+  daysOfMonth,
+  lastAllowedDay,
+  monthOf,
+} from './calendar-month';
 import { publicHolidayName } from './french-public-holidays';
 import { toParisDate } from './paris-time';
 import {
@@ -37,6 +43,15 @@ export type AvailabilityClosureInput = {
   startsOn: string;
   endsOn: string;
   reason?: string;
+};
+
+export type CalendarMonthResponse = {
+  readonly month: string;
+  readonly today: string;
+  readonly previousMonth: string | null;
+  readonly nextMonth: string | null;
+  readonly closePublicHolidays: boolean;
+  readonly days: readonly CalendarDay[];
 };
 
 @Injectable()
@@ -153,6 +168,55 @@ export class AvailabilityService {
         closures,
       );
     });
+  }
+
+  /**
+   * Mois de Paris résolu jour par jour (ADR-0027) : l'admin n'applique aucune priorité. Mois absent
+   * → mois courant ; seuls le mois courant et les `CALENDAR_MONTHS_AHEAD` suivants se lisent.
+   */
+  async getCalendar(month?: string): Promise<CalendarMonthResponse> {
+    const today = toParisDate(new Date());
+    const currentMonth = monthOf(today);
+    const lastMonth = addMonths(currentMonth, CALENDAR_MONTHS_AHEAD);
+    const shown = month ?? currentMonth;
+    // Mois `YYYY-MM` : l'ordre lexical est l'ordre chronologique.
+    if (shown < currentMonth || shown > lastMonth) {
+      throw new BadRequestException({
+        error: 'month_out_of_range',
+        message: 'Ce mois est hors du calendrier.',
+      });
+    }
+    const dates = daysOfMonth(shown);
+    const [rules, closures, closePublicHolidays, overrides] = await Promise.all(
+      [
+        this.listRules(this.db),
+        this.listClosures(this.db),
+        this.readClosePublicHolidays(this.db),
+        this.listOverrides(this.db, dates[0], dates[dates.length - 1]),
+      ],
+    );
+    const ctx = { today, closures, overrides, closePublicHolidays };
+    return {
+      month: shown,
+      today,
+      previousMonth: shown === currentMonth ? null : addMonths(shown, -1),
+      nextMonth: shown === lastMonth ? null : addMonths(shown, 1),
+      closePublicHolidays,
+      days: dates.map((date) => toCalendarDay(date, ctx, rules, closures)),
+    };
+  }
+
+  /** Écrit l'interrupteur des fériés sur la ligne singleton, créée au premier appel. */
+  async setClosePublicHolidays(value: boolean): Promise<boolean> {
+    const [stored] = await this.db
+      .insert(bookingSettings)
+      .values({ id: BOOKING_SETTING_ROW_ID, closePublicHolidays: value })
+      .onConflictDoUpdate({
+        target: bookingSettings.id,
+        set: { closePublicHolidays: value, updatedAt: new Date() },
+      })
+      .returning({ closePublicHolidays: bookingSettings.closePublicHolidays });
+    return stored.closePublicHolidays;
   }
 
   /**

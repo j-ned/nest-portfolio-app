@@ -785,3 +785,338 @@ describe('AvailabilityService.setDayOpen', () => {
     );
   });
 });
+
+describe('AvailabilityService.getCalendar', () => {
+  const WEEKDAYS_9_TO_11 = [1, 2, 3, 4, 5].map((weekday) =>
+    anAvailabilityRule({ weekday, startMinute: 540, endMinute: 660 }),
+  );
+
+  let service: AvailabilityService;
+  let db: ReturnType<typeof createMockDb>;
+  let reads: {
+    listRules: jest.SpyInstance;
+    listClosures: jest.SpyInstance;
+    readClosePublicHolidays: jest.SpyInstance;
+    listOverrides: jest.SpyInstance;
+  };
+
+  const novemberDates = Array.from(
+    { length: 30 },
+    (_, i) => `2026-11-${String(i + 1).padStart(2, '0')}`,
+  );
+
+  beforeEach(async () => {
+    db = createMockDb();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [AvailabilityService, { provide: DRIZZLE, useValue: db }],
+    }).compile();
+    service = module.get(AvailabilityService);
+    reads = {
+      listRules: jest
+        .spyOn(service, 'listRules')
+        .mockResolvedValue(WEEKDAYS_9_TO_11),
+      listClosures: jest.spyOn(service, 'listClosures').mockResolvedValue([]),
+      readClosePublicHolidays: jest
+        .spyOn(service, 'readClosePublicHolidays')
+        .mockResolvedValue(true),
+      listOverrides: jest
+        .spyOn(service, 'listOverrides')
+        .mockResolvedValue(new Map()),
+    };
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-10T09:00:00Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  describe('mois rendu', () => {
+    it('Given le mois courant, Then le mois, aujourd’hui, ses bornes, le réglage et ses 30 jours dans l’ordre', async () => {
+      const calendar = await service.getCalendar('2026-11');
+
+      expect(calendar).toEqual(
+        expect.objectContaining({
+          month: '2026-11',
+          today: '2026-11-10',
+          previousMonth: null,
+          nextMonth: '2026-12',
+          closePublicHolidays: true,
+        }),
+      );
+      expect(calendar.days.map((day) => day.date)).toEqual(novemberDates);
+    });
+
+    it('Given une exception, une fermeture et un férié, Then chaque jour est résolu', async () => {
+      reads.listOverrides.mockResolvedValue(
+        new Map<string, DayOverrideKind>([
+          ['2026-11-12', 'closed'],
+          ['2026-11-13', 'open'],
+        ]),
+      );
+      reads.listClosures.mockResolvedValue([
+        anAvailabilityClosure({
+          startsOn: '2026-11-24',
+          endsOn: '2026-11-26',
+          reason: 'Congés',
+        }),
+      ]);
+
+      const { days } = await service.getCalendar('2026-11');
+
+      const byDate = new Map(days.map((day) => [day.date, day]));
+      const CONGES = {
+        startsOn: '2026-11-24',
+        endsOn: '2026-11-26',
+        reason: 'Congés',
+      };
+      expect(
+        [
+          '2026-11-09',
+          '2026-11-10',
+          '2026-11-11',
+          '2026-11-12',
+          '2026-11-13',
+          '2026-11-14',
+          '2026-11-23',
+          '2026-11-24',
+          '2026-11-26',
+          '2026-11-27',
+        ].map((date) => byDate.get(date)),
+      ).toEqual([
+        {
+          date: '2026-11-09',
+          state: 'past',
+          holiday: null,
+          slotCount: 4,
+          closure: null,
+        },
+        {
+          date: '2026-11-10',
+          state: 'open',
+          holiday: null,
+          slotCount: 4,
+          closure: null,
+        },
+        {
+          date: '2026-11-11',
+          state: 'holiday',
+          holiday: 'Armistice 1918',
+          slotCount: 4,
+          closure: null,
+        },
+        {
+          date: '2026-11-12',
+          state: 'closed',
+          holiday: null,
+          slotCount: 4,
+          closure: null,
+        },
+        {
+          date: '2026-11-13',
+          state: 'open',
+          holiday: null,
+          slotCount: 4,
+          closure: null,
+        },
+        {
+          date: '2026-11-14',
+          state: 'empty',
+          holiday: null,
+          slotCount: 0,
+          closure: null,
+        },
+        {
+          date: '2026-11-23',
+          state: 'open',
+          holiday: null,
+          slotCount: 4,
+          closure: null,
+        },
+        {
+          date: '2026-11-24',
+          state: 'closed-period',
+          holiday: null,
+          slotCount: 4,
+          closure: CONGES,
+        },
+        {
+          date: '2026-11-26',
+          state: 'closed-period',
+          holiday: null,
+          slotCount: 4,
+          closure: CONGES,
+        },
+        {
+          date: '2026-11-27',
+          state: 'open',
+          holiday: null,
+          slotCount: 4,
+          closure: null,
+        },
+      ]);
+    });
+
+    it('Given l’interrupteur des fériés coupé, Then le réglage rendu est faux et le férié ouvert garde son nom', async () => {
+      reads.readClosePublicHolidays.mockResolvedValue(false);
+
+      const calendar = await service.getCalendar('2026-11');
+
+      expect(calendar.closePublicHolidays).toBe(false);
+      expect(calendar.days.find((day) => day.date === '2026-11-11')).toEqual({
+        date: '2026-11-11',
+        state: 'open',
+        holiday: 'Armistice 1918',
+        slotCount: 4,
+        closure: null,
+      });
+    });
+
+    it.each([
+      ['2026-11-10T09:00:00Z', '2027-02', 28, '2027-02-28'],
+      ['2027-06-01T09:00:00Z', '2028-02', 29, '2028-02-29'],
+    ])(
+      'Given il est %s, When le mois %s, Then %i jours jusqu’au %s',
+      async (now, month, count, last) => {
+        jest.setSystemTime(new Date(now));
+
+        const { days } = await service.getCalendar(month);
+
+        expect(days).toHaveLength(count);
+        expect(days[0].date).toBe(`${month}-01`);
+        expect(days.at(-1)?.date).toBe(last);
+      },
+    );
+  });
+
+  describe('mois par défaut et bornes', () => {
+    it.each([
+      ['2026-11-10T09:00:00Z', '2026-11', '2026-11-10'],
+      ['2026-10-31T22:30:00Z', '2026-10', '2026-10-31'],
+      ['2026-10-31T23:30:00Z', '2026-11', '2026-11-01'],
+    ])(
+      'Given il est %s et aucun mois demandé, Then le mois de Paris courant %s, aujourd’hui %s',
+      async (now, month, today) => {
+        jest.setSystemTime(new Date(now));
+
+        const calendar = await service.getCalendar();
+
+        expect(calendar.month).toBe(month);
+        expect(calendar.today).toBe(today);
+        expect(calendar.previousMonth).toBeNull();
+        expect(calendar.days[0].date).toBe(`${month}-01`);
+      },
+    );
+
+    it.each([
+      ['2026-11-10T09:00:00Z', '2026-11', null, '2026-12'],
+      ['2026-11-10T09:00:00Z', '2026-12', '2026-11', '2027-01'],
+      ['2026-11-10T09:00:00Z', '2027-05', '2027-04', '2027-06'],
+      ['2026-11-10T09:00:00Z', '2027-11', '2027-10', null],
+      ['2026-10-31T23:30:00Z', '2027-11', '2027-10', null],
+    ])(
+      'Given il est %s, When le mois %s, Then mois précédent %s et suivant %s',
+      async (now, month, previousMonth, nextMonth) => {
+        jest.setSystemTime(new Date(now));
+
+        const calendar = await service.getCalendar(month);
+
+        expect(calendar.month).toBe(month);
+        expect(calendar.previousMonth).toBe(previousMonth);
+        expect(calendar.nextMonth).toBe(nextMonth);
+      },
+    );
+
+    it.each([
+      ['le mois précédent', '2026-11-10T09:00:00Z', '2026-10'],
+      ['le mois courant + 13', '2026-11-10T09:00:00Z', '2027-12'],
+      ['un mois ancien', '2026-11-10T09:00:00Z', '2020-01'],
+      ['quatre ans plus tard', '2026-11-10T09:00:00Z', '2030-11'],
+      [
+        'octobre alors qu’il est déjà novembre à Paris',
+        '2026-10-31T23:30:00Z',
+        '2026-10',
+      ],
+    ])(
+      'Given %s (il est %s, mois %s), Then 400 month_out_of_range',
+      async (_case, now, month) => {
+        jest.setSystemTime(new Date(now));
+
+        const err = await rejectionOf(service.getCalendar(month));
+
+        expect(err).toBeInstanceOf(BadRequestException);
+        expect(businessError(err)).toBe('month_out_of_range');
+      },
+    );
+  });
+
+  describe('lectures', () => {
+    it.each([
+      ['2026-11-10T09:00:00Z', '2026-11', '2026-11-01', '2026-11-30'],
+      ['2027-06-01T09:00:00Z', '2028-02', '2028-02-01', '2028-02-29'],
+    ])(
+      'Given il est %s, When le mois %s, Then les exceptions sont lues une fois du %s au %s',
+      async (now, month, from, to) => {
+        jest.setSystemTime(new Date(now));
+
+        await service.getCalendar(month);
+
+        expect(reads.listOverrides).toHaveBeenCalledTimes(1);
+        const [, readFrom, readTo] = reads.listOverrides.mock
+          .calls[0] as unknown[];
+        expect([readFrom, readTo]).toEqual([from, to]);
+      },
+    );
+
+    it('Given un mois, Then règles, fermetures, interrupteur et exceptions sont lus une fois chacun, par le même exécuteur', async () => {
+      await service.getCalendar('2026-11');
+
+      const executorOf = (spy: jest.SpyInstance): unknown =>
+        (spy.mock.calls[0] as unknown[] | undefined)?.[0] ?? db;
+      const all = Object.values(reads);
+      all.forEach((spy) => expect(spy).toHaveBeenCalledTimes(1));
+      expect(new Set(all.map(executorOf)).size).toBe(1);
+    });
+  });
+});
+
+describe('AvailabilityService.setClosePublicHolidays', () => {
+  let service: AvailabilityService;
+  let db: ReturnType<typeof createMockDb>;
+
+  beforeEach(async () => {
+    db = createMockDb();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [AvailabilityService, { provide: DRIZZLE, useValue: db }],
+    }).compile();
+    service = module.get(AvailabilityService);
+  });
+
+  it.each([false, true])(
+    'Given la valeur %s, Then la ligne main de booking_setting est insérée ou mise à jour, et la valeur rendue',
+    async (value) => {
+      db.returning.mockResolvedValueOnce([{ closePublicHolidays: value }]);
+
+      await expect(service.setClosePublicHolidays(value)).resolves.toBe(value);
+
+      expect(db.insert).toHaveBeenCalledTimes(1);
+      const [table] = db.insert.mock.calls[0] as [Table];
+      expect(getTableName(table)).toBe('booking_setting');
+      expect(db.values).toHaveBeenCalledWith({
+        id: 'main',
+        closePublicHolidays: value,
+      });
+      expect(db.onConflictDoUpdate).toHaveBeenCalledTimes(1);
+      const [conflict] = db.onConflictDoUpdate.mock.calls[0] as [
+        { target: { name: string }; set: Record<string, unknown> },
+      ];
+      expect(conflict.target.name).toBe('id');
+      expect(Object.keys(conflict.set).sort()).toEqual([
+        'closePublicHolidays',
+        'updatedAt',
+      ]);
+      expect(conflict.set.closePublicHolidays).toBe(value);
+      expect(conflict.set.updatedAt).toBeInstanceOf(Date);
+    },
+  );
+});
