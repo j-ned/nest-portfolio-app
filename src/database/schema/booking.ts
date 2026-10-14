@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   date,
   index,
@@ -56,6 +57,50 @@ export const availabilityClosures = pgTable(
     rangeCheck: check(
       'availability_closure_range_check',
       sql`${t.endsOn} >= ${t.startsOn}`,
+    ),
+  }),
+);
+
+/** Seule ligne autorisée du réglage de la prise de rendez-vous. */
+export const BOOKING_SETTING_ROW_ID = 'main';
+
+/** Fériés fermés par défaut, y compris tant que la ligne du réglage n'existe pas (ADR-0027). */
+export const DEFAULT_CLOSE_PUBLIC_HOLIDAYS = true;
+
+/** Réglage de la prise de rendez-vous : une ligne (modèle `profile_content`). */
+export const bookingSettings = pgTable(
+  'booking_setting',
+  {
+    id: text('id').primaryKey().default(BOOKING_SETTING_ROW_ID),
+    closePublicHolidays: boolean('close_public_holidays')
+      .notNull()
+      .default(DEFAULT_CLOSE_PUBLIC_HOLIDAYS),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    singleRow: check('booking_setting_single_row', sql`${t.id} = 'main'`),
+  }),
+);
+
+/**
+ * Exception d'un jour à la semaine type, en état souhaité (ADR-0027) : `closed` ferme un jour qui
+ * serait ouvert, `open` rouvre un férié fermé par l'interrupteur. Jamais de ligne égale à la règle.
+ */
+export const availabilityOverrides = pgTable(
+  'availability_override',
+  {
+    day: date('day', { mode: 'string' }).primaryKey(),
+    kind: text('kind', { enum: ['open', 'closed'] }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    kindCheck: check(
+      'availability_override_kind_check',
+      sql`${t.kind} in ('open', 'closed')`,
     ),
   }),
 );
@@ -120,5 +165,7 @@ export const bookings = pgTable(
 
 export type AvailabilityRule = typeof availabilityRules.$inferSelect;
 export type AvailabilityClosure = typeof availabilityClosures.$inferSelect;
+export type BookingSetting = typeof bookingSettings.$inferSelect;
+export type AvailabilityOverride = typeof availabilityOverrides.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
 export type NewBooking = typeof bookings.$inferInsert;

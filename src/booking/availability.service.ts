@@ -1,19 +1,38 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
-import { asc, eq, gte } from 'drizzle-orm';
+import { asc, between, eq, gte } from 'drizzle-orm';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database, DbExecutor } from '../database/drizzle.types';
 import {
   availabilityClosures,
+  availabilityOverrides,
   availabilityRules,
+  BOOKING_SETTING_ROW_ID,
+  bookingSettings,
+  DEFAULT_CLOSE_PUBLIC_HOLIDAYS,
   type AvailabilityClosure,
   type AvailabilityRule,
 } from '../database/schema';
+import {
+  addMonths,
+  CALENDAR_MONTHS_AHEAD,
+  daysOfMonth,
+  lastAllowedDay,
+  monthOf,
+} from './calendar-month';
+import { publicHolidayName } from './french-public-holidays';
 import { toParisDate } from './paris-time';
+import {
+  type CalendarDay,
+  type DayOverrideKind,
+  toCalendarDay,
+} from './resolve-day';
 
 export type AvailabilityRuleInput = Pick<
   AvailabilityRule,
@@ -24,6 +43,15 @@ export type AvailabilityClosureInput = {
   startsOn: string;
   endsOn: string;
   reason?: string;
+};
+
+export type CalendarMonthResponse = {
+  readonly month: string;
+  readonly today: string;
+  readonly previousMonth: string | null;
+  readonly nextMonth: string | null;
+  readonly closePublicHolidays: boolean;
+  readonly days: readonly CalendarDay[];
 };
 
 @Injectable()
@@ -47,6 +75,148 @@ export class AvailabilityService {
       .from(availabilityClosures)
       .where(gte(availabilityClosures.endsOn, toParisDate(new Date())))
       .orderBy(asc(availabilityClosures.startsOn));
+  }
+
+  /** Interrupteur des fériés ; ligne absente → défaut du schéma (fériés fermés). */
+  async readClosePublicHolidays(
+    executor: DbExecutor = this.db,
+  ): Promise<boolean> {
+    const [setting] = await executor
+      .select({ closePublicHolidays: bookingSettings.closePublicHolidays })
+      .from(bookingSettings)
+      .where(eq(bookingSettings.id, BOOKING_SETTING_ROW_ID))
+      .limit(1);
+    return setting?.closePublicHolidays ?? DEFAULT_CLOSE_PUBLIC_HOLIDAYS;
+  }
+
+  /** Exceptions par date de `from` à `to` inclus (dates de Paris). */
+  async listOverrides(
+    executor: DbExecutor,
+    from: string,
+    to: string,
+  ): Promise<ReadonlyMap<string, DayOverrideKind>> {
+    const rows = await executor
+      .select({
+        day: availabilityOverrides.day,
+        kind: availabilityOverrides.kind,
+      })
+      .from(availabilityOverrides)
+      .where(between(availabilityOverrides.day, from, to));
+    return new Map(rows.map(({ day, kind }) => [day, kind]));
+  }
+
+  /**
+   * Écrit l'état souhaité d'un jour (ADR-0027) : l'exception est supprimée si le jour aurait cet
+   * état sans elle, insérée ou remplacée sinon. Refus avant toute écriture, dans l'ordre : passé,
+   * au-delà du calendrier, sous une fermeture. Rend le jour relu dans la même transaction.
+   */
+  setDayOpen(date: string, open: boolean): Promise<CalendarDay> {
+    return this.db.transaction(async (tx) => {
+      const today = toParisDate(new Date());
+      // Dates `YYYY-MM-DD` : l'ordre lexical est l'ordre chronologique.
+      if (date < today) {
+        throw new UnprocessableEntityException({
+          error: 'day_in_past',
+          message: 'Ce jour est passé.',
+        });
+      }
+      if (date > lastAllowedDay(today)) {
+        throw new UnprocessableEntityException({
+          error: 'day_out_of_range',
+          message: 'Ce jour est au-delà du calendrier.',
+        });
+      }
+      const [closePublicHolidays, closures, rules] = await Promise.all([
+        this.readClosePublicHolidays(tx),
+        this.listClosures(tx),
+        this.listRules(tx),
+      ]);
+      if (
+        closures.some(
+          ({ startsOn, endsOn }) => startsOn <= date && date <= endsOn,
+        )
+      ) {
+        throw new ConflictException({
+          error: 'day_in_closure',
+          message: 'Ce jour est couvert par une fermeture.',
+        });
+      }
+
+      const openByRule = !(
+        closePublicHolidays && publicHolidayName(date) !== null
+      );
+      if (open === openByRule) {
+        await tx
+          .delete(availabilityOverrides)
+          .where(eq(availabilityOverrides.day, date));
+      } else {
+        const kind: DayOverrideKind = open ? 'open' : 'closed';
+        await tx
+          .insert(availabilityOverrides)
+          .values({ day: date, kind })
+          .onConflictDoUpdate({
+            target: availabilityOverrides.day,
+            set: { kind },
+          });
+      }
+
+      const overrides = await this.listOverrides(tx, date, date);
+      return toCalendarDay(
+        date,
+        { today, closures, overrides, closePublicHolidays },
+        rules,
+        closures,
+      );
+    });
+  }
+
+  /**
+   * Mois de Paris résolu jour par jour (ADR-0027) : l'admin n'applique aucune priorité. Mois absent
+   * → mois courant ; seuls le mois courant et les `CALENDAR_MONTHS_AHEAD` suivants se lisent.
+   */
+  async getCalendar(month?: string): Promise<CalendarMonthResponse> {
+    const today = toParisDate(new Date());
+    const currentMonth = monthOf(today);
+    const lastMonth = addMonths(currentMonth, CALENDAR_MONTHS_AHEAD);
+    const shown = month ?? currentMonth;
+    // Mois `YYYY-MM` : l'ordre lexical est l'ordre chronologique.
+    if (shown < currentMonth || shown > lastMonth) {
+      throw new BadRequestException({
+        error: 'month_out_of_range',
+        message: 'Ce mois est hors du calendrier.',
+      });
+    }
+    const dates = daysOfMonth(shown);
+    const [rules, closures, closePublicHolidays, overrides] = await Promise.all(
+      [
+        this.listRules(this.db),
+        this.listClosures(this.db),
+        this.readClosePublicHolidays(this.db),
+        this.listOverrides(this.db, dates[0], dates[dates.length - 1]),
+      ],
+    );
+    const ctx = { today, closures, overrides, closePublicHolidays };
+    return {
+      month: shown,
+      today,
+      previousMonth: shown === currentMonth ? null : addMonths(shown, -1),
+      nextMonth: shown === lastMonth ? null : addMonths(shown, 1),
+      closePublicHolidays,
+      days: dates.map((date) => toCalendarDay(date, ctx, rules, closures)),
+    };
+  }
+
+  /** Écrit l'interrupteur des fériés sur la ligne singleton, créée au premier appel. */
+  async setClosePublicHolidays(value: boolean): Promise<boolean> {
+    const [stored] = await this.db
+      .insert(bookingSettings)
+      .values({ id: BOOKING_SETTING_ROW_ID, closePublicHolidays: value })
+      .onConflictDoUpdate({
+        target: bookingSettings.id,
+        set: { closePublicHolidays: value, updatedAt: new Date() },
+      })
+      .returning({ closePublicHolidays: bookingSettings.closePublicHolidays });
+    return stored.closePublicHolidays;
   }
 
   /**

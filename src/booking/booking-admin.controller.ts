@@ -20,13 +20,22 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminWriteThrottle } from '../common/throttle';
 import type { AvailabilityClosure, AvailabilityRule } from '../database/schema';
-import { AvailabilityService } from './availability.service';
+import {
+  AvailabilityService,
+  type CalendarMonthResponse,
+} from './availability.service';
 import { type AdminBooking, BookingService } from './booking.service';
+import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { CancelBookingByOwnerDto } from './dto/cancel-booking-by-owner.dto';
 import { CreateAvailabilityClosureDto } from './dto/create-availability-closure.dto';
+import { DayParamDto } from './dto/day-param.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings-query.dto';
 import { ReplaceAvailabilityRulesDto } from './dto/replace-availability-rules.dto';
+import { SetDayOpenDto } from './dto/set-day-open.dto';
+import { UpdateBookingSettingsDto } from './dto/update-booking-settings.dto';
+import type { CalendarDay } from './resolve-day';
 
 type RuleView = Pick<AvailabilityRule, 'weekday' | 'startMinute' | 'endMinute'>;
 type ClosureView = Pick<
@@ -35,7 +44,8 @@ type ClosureView = Pick<
 >;
 
 /**
- * Administration des rendez-vous. Throttle : limite globale, comme les routes admin du contact.
+ * Administration des rendez-vous. Throttle : limite globale, comme les routes admin du contact,
+ * sauf le calendrier (un clic = une écriture, un mois = une lecture) en `AdminWriteThrottle`.
  */
 @ApiTags('Booking (admin)')
 @ApiBearerAuth()
@@ -90,6 +100,53 @@ export class BookingAdminController {
   @ApiResponse({ status: 404, description: 'Not found' })
   deleteClosure(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.availability.deleteClosure(id);
+  }
+
+  @Get('availability/calendar')
+  @ApiOperation({
+    summary: 'Paris month resolved day by day (current month to current + 12)',
+  })
+  @ApiResponse({ status: 200, description: 'The resolved month' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed | month_out_of_range',
+  })
+  @AdminWriteThrottle()
+  getCalendar(
+    @Query() { month }: CalendarQueryDto,
+  ): Promise<CalendarMonthResponse> {
+    return this.availability.getCalendar(month);
+  }
+
+  @Put('availability/settings')
+  @ApiOperation({ summary: 'Close or open French public holidays' })
+  @ApiResponse({ status: 200, description: 'The stored setting' })
+  @ApiResponse({ status: 400, description: 'Validation failed' })
+  @AdminWriteThrottle()
+  async updateSettings(
+    @Body() { closePublicHolidays }: UpdateBookingSettingsDto,
+  ): Promise<{ closePublicHolidays: boolean }> {
+    return {
+      closePublicHolidays:
+        await this.availability.setClosePublicHolidays(closePublicHolidays),
+    };
+  }
+
+  @Put('availability/days/:date')
+  @ApiOperation({
+    summary:
+      'Set the wanted state of a Paris date (override written or removed)',
+  })
+  @ApiResponse({ status: 200, description: 'The day after the write' })
+  @ApiResponse({ status: 400, description: 'Validation failed' })
+  @ApiResponse({ status: 409, description: 'day_in_closure' })
+  @ApiResponse({ status: 422, description: 'day_in_past | day_out_of_range' })
+  @AdminWriteThrottle()
+  setDayOpen(
+    @Param() { date }: DayParamDto,
+    @Body() { open }: SetDayOpenDto,
+  ): Promise<CalendarDay> {
+    return this.availability.setDayOpen(date, open);
   }
 
   @Get('bookings')

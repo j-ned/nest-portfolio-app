@@ -4,7 +4,12 @@ import type {
   Booking,
 } from '../database/schema';
 import { BOOKING_POLICY } from './booking-policy';
-import { isoWeekday, parisWallTimeToUtc, toParisDate } from './paris-time';
+import { addDays, toParisDate } from './paris-time';
+import {
+  closedReason,
+  type DayOverrideKind,
+  templateSlotsOn,
+} from './resolve-day';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -23,6 +28,8 @@ export type FreeSlotsInput = {
     'startsOn' | 'endsOn'
   >[];
   readonly bookings: readonly Pick<Booking, 'startsAt' | 'endsAt' | 'status'>[];
+  readonly overrides: ReadonlyMap<string, DayOverrideKind>;
+  readonly closePublicHolidays: boolean;
 };
 
 type BookingSpan = Pick<Booking, 'startsAt' | 'endsAt'>;
@@ -40,51 +47,40 @@ export function overlapsBooking(
   );
 }
 
-const nextDate = (date: string): string =>
-  new Date(Date.parse(`${date}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10);
-
 /**
  * Créneaux libres de la fenêtre réservable (ADR-0026 §3), triés et uniques. Pur : `now` est un
- * paramètre. Un créneau part d'une plage du jour de Paris, au pas de `stepMinutes`, finit dans la
- * plage, respecte préavis et horizon, tombe hors fermeture et hors battement d'un rendez-vous
- * confirmé.
+ * paramètre. Un créneau part d'un jour de Paris ouvert (`closedReason` nul : ni fermeture, ni
+ * exception fermée, ni férié sous interrupteur actif, ADR-0027), suit la semaine type, respecte
+ * préavis et horizon, et tombe hors battement d'un rendez-vous confirmé.
  */
 export function computeFreeSlots({
   now,
   rules,
   closures,
   bookings,
+  overrides,
+  closePublicHolidays,
 }: FreeSlotsInput): readonly FreeSlot[] {
-  const { slotMinutes, stepMinutes } = BOOKING_POLICY;
+  const { slotMinutes } = BOOKING_POLICY;
   const earliest = now.getTime() + BOOKING_POLICY.minNoticeHours * HOUR_MS;
   const latest = now.getTime() + BOOKING_POLICY.maxAdvanceDays * DAY_MS;
   const blocking = bookings.filter((booking) => booking.status === 'confirmed');
+  const today = toParisDate(now);
+  const ctx = { today, closures, overrides, closePublicHolidays };
   const free = new Map<number, FreeSlot>();
 
   const lastDate = toParisDate(new Date(latest));
-  for (let date = toParisDate(now); date <= lastDate; date = nextDate(date)) {
-    const closed = closures.some(
-      (closure) => closure.startsOn <= date && date <= closure.endsOn,
-    );
-    if (closed) continue;
+  for (let date = today; date <= lastDate; date = addDays(date, 1)) {
+    if (closedReason(date, ctx)) continue;
 
-    const weekday = isoWeekday(date);
-    for (const rule of rules.filter((r) => r.weekday === weekday)) {
-      for (
-        let minute = rule.startMinute;
-        minute + slotMinutes <= rule.endMinute;
-        minute += stepMinutes
-      ) {
-        const startsAt = parisWallTimeToUtc(date, minute);
-        if (!startsAt) continue;
-        const start = startsAt.getTime();
-        if (start < earliest || start > latest) continue;
-        const endsAt = new Date(start + slotMinutes * MINUTE_MS);
-        const taken = blocking.some((booking) =>
-          overlapsBooking(startsAt, endsAt, booking),
-        );
-        if (!taken) free.set(start, { startsAt, endsAt });
-      }
+    for (const startsAt of templateSlotsOn(date, rules)) {
+      const start = startsAt.getTime();
+      if (start < earliest || start > latest) continue;
+      const endsAt = new Date(start + slotMinutes * MINUTE_MS);
+      const taken = blocking.some((booking) =>
+        overlapsBooking(startsAt, endsAt, booking),
+      );
+      if (!taken) free.set(start, { startsAt, endsAt });
     }
   }
 

@@ -5,6 +5,7 @@ import {
   type INestApplication,
   NotFoundException,
   RequestMethod,
+  UnprocessableEntityException,
   ValidationPipe,
 } from '@nestjs/common';
 import {
@@ -15,7 +16,12 @@ import {
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import {
+  THROTTLER_LIMIT,
+  THROTTLER_TTL,
+} from '@nestjs/throttler/dist/throttler.constants';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ADMIN_WRITE_THROTTLE } from '../common/throttle';
 import { HttpExceptionFilter } from '../common/filters/http-exception.filter';
 import { AvailabilityService } from './availability.service';
 import { BookingAdminController } from './booking-admin.controller';
@@ -55,6 +61,9 @@ describe('BookingAdminController (HTTP)', () => {
     listClosures: jest.fn(),
     createClosure: jest.fn(),
     deleteClosure: jest.fn(),
+    setDayOpen: jest.fn(),
+    getCalendar: jest.fn(),
+    setClosePublicHolidays: jest.fn(),
   };
   const booking = {
     listBookings: jest.fn(),
@@ -104,6 +113,9 @@ describe('BookingAdminController (HTTP)', () => {
       [RequestMethod.GET, 'availability/closures'],
       [RequestMethod.POST, 'availability/closures'],
       [RequestMethod.DELETE, 'availability/closures/:id'],
+      [RequestMethod.PUT, 'availability/days/:date'],
+      [RequestMethod.GET, 'availability/calendar'],
+      [RequestMethod.PUT, 'availability/settings'],
       [RequestMethod.GET, 'bookings'],
       [RequestMethod.GET, 'bookings/upcoming-count'],
       [RequestMethod.PATCH, 'bookings/:id/cancel'],
@@ -111,6 +123,25 @@ describe('BookingAdminController (HTTP)', () => {
       'Given la route %s %s, Then elle est déclarée sur le contrôleur gardé',
       (method, path) => {
         expect(routeHandler(method, path)).toBeDefined();
+      },
+    );
+
+    it.each([
+      [RequestMethod.PUT, 'availability/days/:date'],
+      [RequestMethod.GET, 'availability/calendar'],
+      [RequestMethod.PUT, 'availability/settings'],
+    ])(
+      'Given la route du calendrier %s %s, When le propriétaire clique ou change de mois en rafale, Then elle suit la limite des écritures admin et non la limite globale de 10/min',
+      (method, path) => {
+        const handler = routeHandler(method, path);
+
+        expect(handler).toBeDefined();
+        expect(Reflect.getMetadata(`${THROTTLER_LIMIT}default`, handler!)).toBe(
+          ADMIN_WRITE_THROTTLE.default.limit,
+        );
+        expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, handler!)).toBe(
+          ADMIN_WRITE_THROTTLE.default.ttl,
+        );
       },
     );
   });
@@ -206,9 +237,9 @@ describe('BookingAdminController (HTTP)', () => {
       ['rules absent', {}],
       ['rules qui n’est pas une liste', { rules: { weekday: 1 } }],
       [
-        '51 plages',
+        '169 plages',
         {
-          rules: Array.from({ length: 51 }, () => ({
+          rules: Array.from({ length: 169 }, () => ({
             weekday: 1,
             startMinute: 0,
             endMinute: 30,
@@ -225,9 +256,9 @@ describe('BookingAdminController (HTTP)', () => {
       expect(availability.replaceRules).not.toHaveBeenCalled();
     });
 
-    it('Given 50 plages, Then elles franchissent la validation', async () => {
+    it('Given 168 plages, Then elles franchissent la validation', async () => {
       availability.replaceRules.mockResolvedValueOnce([]);
-      const rules = Array.from({ length: 50 }, (_, i) => ({
+      const rules = Array.from({ length: 168 }, (_, i) => ({
         weekday: (i % 7) + 1,
         startMinute: Math.floor(i / 7) * 60,
         endMinute: Math.floor(i / 7) * 60 + 30,
@@ -447,6 +478,261 @@ describe('BookingAdminController (HTTP)', () => {
       );
 
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PUT availability/days/:date', () => {
+    const url = '/booking/availability/days/2026-11-12';
+    const CLOSED_DAY = {
+      date: '2026-11-12',
+      state: 'closed',
+      holiday: null,
+      slotCount: 4,
+      closure: null,
+    };
+
+    it('Given open: false, Then 200 avec le jour relu par le service, date et état souhaité transmis', async () => {
+      availability.setDayOpen.mockResolvedValueOnce(CLOSED_DAY);
+
+      const res = await request(app.getHttpServer())
+        .put(url)
+        .send({ open: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(CLOSED_DAY);
+      expect(availability.setDayOpen).toHaveBeenCalledTimes(1);
+      expect(availability.setDayOpen).toHaveBeenCalledWith('2026-11-12', false);
+    });
+
+    it('Given open: true sur un férié, Then 200 avec le férié rouvert, open transmis en booléen', async () => {
+      const reopened = {
+        date: '2026-11-11',
+        state: 'open',
+        holiday: 'Armistice 1918',
+        slotCount: 4,
+        closure: null,
+      };
+      availability.setDayOpen.mockResolvedValueOnce(reopened);
+
+      const res = await request(app.getHttpServer())
+        .put('/booking/availability/days/2026-11-11')
+        .send({ open: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(reopened);
+      expect(availability.setDayOpen).toHaveBeenCalledWith('2026-11-11', true);
+    });
+
+    it.each([
+      ['une date française', '/booking/availability/days/12-11-2026'],
+      ['une date inexistante', '/booking/availability/days/2026-02-30'],
+      ['un mois 13', '/booking/availability/days/2026-13-01'],
+      ['un mot', '/booking/availability/days/demain'],
+      ['une date sans zéro', '/booking/availability/days/2026-11-2'],
+    ])(
+      'Given %s dans le chemin, Then 400 sans appel au service',
+      async (_case, path) => {
+        const res = await request(app.getHttpServer())
+          .put(path)
+          .send({ open: false });
+
+        expect(res.status).toBe(400);
+        expect(availability.setDayOpen).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['open absent', {}],
+      ['open null', { open: null }],
+      ['open en chaîne « false »', { open: 'false' }],
+      ['open en nombre', { open: 0 }],
+      ['un champ inconnu', { open: false, kind: 'closed' }],
+    ])('Given %s, Then 400 sans appel au service', async (_case, body) => {
+      const res = await request(app.getHttpServer()).put(url).send(body);
+
+      expect(res.status).toBe(400);
+      expect(availability.setDayOpen).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        422,
+        'day_in_past',
+        new UnprocessableEntityException({
+          error: 'day_in_past',
+          message: 'Ce jour est passé.',
+        }),
+      ],
+      [
+        422,
+        'day_out_of_range',
+        new UnprocessableEntityException({
+          error: 'day_out_of_range',
+          message: 'Ce jour est trop loin.',
+        }),
+      ],
+      [
+        409,
+        'day_in_closure',
+        new ConflictException({
+          error: 'day_in_closure',
+          message: 'Ce jour est couvert par une fermeture.',
+        }),
+      ],
+    ])(
+      'Given le service refuse, Then %i avec le code métier %s dans error',
+      async (status, code, failure) => {
+        availability.setDayOpen.mockRejectedValueOnce(failure);
+
+        const res = await request(app.getHttpServer())
+          .put(url)
+          .send({ open: false });
+
+        expect(res.status).toBe(status);
+        expect(res.body).toEqual(
+          expect.objectContaining({
+            statusCode: status,
+            error: code,
+            path: url,
+          }),
+        );
+      },
+    );
+  });
+
+  describe('GET availability/calendar', () => {
+    const url = '/booking/availability/calendar';
+    const MONTH = {
+      month: '2026-11',
+      today: '2026-11-10',
+      previousMonth: null,
+      nextMonth: '2026-12',
+      closePublicHolidays: true,
+      days: [
+        {
+          date: '2026-11-11',
+          state: 'holiday',
+          holiday: 'Armistice 1918',
+          slotCount: 4,
+          closure: null,
+        },
+        {
+          date: '2026-11-24',
+          state: 'closed-period',
+          holiday: null,
+          slotCount: 4,
+          closure: {
+            startsOn: '2026-11-24',
+            endsOn: '2026-11-26',
+            reason: 'Congés',
+          },
+        },
+      ],
+    };
+
+    it('Given aucun mois, Then 200 avec le mois rendu par le service, mois absent transmis', async () => {
+      availability.getCalendar.mockResolvedValueOnce(MONTH);
+
+      const res = await request(app.getHttpServer()).get(url);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(MONTH);
+      expect(availability.getCalendar).toHaveBeenCalledTimes(1);
+      const [month] = availability.getCalendar.mock.calls[0] as unknown[];
+      expect(month).toBeUndefined();
+    });
+
+    it('Given month=2027-02, Then 200 et le mois transmis tel quel', async () => {
+      availability.getCalendar.mockResolvedValueOnce({
+        ...MONTH,
+        month: '2027-02',
+        days: [],
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(url)
+        .query({ month: '2027-02' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ...MONTH, month: '2027-02', days: [] });
+      expect(availability.getCalendar).toHaveBeenCalledWith('2027-02');
+    });
+
+    it.each([
+      ['un mois 13', 'month=2026-13'],
+      ['un mois 00', 'month=2026-00'],
+      ['un mois sans zéro', 'month=2026-1'],
+      ['une année sur deux chiffres', 'month=26-11'],
+      ['une date complète', 'month=2026-11-01'],
+      ['un mot', 'month=novembre'],
+      ['un mois vide', 'month='],
+      ['deux mois', 'month=2026-11&month=2026-12'],
+      ['un paramètre inconnu', 'month=2026-11&page=2'],
+    ])(
+      'Given %s (%s), Then 400 sans appel au service',
+      async (_case, query) => {
+        const res = await request(app.getHttpServer()).get(`${url}?${query}`);
+
+        expect(res.status).toBe(400);
+        expect(availability.getCalendar).not.toHaveBeenCalled();
+      },
+    );
+
+    it('Given le service refuse un mois hors du calendrier, Then 400 avec le code métier month_out_of_range', async () => {
+      availability.getCalendar.mockRejectedValueOnce(
+        new BadRequestException({
+          error: 'month_out_of_range',
+          message: 'Ce mois est hors du calendrier.',
+        }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get(url)
+        .query({ month: '2027-12' });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual(
+        expect.objectContaining({
+          statusCode: 400,
+          error: 'month_out_of_range',
+          path: '/booking/availability/calendar?month=2027-12',
+        }),
+      );
+    });
+  });
+
+  describe('PUT availability/settings', () => {
+    const url = '/booking/availability/settings';
+
+    it.each([false, true])(
+      'Given closePublicHolidays: %s, Then 200 avec la valeur enregistrée, transmise en booléen',
+      async (value) => {
+        availability.setClosePublicHolidays.mockResolvedValueOnce(value);
+
+        const res = await request(app.getHttpServer())
+          .put(url)
+          .send({ closePublicHolidays: value });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ closePublicHolidays: value });
+        expect(availability.setClosePublicHolidays).toHaveBeenCalledTimes(1);
+        expect(availability.setClosePublicHolidays).toHaveBeenCalledWith(value);
+      },
+    );
+
+    it.each([
+      ['un corps vide', {}],
+      ['la valeur null', { closePublicHolidays: null }],
+      ['la chaîne « false »', { closePublicHolidays: 'false' }],
+      ['la chaîne « true »', { closePublicHolidays: 'true' }],
+      ['le nombre 0', { closePublicHolidays: 0 }],
+      ['le nombre 1', { closePublicHolidays: 1 }],
+      ['un champ inconnu', { closePublicHolidays: false, id: 'main' }],
+    ])('Given %s, Then 400 sans appel au service', async (_case, body) => {
+      const res = await request(app.getHttpServer()).put(url).send(body);
+
+      expect(res.status).toBe(400);
+      expect(availability.setClosePublicHolidays).not.toHaveBeenCalled();
     });
   });
 

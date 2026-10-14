@@ -1,5 +1,6 @@
 import type {
   AvailabilityClosure,
+  AvailabilityOverride,
   AvailabilityRule,
   Booking,
 } from '../database/schema';
@@ -26,6 +27,15 @@ export const anAvailabilityClosure = (
   startsOn: '2026-12-24',
   endsOn: '2026-12-26',
   reason: null,
+  createdAt: CREATED_AT,
+  ...overrides,
+});
+
+export const anAvailabilityOverride = (
+  overrides: Partial<AvailabilityOverride> = {},
+): AvailabilityOverride => ({
+  day: '2026-11-12',
+  kind: 'closed',
   createdAt: CREATED_AT,
   ...overrides,
 });
