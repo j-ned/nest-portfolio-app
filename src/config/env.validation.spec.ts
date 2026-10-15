@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { validateEnv } from './env.validation';
 
 describe('validateEnv', () => {
@@ -198,5 +199,80 @@ describe('validateEnv', () => {
     expect(() =>
       validateEnv({ ...baseValid, PUBLIC_SITE_URL: 'nedellec-julien.fr' }),
     ).toThrow(/PUBLIC_SITE_URL/);
+  });
+  describe('BOOKING_FEED_SECRET', () => {
+    const SHORT_SECRET = 'TooShort-feed-secret-0123456789';
+    let warnings: jest.SpyInstance[];
+
+    const warned = (): string =>
+      warnings
+        .flatMap((spy) => spy.mock.calls as unknown[][])
+        .map((args) => JSON.stringify(args))
+        .join('\n');
+
+    beforeEach(() => {
+      warnings = [
+        jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {}),
+        jest.spyOn(Logger, 'warn').mockImplementation(() => {}),
+        jest.spyOn(console, 'warn').mockImplementation(() => {}),
+      ];
+    });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it.each([
+      ['absente', {}],
+      ['vide', { BOOKING_FEED_SECRET: '' }],
+    ])(
+      'Given la variable %s, Then le démarrage passe, abonnement non configuré, sans avertissement',
+      (_case, extra) => {
+        const result = validateEnv({ ...baseValid, ...extra });
+
+        expect(result).not.toHaveProperty(
+          'BOOKING_FEED_SECRET',
+          expect.anything(),
+        );
+        expect(warned()).toBe('');
+      },
+    );
+
+    it.each([
+      ['32 caractères', 'f'.repeat(32)],
+      ['64 caractères', 'G'.repeat(64)],
+    ])(
+      'Given une valeur de %s, Then elle est retenue, sans avertissement',
+      (_case, secret) => {
+        const result = validateEnv({
+          ...baseValid,
+          BOOKING_FEED_SECRET: secret,
+        });
+
+        expect(result).toHaveProperty('BOOKING_FEED_SECRET', secret);
+        expect(warned()).toBe('');
+      },
+    );
+
+    it('Given une valeur de 31 caractères, Then le démarrage passe, la variable vaut absente', () => {
+      expect(SHORT_SECRET).toHaveLength(31);
+
+      const result = validateEnv({
+        ...baseValid,
+        BOOKING_FEED_SECRET: SHORT_SECRET,
+      });
+
+      expect(result).not.toHaveProperty(
+        'BOOKING_FEED_SECRET',
+        expect.anything(),
+      );
+      expect(result.DATABASE_URL).toBe(baseValid.DATABASE_URL);
+    });
+
+    it('Given une valeur de 31 caractères, Then un avertissement nomme la variable sans jamais citer sa valeur', () => {
+      validateEnv({ ...baseValid, BOOKING_FEED_SECRET: SHORT_SECRET });
+
+      expect(warned()).toContain('BOOKING_FEED_SECRET');
+      expect(warned()).not.toContain(SHORT_SECRET);
+      expect(warned()).not.toContain(SHORT_SECRET.slice(0, 12));
+    });
   });
 });
