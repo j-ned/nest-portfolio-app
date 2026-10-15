@@ -75,6 +75,14 @@ export const envSchema = z.object({
   BOOKING_VIDEO_URL_BASE: z.string().url().default('https://meet.jit.si'),
   // Origine publique du site : liens envoyés par email (annulation d'un rendez-vous)
   PUBLIC_SITE_URL: z.string().url().default('https://nedellec-julien.fr'),
+  /**
+   * Secret de dérivation des liens d'abonnement d'agenda (ADR-0028), facultatif. Vide = absent ;
+   * trop court = absent avec un avertissement (`validateEnv`) : l'API démarre, abonnement non configuré.
+   */
+  BOOKING_FEED_SECRET: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().optional(),
+  ),
 
   // Observability (Sentry) - all optional, empty DSN keeps Sentry disabled
   SENTRY_DSN: z.string().url().optional(),

@@ -22,4 +22,15 @@ describe('AppConfigService', () => {
 
     expect(config.publicSiteUrl).toBe('https://site.example.test');
   });
+  it.each([
+    ['fourni', { BOOKING_FEED_SECRET: 'f'.repeat(32) }, 'f'.repeat(32)],
+    ['absent', {}, undefined],
+  ])(
+    'Given BOOKING_FEED_SECRET %s, When le getter est lu, Then le secret de l’abonnement d’agenda ou undefined',
+    (_case, env, expected) => {
+      const config = new AppConfigService(new ConfigService<Env, true>(env));
+
+      expect(config.bookingFeedSecret).toBe(expected);
+    },
+  );
 });

@@ -25,6 +25,7 @@ import { ADMIN_WRITE_THROTTLE } from '../common/throttle';
 import { HttpExceptionFilter } from '../common/filters/http-exception.filter';
 import { AvailabilityService } from './availability.service';
 import { BookingAdminController } from './booking-admin.controller';
+import { BookingFeedService } from './booking-feed.service';
 import { BookingService } from './booking.service';
 import {
   anAdminBooking,
@@ -70,6 +71,10 @@ describe('BookingAdminController (HTTP)', () => {
     countUpcoming: jest.fn(),
     cancelByOwner: jest.fn(),
   };
+  const feed = {
+    readSubscription: jest.fn(),
+    regenerate: jest.fn(),
+  };
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -77,6 +82,7 @@ describe('BookingAdminController (HTTP)', () => {
       providers: [
         { provide: AvailabilityService, useValue: availability },
         { provide: BookingService, useValue: booking },
+        { provide: BookingFeedService, useValue: feed },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -119,6 +125,8 @@ describe('BookingAdminController (HTTP)', () => {
       [RequestMethod.GET, 'bookings'],
       [RequestMethod.GET, 'bookings/upcoming-count'],
       [RequestMethod.PATCH, 'bookings/:id/cancel'],
+      [RequestMethod.GET, 'feed-subscription'],
+      [RequestMethod.POST, 'feed-subscription'],
     ])(
       'Given la route %s %s, Then elle est déclarée sur le contrôleur gardé',
       (method, path) => {
@@ -142,6 +150,24 @@ describe('BookingAdminController (HTTP)', () => {
         expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, handler!)).toBe(
           ADMIN_WRITE_THROTTLE.default.ttl,
         );
+      },
+    );
+
+    it.each([
+      ['GET', RequestMethod.GET],
+      ['POST', RequestMethod.POST],
+    ])(
+      'Given la route %s feed-subscription, Then elle suit la limite globale, sans limite propre',
+      (_verb, method) => {
+        const handler = routeHandler(method, 'feed-subscription');
+
+        expect(handler).toBeDefined();
+        expect(
+          Reflect.getMetadata(`${THROTTLER_LIMIT}default`, handler!),
+        ).toBeUndefined();
+        expect(
+          Reflect.getMetadata(`${THROTTLER_TTL}default`, handler!),
+        ).toBeUndefined();
       },
     );
   });
@@ -899,5 +925,79 @@ describe('BookingAdminController (HTTP)', () => {
         );
       },
     );
+  });
+
+  describe('GET feed-subscription', () => {
+    const url = '/booking/feed-subscription';
+
+    it.each([
+      ['non configuré', { status: 'unconfigured' }],
+      ['sans lien', { status: 'none' }],
+      [
+        'actif',
+        {
+          status: 'active',
+          token: 'XYJXH9MoGdppkZYT0jI3g2rP-qFcqKBWL0budyMj488',
+          createdAt: '2026-10-15T08:32:00.000Z',
+        },
+      ],
+    ])(
+      'Given un abonnement %s, Then 200 avec l’état du service, non mis en cache',
+      async (_case, subscription) => {
+        feed.readSubscription.mockResolvedValueOnce(subscription);
+
+        const res = await request(app.getHttpServer()).get(url);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual(subscription);
+        expect(res.headers['cache-control']).toBe('no-store');
+        expect(feed.readSubscription).toHaveBeenCalledTimes(1);
+        expect(feed.regenerate).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('POST feed-subscription', () => {
+    const url = '/booking/feed-subscription';
+
+    it('Given un secret configuré, Then 201 avec le nouveau lien actif, non mis en cache', async () => {
+      const subscription = {
+        status: 'active',
+        token: 'XYJXH9MoGdppkZYT0jI3g2rP-qFcqKBWL0budyMj488',
+        createdAt: '2026-10-15T08:32:00.000Z',
+      };
+      feed.regenerate.mockResolvedValueOnce(subscription);
+
+      const res = await request(app.getHttpServer()).post(url);
+
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual(subscription);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(feed.regenerate).toHaveBeenCalledTimes(1);
+      expect(feed.regenerate).toHaveBeenCalledWith();
+      expect(feed.readSubscription).not.toHaveBeenCalled();
+    });
+
+    it('Given aucun secret configuré, Then 409 feed_not_configured', async () => {
+      feed.regenerate.mockRejectedValueOnce(
+        new ConflictException({
+          error: 'feed_not_configured',
+          message: 'Abonnement non configuré.',
+        }),
+      );
+
+      const res = await request(app.getHttpServer()).post(url);
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual(
+        expect.objectContaining({
+          statusCode: 409,
+          error: 'feed_not_configured',
+          message: 'Abonnement non configuré.',
+          path: url,
+        }),
+      );
+      expect(feed.regenerate).toHaveBeenCalledTimes(1);
+    });
   });
 });

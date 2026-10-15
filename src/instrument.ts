@@ -2,7 +2,11 @@
 // hasn't run yet at this point.
 import 'dotenv/config';
 import * as Sentry from '@sentry/nestjs';
-import { sentryBeforeSend } from './common/sentry-before-send';
+import {
+  isUntracedIncomingRequest,
+  sentryBeforeSend,
+  sentryBeforeSendTransaction,
+} from './common/sentry-before-send';
 
 const dsn = process.env.SENTRY_DSN;
 
@@ -16,7 +20,7 @@ if (dsn) {
     sendDefaultPii: false,
     integrations: [
       Sentry.httpIntegration({
-        ignoreIncomingRequests: (url) => url.startsWith('/api/health'),
+        ignoreIncomingRequests: isUntracedIncomingRequest,
       }),
     ],
     tracesSampleRate: process.env.SENTRY_TRACES_SAMPLE_RATE
@@ -26,5 +30,6 @@ if (dsn) {
         : 1.0,
     ignoreErrors: ['ThrottlerException'],
     beforeSend: sentryBeforeSend,
+    beforeSendTransaction: sentryBeforeSendTransaction,
   });
 }

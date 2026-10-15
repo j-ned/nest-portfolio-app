@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from './env.schema';
+import { BOOKING_FEED_SECRET_MIN_LENGTH } from './env.validation';
 
 @Injectable()
 export class AppConfigService {
@@ -88,6 +89,18 @@ export class AppConfigService {
 
   get publicSiteUrl() {
     return this.config.get('PUBLIC_SITE_URL', { infer: true });
+  }
+
+  /**
+   * Facultatif : absent, l'abonnement d'agenda est « non configuré » (ADR-0028). La longueur est
+   * revérifiée ici parce que `ConfigService.get` retombe sur `process.env`, où une valeur trop
+   * courte écartée par `validateEnv` reste présente.
+   */
+  get bookingFeedSecret(): string | undefined {
+    const secret = this.config.get('BOOKING_FEED_SECRET', { infer: true });
+    return secret && secret.length >= BOOKING_FEED_SECRET_MIN_LENGTH
+      ? secret
+      : undefined;
   }
 
   get sentryRelease() {
