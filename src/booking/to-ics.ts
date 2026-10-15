@@ -1,5 +1,11 @@
-/** Invitation calendrier RFC 5545 (iTIP RFC 5546) d'un rendez-vous : un VEVENT, instants en UTC. */
-export type IcsMethod = 'REQUEST' | 'CANCEL';
+import type { CalendarMethod } from '../mailer/mailer.service';
+
+/**
+ * Invitation calendrier RFC 5545 (iTIP RFC 5546) d'un rendez-vous : un VEVENT, instants en UTC.
+ * `REQUEST` invite un participant ; `PUBLISH` publie l'événement sans réponse attendue (copie de
+ * l'organisateur, qu'un client refuse d'ajouter comme invitation adressée à lui-même).
+ */
+export type IcsMethod = CalendarMethod;
 
 export type IcsPerson = { name: string; email: string };
 
@@ -13,7 +19,8 @@ export type IcsEvent = {
   description: string;
   location: string;
   organizer: IcsPerson;
-  attendee: IcsPerson;
+  /** Ignoré en `PUBLISH` : un événement publié ne nomme aucun participant (RFC 5546 §3.2.1). */
+  attendee?: IcsPerson;
 };
 
 const CRLF = '\r\n';
@@ -22,11 +29,13 @@ const MAX_LINE_BYTES = 75;
 /** Une annulation est une révision de l'invitation : séquence incrémentée, statut annulé. */
 const REVISION: Record<IcsMethod, { sequence: number; status: string }> = {
   REQUEST: { sequence: 0, status: 'CONFIRMED' },
+  PUBLISH: { sequence: 0, status: 'CONFIRMED' },
   CANCEL: { sequence: 1, status: 'CANCELLED' },
 };
 
 export function toIcs(event: IcsEvent): string {
   const { sequence, status } = REVISION[event.method];
+  const attendee = event.method === 'PUBLISH' ? undefined : event.attendee;
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -44,7 +53,11 @@ export function toIcs(event: IcsEvent): string {
     `DESCRIPTION:${escapeText(event.description)}`,
     `LOCATION:${escapeText(event.location)}`,
     `ORGANIZER;CN=${paramValue(event.organizer.name)}:mailto:${event.organizer.email}`,
-    `ATTENDEE;CN=${paramValue(event.attendee.name)};PARTSTAT=ACCEPTED:mailto:${event.attendee.email}`,
+    ...(attendee
+      ? [
+          `ATTENDEE;CN=${paramValue(attendee.name)};PARTSTAT=ACCEPTED:mailto:${attendee.email}`,
+        ]
+      : []),
     'END:VEVENT',
     'END:VCALENDAR',
   ];

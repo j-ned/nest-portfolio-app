@@ -3,47 +3,63 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
   <title>Confirmation de votre message</title>
+  <style>
+    :root { color-scheme: light dark; }
+    @media (prefers-color-scheme: dark) {
+      .page { background-color: #0f172a !important; }
+      .card { background-color: #1e293b !important; border-color: #334155 !important; }
+      .recap { background-color: #0f172a !important; }
+      .rule { border-color: #334155 !important; }
+      .text { color: #f1f5f9 !important; }
+      .muted { color: #cbd5e1 !important; }
+      .footer { color: #94a3b8 !important; }
+    }
+  </style>
 </head>
-<body style="margin:0;padding:0;background-color:#1e1e1e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<table role="presentation" style="width:100%;border-spacing:0;background-color:#1e1e1e;padding:40px 20px;">
+<body class="page" style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table role="presentation" class="page" style="width:100%;border-spacing:0;background-color:#f8fafc;padding:40px 16px;">
 <tr><td style="text-align:center;">
-<table role="presentation" style="width:600px;max-width:600px;border-spacing:0;">
+<table role="presentation" style="width:100%;max-width:600px;border-spacing:0;margin:0 auto;">
+  <!-- Header -->
   <tr><td style="text-align:center;padding-bottom:24px;">
-    <span style="color:#f8fafc;font-size:24px;font-weight:700;">Julien N.</span>
+    <span class="text" style="color:#1e293b;font-size:24px;font-weight:700;">Julien N.</span>
   </td></tr>
+  <!-- Title -->
   <tr><td style="text-align:center;padding-bottom:24px;">
-    <span style="background:linear-gradient(135deg,#60a5fa,#a78bfa);color:#fff;padding:8px 20px;border-radius:20px;font-size:14px;display:inline-block;">
-      &#9989; Message bien reçu
+    <span style="background-color:#4f46e5;color:#ffffff;padding:8px 20px;border-radius:20px;font-size:14px;font-weight:600;display:inline-block;">
+      &#9989; Message bien re&#231;u
     </span>
   </td></tr>
-  <tr><td style="background-color:#262629;border-radius:16px;overflow:hidden;">
+  <!-- Card -->
+  <tr><td class="card" style="background-color:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
     <table role="presentation" style="width:100%;border-spacing:0;">
-      <tr><td style="height:4px;background:linear-gradient(90deg,#60a5fa,#a78bfa);font-size:0;line-height:0;">&nbsp;</td></tr>
-      <tr><td style="padding:32px;">
-        <p style="color:#f8fafc;font-size:16px;margin:0 0 16px;">Bonjour {{name}},</p>
-        <p style="color:#94a3b8;font-size:14px;line-height:1.6;margin:0 0 24px;">
-          Merci pour votre message ! Je l'ai bien reçu et je vous répondrai dans les plus brefs délais.
-        </p>
+      <tr><td style="height:4px;background-color:#4f46e5;font-size:0;line-height:0;">&nbsp;</td></tr>
+      <tr><td style="padding:32px 24px;text-align:left;">
+        <p class="text" style="color:#1e293b;font-size:16px;font-weight:600;margin:0 0 16px;">Bonjour {{name}},</p>
+        <p class="muted" style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">Merci pour votre message&#160;! Je l&#8217;ai bien re&#231;u et je vous r&#233;pondrai dans les plus brefs d&#233;lais.</p>
         <!-- Recap -->
-        <table role="presentation" style="width:100%;border-spacing:0;background-color:#1e293b;border-left:3px solid #60a5fa;border-radius:8px;margin-bottom:24px;">
+        <table role="presentation" class="recap" style="width:100%;border-spacing:0;background-color:#f1f5f9;border-left:3px solid #4f46e5;border-radius:8px;margin-bottom:24px;">
           <tr><td style="padding:20px;">
-            <p style="color:#94a3b8;font-size:12px;text-transform:uppercase;margin:0 0 12px;">R&#233;capitulatif</p>
-            <p style="color:#94a3b8;font-size:13px;margin:0 0 4px;">Sujet&#160;: <span style="color:#f8fafc;">{{subject}}</span></p>
+            <p class="muted" style="color:#475569;font-size:12px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;margin:0 0 12px;">R&#233;capitulatif</p>
+            <p class="muted" style="color:#475569;font-size:13px;margin:0;">Sujet&#160;: <span class="text" style="color:#1e293b;font-weight:500;">{{subject}}</span></p>
           </td></tr>
         </table>
         <!-- Signature -->
-        <table role="presentation" style="width:100%;border-spacing:0;border-top:1px solid #334155;">
+        <table role="presentation" class="rule" style="width:100%;border-spacing:0;border-top:1px solid #e2e8f0;">
           <tr><td style="padding-top:20px;">
-            <p style="color:#f8fafc;font-size:14px;font-weight:600;margin:0;">Julien N&#233;dellec</p>
-            <p style="color:#94a3b8;font-size:13px;margin:4px 0 0;">D&#233;veloppeur Full-Stack Angular / NestJS</p>
+            <p class="text" style="color:#1e293b;font-size:14px;font-weight:600;margin:0;">Julien N&#233;dellec</p>
+            <p class="muted" style="color:#475569;font-size:13px;margin:4px 0 0;">D&#233;veloppeur Full-Stack Angular / NestJS</p>
           </td></tr>
         </table>
       </td></tr>
     </table>
   </td></tr>
+  <!-- Footer -->
   <tr><td style="text-align:center;padding-top:32px;">
-    <p style="color:#475569;font-size:12px;margin:0;">&#169; {{year}} Julien N&#233;dellec. Tous droits r&#233;serv&#233;s.</p>
+    <p class="footer" style="color:#475569;font-size:12px;margin:0;">&#169; {{year}} Julien N&#233;dellec. Tous droits r&#233;serv&#233;s.</p>
   </td></tr>
 </table>
 </td></tr>

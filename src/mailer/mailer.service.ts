@@ -6,9 +6,12 @@ import { maskEmail } from './mailer.utils';
 
 const MAX_RETRIES = 3;
 
-/** Invitation calendrier : nodemailer l'ajoute en alternative `text/calendar` et en pièce jointe. */
+/** Invitation calendrier, envoyée en une seule alternative `text/calendar` (iMIP, RFC 6047). */
+/** Méthode iTIP (RFC 5546) de la partie `text/calendar` jointe à un email. */
+export type CalendarMethod = 'REQUEST' | 'PUBLISH' | 'CANCEL';
+
 export type IcalEvent = {
-  method: 'REQUEST' | 'CANCEL';
+  method: CalendarMethod;
   content: string;
 };
 
@@ -52,8 +55,15 @@ export class MailerService {
           to,
           subject,
           html,
+          // Pas d'option `icalEvent` : nodemailer y ajoute une pièce `application/ics`, et les
+          // clients affichent alors deux invitations pour un même événement.
           ...(icalEvent && {
-            icalEvent: { ...icalEvent, filename: 'invitation.ics' },
+            alternatives: [
+              {
+                contentType: `text/calendar; charset=utf-8; method=${icalEvent.method}`,
+                content: icalEvent.content,
+              },
+            ],
           }),
         });
         return;
