@@ -1,7 +1,7 @@
 import type { Booking } from '../database/schema';
 
 /** Moyen de joindre le rendez-vous : lien de visio ou numéro du visiteur. */
-export type Meeting = {
+type Meeting = {
   label: string;
   href: string;
   value: string;

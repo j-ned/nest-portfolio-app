@@ -120,6 +120,7 @@ pnpm db:down            # Stoppe le container
 - **Dev** : sortie `pino-pretty`.
 - **Prod/test** : JSON structuré.
 - **Redaction** automatique (liste unique `LOG_REDACT_PATHS`, `src/common/log-redact.ts`) : `authorization`, `cookie`, `set-cookie`, et dans le body `password`, `newPassword`, `currentPassword`, `code`, `token`, `refreshToken`, `phone`, `email`.
+- **Jeton du flux d'agenda** : le sérialiseur `req` (`serializeRequest`) ne garde que `id`, `method` et l'URL passée à `redactUrl`, qui remplace tout ce qui suit `/api/booking/feed/` par `[Filtered]` (insensible à la casse, comme le routage Express) et, en renfort, tout segment à la forme du jeton (43 caractères base64url puis `.ics`) : `//`, segment encodé (`%66eed`) ou route mal formée ne le laissent pas passer. Le `path` des corps d'erreur et le log des 5xx de `HttpExceptionFilter` passent par la même fonction.
 - **`/api/health`** est ignoré par le logger HTTP (évite de polluer les logs au rythme du pinger/healthcheck Docker).
 - Tout log `error` (level ≥ 50) est aussi envoyé à Sentry via `Sentry.captureMessage`, sauf s'il s'agit déjà d'une exception capturée par le filter global (anti-doublon).
 
@@ -424,6 +425,7 @@ Collecte de page-views/events custom du portfolio public + agrégation quotidien
 
 - **Désactivé si `SENTRY_DSN` est vide** - pas de crash, juste no-op.
 - `sendDefaultPii: false`, `beforeSend` filtre systématiquement cookies, headers `authorization`/`cookie`, et les champs sensibles du body (`password`, `newPassword`, `currentPassword`, `code`, `token`, `refreshToken`, `jwt`).
+- **Jeton du flux d'agenda** (`src/common/sentry-before-send.ts`) : les requêtes du flux sont exclues du span `http.server` (`ignoreIncomingRequests`), mais Nest ouvre quand même une transaction racine (`request_context.nestjs`, ou celle du filtre d'exceptions) qui porte l'URL concrète. `beforeSendTransaction` **écarte** donc toute transaction dont le nom, `request.url` ou une URL de `contexts.trace.data` désigne le flux, et masque par `redactUrl` toute URL du flux restante dans les autres (requête, données de trace, spans). `beforeSend` masque `request.url`, `transaction` et retire `query_string` des événements d'erreur. Toute nouvelle route portant un secret dans son chemin doit être ajoutée à `redactUrl`.
 - `tracesSampleRate` : 20% en prod, 100% en dev (ou override via `SENTRY_TRACES_SAMPLE_RATE`).
 - `ThrottlerException` est ignorée (pas de bruit Sentry sur un simple rate-limit).
 - **`GET /api/config`** expose un DSN Sentry **distinct** (`SENTRY_FRONTEND_DSN`) pour le frontend Angular - projet Sentry séparé du backend, volontairement public (il ship dans le bundle browser une fois fetché).

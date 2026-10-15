@@ -1,4 +1,4 @@
-import type { ErrorEvent } from '@sentry/nestjs';
+import type { ErrorEvent, Event } from '@sentry/nestjs';
 import { SENSITIVE_BODY_FIELDS, redactUrl } from './log-redact';
 
 const FILTERED = '[Filtered]';
@@ -58,7 +58,73 @@ export function sentryBeforeSend(event: ErrorEvent): ErrorEvent {
   return { ...named, request: scrubbed };
 }
 
-/** Requêtes entrantes jamais tracées : la sonde de santé et le flux d'agenda (le jeton est dans le chemin). */
+type TransactionEvent = Event & { type: 'transaction' };
+
+/** Vrai si l'URL désigne le flux d'agenda (ou en porte le jeton) : `redactUrl` la modifierait. */
+const isFeedUrl = (url: unknown): boolean =>
+  typeof url === 'string' && redactUrl(url) !== url;
+
+/** Clés de `contexts.trace.data` où l'instrumentation HTTP et Nest écrit l'URL de la requête. */
+const TRACE_URL_KEYS = [
+  'http.url',
+  'url',
+  'url.full',
+  'url.path',
+  'http.target',
+] as const;
+
+/** Passe chaque valeur chaîne de premier niveau (requête, données de span) à `redactUrl`. */
+const redactData = <D extends object>(data: D): D =>
+  Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [
+      key,
+      typeof value === 'string' ? redactUrl(value) : value,
+    ]),
+  ) as D;
+
+/**
+ * Écarte toute transaction du flux d'agenda : selon le chemin, Sentry l'ouvre sur le span de Nest
+ * (`request_context.nestjs`), sur `http.server` ou sur le filtre d'exceptions, et chacune porte l'URL
+ * concrète, donc le jeton. Les autres transactions passent, toute URL du flux restante masquée dans les
+ * champs sérialisés (nom, requête, données de trace, spans). Le parcours est borné à ces champs :
+ * `sdkProcessingMetadata` porte les scopes, circulaires, et n'est pas envoyé.
+ */
+export function sentryBeforeSendTransaction(
+  event: TransactionEvent,
+): TransactionEvent | null {
+  const { request, contexts, spans, transaction } = event;
+  const trace = contexts?.trace;
+  const traceData = trace?.data ?? {};
+  const designatesFeed =
+    isFeedUrl(transaction) ||
+    isFeedUrl(request?.url) ||
+    TRACE_URL_KEYS.some((key) => isFeedUrl(traceData[key]));
+  if (designatesFeed) return null;
+
+  return {
+    ...event,
+    ...(transaction !== undefined && { transaction: redactUrl(transaction) }),
+    ...(request && { request: redactData(request) }),
+    ...(trace?.data && {
+      contexts: {
+        ...contexts,
+        trace: { ...trace, data: redactData(trace.data) },
+      },
+    }),
+    ...(spans && {
+      spans: spans.map((span) => ({
+        ...span,
+        description: redactUrl(span.description),
+        data: redactData(span.data),
+      })),
+    }),
+  };
+}
+
+/**
+ * Requêtes entrantes jamais tracées : la sonde de santé et le flux d'agenda (le jeton est dans le chemin),
+ * quelle que soit la casse du chemin.
+ */
 export function isUntracedIncomingRequest(url: string): boolean {
-  return url.startsWith('/api/health') || url.startsWith('/api/booking/feed/');
+  return url.startsWith('/api/health') || isFeedUrl(url);
 }
