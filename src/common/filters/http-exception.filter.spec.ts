@@ -67,3 +67,40 @@ describe('HttpExceptionFilter', () => {
     );
   });
 });
+
+describe('HttpExceptionFilter sur les variantes du chemin du flux', () => {
+  let logError: jest.SpyInstance;
+
+  beforeEach(() => {
+    logError = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    logError.mockRestore();
+  });
+
+  it.each([
+    `/api/BOOKING/feed/${FEED_TOKEN}.ics`,
+    `/api/booking/Feed/${FEED_TOKEN}.ics`,
+    `/api/booking/feed/${FEED_TOKEN}.ICS`,
+    `/api//booking/feed/${FEED_TOKEN}.ics`,
+    `/api/booking/%66eed/${FEED_TOKEN}.ics`,
+  ])(
+    'Given %s, Then ni le corps 404 ni le log 500 ne portent le jeton',
+    (url) => {
+      const notFound = httpHost(url);
+      new HttpExceptionFilter().catch(
+        new NotFoundException('Not Found'),
+        notFound.host,
+      );
+      new HttpExceptionFilter().catch(new Error('boom'), httpHost(url).host);
+
+      expect(JSON.stringify(notFound.res.json.mock.calls)).not.toContain(
+        FEED_TOKEN,
+      );
+      expect(JSON.stringify(logError.mock.calls)).not.toContain(FEED_TOKEN);
+    },
+  );
+});

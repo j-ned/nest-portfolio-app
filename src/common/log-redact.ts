@@ -31,17 +31,27 @@ export const LOG_REDACT_PATHS = [
 /**
  * Le segment qui suit `/api/booking/feed/` est le jeton du flux d'agenda (un secret) : il est masqué avec
  * tout ce qui le suit (extension, query string). Non ancrée, la recherche couvre aussi l'URL absolue et le
- * nom de transaction (`GET /api/…`) que Sentry construit.
+ * nom de transaction (`GET /api/…`) que Sentry construit ; insensible à la casse comme le routage Express.
  */
-const FEED_PATH = /(\/api\/booking\/feed\/)[\s\S]*$/;
+const FEED_PATH = /(\/api\/booking\/feed\/)[\s\S]*$/i;
+
+/**
+ * Forme du jeton (43 caractères base64url suivis de `.ics`, point encodé compris), masquée où qu'elle
+ * soit : chemins que `FEED_PATH` ne reconnaît pas (`//`, segment encodé, route mal formée).
+ */
+const FEED_TOKEN_SEGMENT = /[A-Za-z0-9_-]{43}(?:\.|%2e)ics/gi;
+
+const FILTERED = '[Filtered]';
 
 export function redactUrl(url: string): string;
 export function redactUrl(url: string | undefined): string | undefined;
 export function redactUrl(url: string | undefined): string | undefined {
-  return url?.replace(FEED_PATH, '$1[Filtered]');
+  return url
+    ?.replace(FEED_PATH, `$1${FILTERED}`)
+    .replace(FEED_TOKEN_SEGMENT, FILTERED);
 }
 
-export type SerializedRequest = { id?: string; method?: string; url?: string };
+type SerializedRequest = { id?: string; method?: string; url?: string };
 
 /** Sérialiseur pino des requêtes : ni en-têtes ni corps, URL passée à `redactUrl`. */
 export function serializeRequest(req: SerializedRequest): SerializedRequest {

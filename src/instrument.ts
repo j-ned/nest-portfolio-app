@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/nestjs';
 import {
   isUntracedIncomingRequest,
   sentryBeforeSend,
+  sentryBeforeSendTransaction,
 } from './common/sentry-before-send';
 
 const dsn = process.env.SENTRY_DSN;
@@ -29,5 +30,6 @@ if (dsn) {
         : 1.0,
     ignoreErrors: ['ThrottlerException'],
     beforeSend: sentryBeforeSend,
+    beforeSendTransaction: sentryBeforeSendTransaction,
   });
 }

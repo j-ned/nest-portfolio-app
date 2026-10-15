@@ -151,3 +151,46 @@ describe('serializeRequest', () => {
     expect(line).toContain(`"url":"${REDACTED_FEED_URL}"`);
   });
 });
+
+describe('masquage du jeton du flux, variantes du chemin', () => {
+  const VARIANTS = [
+    `/api/BOOKING/feed/${FEED_TOKEN}.ics`,
+    `/api/booking/Feed/${FEED_TOKEN}.ics`,
+    `/api/booking/feed/${FEED_TOKEN}.ICS`,
+    `/api//booking/feed/${FEED_TOKEN}.ics`,
+    `/api/booking/%66eed/${FEED_TOKEN}.ics`,
+    `/api/booking/%66eed/${FEED_TOKEN}%2Eics?x=1`,
+    `https://api.nedellec-julien.fr/api/Booking/FEED/${FEED_TOKEN}.ics`,
+  ];
+
+  it.each(VARIANTS)(
+    'Given %s, Then redactUrl ne laisse pas le jeton',
+    (url) => {
+      const redacted = redactUrl(url);
+
+      expect(redacted).not.toContain(FEED_TOKEN);
+      expect(redacted).toContain('[Filtered]');
+    },
+  );
+
+  it.each(VARIANTS)(
+    'Given %s, Then la ligne pino du sérialiseur ne porte pas le jeton',
+    (url) => {
+      const lines: string[] = [];
+      pino(
+        { serializers: { req: serializeRequest } },
+        { write: (line: string) => lines.push(line) },
+      ).info({ req: { id: 'req-4', method: 'GET', url } }, 'request');
+
+      expect(lines.join('')).not.toContain(FEED_TOKEN);
+    },
+  );
+
+  it.each([
+    ['/api/booking/slots?token=abc'],
+    ['/api/booking/bookings/3f1c7a52-9d7e-4c35-8a39-1b2f2a0e6d11/cancel'],
+    [`/api/booking/${'a'.repeat(42)}.ics`],
+  ])('Given %s, sans forme de jeton, Then elle reste inchangée', (url) => {
+    expect(redactUrl(url)).toBe(url);
+  });
+});
