@@ -46,6 +46,12 @@ const CANCELLED_BY_OWNER = aBooking({
   cancelReason: 'Un imprévu de mon côté.',
 });
 
+const MANUAL_CALENDAR_NOTE =
+  'Si votre agenda avait enregistré l’invitation, le rendez-vous en est retiré ; si vous l’y aviez ajouté à la main, supprimez-le.';
+
+const introOf = (html: string | undefined): string | undefined =>
+  /<p class="muted"[^>]*>([^<]*)<\/p>/.exec(html ?? '')?.[1];
+
 const unfold = (ics: string): string => ics.replace(/\r\n[ \t]/g, '');
 const icsLines = (mail: SentMail | undefined): string[] =>
   unfold(mail?.icalEvent?.content ?? '').split('\r\n');
@@ -487,6 +493,48 @@ describe('BookingNotifier', () => {
         expect(mail.html).not.toContain('/rendez-vous/annulation');
       }
     });
+  });
+
+  describe('bookingCancelled, introductions', () => {
+    it.each([
+      [
+        'le visiteur',
+        CANCELLED_BY_VISITOR,
+        `Votre rendez-vous est bien annulé. ${MANUAL_CALENDAR_NOTE}`,
+      ],
+      [
+        'le propriétaire',
+        CANCELLED_BY_OWNER,
+        `Je dois malheureusement annuler notre rendez-vous. ${MANUAL_CALENDAR_NOTE} Vous pouvez réserver un autre créneau sur https://nedellec-julien.fr/rendez-vous.`,
+      ],
+    ])(
+      'Given une annulation par %s, Then l’introduction du visiteur lui dit de supprimer une copie ajoutée à la main',
+      async (_case, row, intro) => {
+        await notifier.bookingCancelled(row);
+
+        expect(introOf(mailTo('camille@example.com')?.html)).toBe(intro);
+      },
+    );
+
+    it.each([
+      [
+        'le visiteur',
+        CANCELLED_BY_VISITOR,
+        'Camille Martin (camille@example.com) a annulé son rendez-vous.',
+      ],
+      [
+        'le propriétaire',
+        CANCELLED_BY_OWNER,
+        'Vous avez annulé le rendez-vous de Camille Martin (camille@example.com) ; un email d’annulation lui a été envoyé.',
+      ],
+    ])(
+      'Given une annulation par %s, Then l’introduction du propriétaire est inchangée',
+      async (_case, row, intro) => {
+        await notifier.bookingCancelled(row);
+
+        expect(introOf(mailTo(OWNER)?.html)).toBe(intro);
+      },
+    );
   });
 
   describe('bookingReminder', () => {

@@ -13,6 +13,9 @@ import { toIcs } from './to-ics';
 const TEMPLATES_DIR = resolve(__dirname, 'mail-templates');
 const OWNER_NAME = 'Julien Nédellec';
 const SUMMARY = 'Appel de cadrage · 30 min';
+/** L'annulation iTIP retire une invitation enregistrée, pas une copie ajoutée à la main (spec 026). */
+const MANUAL_CALENDAR_NOTE =
+  'Si votre agenda avait enregistré l’invitation, le rendez-vous en est retiré ; si vous l’y aviez ajouté à la main, supprimez-le.';
 
 /**
  * Emails et invitations d'un rendez-vous. Toujours appelé après le commit, en fire-and-forget
@@ -67,8 +70,8 @@ export class BookingNotifier {
           reason,
           greeting: `Bonjour ${row.name},`,
           intro: byOwner
-            ? `Je dois malheureusement annuler notre rendez-vous. Il est retiré de votre agenda si vous l’y aviez ajouté. Vous pouvez réserver un autre créneau sur ${this.siteUrl()}/rendez-vous.`
-            : 'Votre rendez-vous est bien annulé. Il est retiré de votre agenda si vous l’y aviez ajouté.',
+            ? `Je dois malheureusement annuler notre rendez-vous. ${MANUAL_CALENDAR_NOTE} Vous pouvez réserver un autre créneau sur ${this.siteUrl()}/rendez-vous.`
+            : `Votre rendez-vous est bien annulé. ${MANUAL_CALENDAR_NOTE}`,
         }),
         icalEvent: this.invitation(row, 'CANCEL', { withAttendee: true }),
       }),

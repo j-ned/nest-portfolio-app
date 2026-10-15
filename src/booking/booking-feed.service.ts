@@ -71,6 +71,27 @@ export class BookingFeedService {
     });
   }
 
+  /** État du lien pour l'admin : le jeton est recalculé depuis le sel, jamais relu tel quel. */
+  async readSubscription(): Promise<FeedSubscription> {
+    const secret = this.config.bookingFeedSecret;
+    if (!secret) return { status: 'unconfigured' };
+
+    const [setting] = await this.db
+      .select({
+        feedSalt: bookingSettings.feedSalt,
+        feedCreatedAt: bookingSettings.feedCreatedAt,
+      })
+      .from(bookingSettings)
+      .where(eq(bookingSettings.id, BOOKING_SETTING_ROW_ID))
+      .limit(1);
+    if (!setting?.feedSalt || !setting.feedCreatedAt) return { status: 'none' };
+    return {
+      status: 'active',
+      token: deriveFeedToken(secret, setting.feedSalt),
+      createdAt: setting.feedCreatedAt.toISOString(),
+    };
+  }
+
   /** Nouveau sel : l'ancien lien cesse de fonctionner dès la requête suivante. */
   async regenerate(): Promise<FeedSubscription & { status: 'active' }> {
     const secret = this.config.bookingFeedSecret;

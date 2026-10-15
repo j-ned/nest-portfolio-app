@@ -208,7 +208,119 @@ describe('BookingFeedService', () => {
     );
   });
 
+  describe('readSubscription', () => {
+    const CREATED_AT = new Date('2026-10-15T08:32:00.000Z');
+    const FROZEN_TOKEN = 'XYJXH9MoGdppkZYT0jI3g2rP-qFcqKBWL0budyMj488';
+
+    it('Given aucun secret configuré, Then unconfigured sans aucune lecture de la base', async () => {
+      config.bookingFeedSecret = undefined;
+
+      await expect(service.readSubscription()).resolves.toEqual({
+        status: 'unconfigured',
+      });
+      expect(dbCalls()).toBe(0);
+    });
+
+    it.each([
+      ['aucune ligne de réglage', []],
+      ['un réglage sans sel', [{ feedSalt: null, feedCreatedAt: null }]],
+    ])('Given %s, Then none', async (_case, rows) => {
+      db.limit.mockResolvedValueOnce(rows);
+
+      await expect(service.readSubscription()).resolves.toEqual({
+        status: 'none',
+      });
+    });
+
+    it('Given un sel et sa date, Then active avec le jeton dérivé du secret et du sel, et la date ISO', async () => {
+      db.limit.mockResolvedValueOnce([
+        { feedSalt: SALT, feedCreatedAt: CREATED_AT },
+      ]);
+
+      await expect(service.readSubscription()).resolves.toEqual({
+        status: 'active',
+        token: FROZEN_TOKEN,
+        createdAt: '2026-10-15T08:32:00.000Z',
+      });
+    });
+
+    it('Given un sel, Then il est lu dans la ligne main de booking_setting', async () => {
+      db.limit.mockResolvedValueOnce([
+        { feedSalt: SALT, feedCreatedAt: CREATED_AT },
+      ]);
+
+      await service.readSubscription();
+
+      expect(db.from).toHaveBeenCalledTimes(1);
+      const [table] = db.from.mock.calls[0] as [Table];
+      expect(getTableName(table)).toBe('booking_setting');
+      expect(render((db.where.mock.calls as unknown[][])[0][0]).params).toEqual(
+        ['main'],
+      );
+    });
+
+    it('Given un sel inchangé, When le lien est relu deux fois, Then le même jeton et la même date', async () => {
+      db.limit
+        .mockResolvedValueOnce([{ feedSalt: SALT, feedCreatedAt: CREATED_AT }])
+        .mockResolvedValueOnce([{ feedSalt: SALT, feedCreatedAt: CREATED_AT }]);
+
+      const first = await service.readSubscription();
+      const second = await service.readSubscription();
+
+      expect(first).toEqual({
+        status: 'active',
+        token: FROZEN_TOKEN,
+        createdAt: '2026-10-15T08:32:00.000Z',
+      });
+      expect(second).toEqual(first);
+    });
+
+    it('Given un lien qui vient d’être régénéré, When il est relu, Then le jeton et la date rendus à la régénération', async () => {
+      db.returning.mockResolvedValueOnce([{ feedCreatedAt: CREATED_AT }]);
+      const regenerated = await service.regenerate();
+      const [values] = db.values.mock.calls[0] as [{ feedSalt: string }];
+      db.limit.mockResolvedValueOnce([
+        { feedSalt: values.feedSalt, feedCreatedAt: CREATED_AT },
+      ]);
+
+      await expect(service.readSubscription()).resolves.toEqual(regenerated);
+    });
+
+    it('Given un lien actif, Then ni le sel ni le secret ne figurent dans la réponse', async () => {
+      db.limit.mockResolvedValueOnce([
+        { feedSalt: SALT, feedCreatedAt: CREATED_AT },
+      ]);
+
+      const subscription = await service.readSubscription();
+
+      expect(Object.keys(subscription).sort()).toEqual([
+        'createdAt',
+        'status',
+        'token',
+      ]);
+      const serialized = JSON.stringify(subscription);
+      expect(serialized).not.toContain(SALT);
+      expect(serialized).not.toContain(SECRET);
+    });
+  });
+
   describe('regenerate', () => {
+    it('Given un lien régénéré, Then l’ancien jeton ne rend plus de flux et le nouveau en rend un', async () => {
+      db.returning.mockResolvedValueOnce([{ feedCreatedAt: new Date() }]);
+      const { token } = await service.regenerate();
+      const [values] = db.values.mock.calls[0] as [{ feedSalt: string }];
+      db.limit
+        .mockResolvedValueOnce([{ feedSalt: values.feedSalt }])
+        .mockResolvedValueOnce([{ feedSalt: values.feedSalt }]);
+      db.orderBy.mockResolvedValueOnce([UPCOMING]);
+
+      await expect(service.renderFeed(`${TOKEN}.ics`)).resolves.toBeNull();
+      const feed = await service.renderFeed(`${token}.ics`);
+
+      expect(token).not.toBe(TOKEN);
+      expect(feed?.startsWith('BEGIN:VCALENDAR\r\n')).toBe(true);
+    });
+
     it('Given aucun secret configuré, Then 409 feed_not_configured sans aucune écriture', async () => {
       config.bookingFeedSecret = undefined;
 

@@ -339,7 +339,7 @@ Formulaire de contact public + gestion admin des messages.
 
 Prise de rendez-vous publique (appel de cadrage de 30 min, visio ou téléphone) et gestion admin (spec 024, ADR 0026). Module `src/booking/`.
 
-**Routes sous `/api/booking`** : publiques `GET /slots`, `POST /bookings`, `POST /bookings/cancel/preview`, `POST /bookings/cancel` ; admin (session) `GET|PUT /availability/rules` (168 plages au plus), `GET|POST /availability/closures`, `DELETE /availability/closures/:id`, `GET /availability/calendar?month=YYYY-MM`, `PUT /availability/days/:date`, `PUT /availability/settings`, `GET /bookings`, `GET /bookings/upcoming-count`, `PATCH /bookings/:id/cancel`.
+**Routes sous `/api/booking`** : publiques `GET /slots`, `POST /bookings`, `POST /bookings/cancel/preview`, `POST /bookings/cancel` ; admin (session) `GET|PUT /availability/rules` (168 plages au plus), `GET|POST /availability/closures`, `DELETE /availability/closures/:id`, `GET /availability/calendar?month=YYYY-MM`, `PUT /availability/days/:date`, `PUT /availability/settings`, `GET /bookings`, `GET /bookings/upcoming-count`, `PATCH /bookings/:id/cancel`, `GET|POST /feed-subscription` ; publique par jeton `GET /feed/<jeton>.ics`.
 
 **Calendrier des disponibilités** (spec 025, ADR 0027). Un jour est résolu côté serveur par une seule priorité (`closedReason`, `src/booking/resolve-day.ts`), partagée par les créneaux publics et le calendrier admin : passé → fermeture par période → exception par date → jour férié → semaine type.
 
@@ -352,6 +352,10 @@ Prise de rendez-vous publique (appel de cadrage de 30 min, visio ou téléphone)
 **Variables d'env** : `BOOKING_VIDEO_URL_BASE` (base des salles de visio, défaut `https://meet.jit.si`) et `PUBLIC_SITE_URL` (origine des liens envoyés par email, défaut `https://nedellec-julien.fr`).
 
 **Abonnement d'agenda** (spec 026, ADR 0028) : `GET /api/booking/feed/<jeton>.ics`, public et sans garde (un client d'abonnement fait un `GET` nu), rend en `text/calendar` les rendez-vous confirmés terminés depuis moins de 6 mois ou à venir (même borne que la purge), avec `Cache-Control: no-store` et `X-Robots-Tag: noindex, nofollow`. Le jeton est dérivé, jamais stocké : `base64url(HMAC-SHA256(BOOKING_FEED_SECRET, 'booking-feed:' + sel))`, le sel étant dans `booking_setting.feed_salt`. Régénérer tire un nouveau sel : l'ancien lien répond 404 dès la requête suivante. Secret absent, fichier malformé, aucun lien créé ou jeton faux : même 404.
+
+- **Lecture admin** : `GET /api/booking/feed-subscription` (session) rend `{ status: 'unconfigured' }` sans secret, `{ status: 'none' }` tant qu'aucun lien n'a été créé, sinon `{ status: 'active', token, createdAt }` : le jeton est recalculé depuis le sel à chaque lecture, ni le sel ni le secret ne sortent. Le front compose l'URL du flux.
+- **Création et régénération** : `POST /api/booking/feed-subscription` (session, sans corps) tire un nouveau sel aléatoire (16 octets) et rend 201 avec le nouveau lien actif ; l'ancien répond 404 dès la requête suivante. L'upsert de `booking_setting` ne touche pas `close_public_holidays`. Sans secret : 409 `feed_not_configured`, rien n'est écrit. Les deux routes répondent en `Cache-Control: no-store`.
+- **Rotation du secret** : changer `BOOKING_FEED_SECRET` dans Dokploy puis redéployer invalide **tous** les liens (404) sans toucher la base ; l'admin relit alors un nouveau jeton (même sel, nouveau secret) qu'il faut réabonner dans l'agenda. Retirer la variable rend l'abonnement non configuré (flux en 404, `unconfigured`).
 
 **Crons** (`BookingScheduler`, UTC, surveillés par Sentry Crons) :
 
