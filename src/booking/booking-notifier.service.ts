@@ -6,7 +6,8 @@ import { OWNER_EMAIL } from '../mailer/mailer.constants';
 import { MailerService } from '../mailer/mailer.service';
 import { loadTemplate, renderTemplate } from '../mailer/mailer.utils';
 import { formatParisLong } from './paris-time';
-import { type IcsMethod, toIcs } from './to-ics';
+import type { CalendarMethod } from '../mailer/mailer.service';
+import { toIcs } from './to-ics';
 
 const TEMPLATES_DIR = resolve(__dirname, 'mail-templates');
 const OWNER_NAME = 'Julien Nédellec';
@@ -35,7 +36,6 @@ export class BookingNotifier {
 
   async bookingConfirmed(row: Booking, token: string): Promise<void> {
     const variables = this.commonVariables(row);
-    const icalEvent = this.invitation(row, 'REQUEST');
     await Promise.all([
       this.mailer.sendMail({
         to: row.email,
@@ -44,7 +44,7 @@ export class BookingNotifier {
           ...variables,
           cancelUrl: `${this.siteUrl()}/rendez-vous/annulation#${token}`,
         }),
-        icalEvent,
+        icalEvent: this.invitation(row, 'REQUEST', { withAttendee: true }),
       }),
       this.mailer.sendMail({
         to: OWNER_EMAIL,
@@ -55,7 +55,7 @@ export class BookingNotifier {
           company: row.company ?? '—',
           message: row.message,
         }),
-        icalEvent,
+        icalEvent: this.invitation(row, 'PUBLISH', { withAttendee: false }),
       }),
     ]);
   }
@@ -63,7 +63,6 @@ export class BookingNotifier {
   /** Rédaction déclinée selon la partie qui annule ; le motif du propriétaire figure aux deux emails. */
   async bookingCancelled(row: Booking): Promise<void> {
     const variables = this.commonVariables(row);
-    const icalEvent = this.invitation(row, 'CANCEL');
     const byOwner = row.cancelledBy === 'owner';
     const reason = (byOwner && row.cancelReason) || '';
     const template = cancelledTemplate(reason !== '');
@@ -79,7 +78,7 @@ export class BookingNotifier {
             ? `Je dois malheureusement annuler notre rendez-vous. Il est retiré de votre agenda si vous l’y aviez ajouté. Vous pouvez réserver un autre créneau sur ${this.siteUrl()}/rendez-vous.`
             : 'Votre rendez-vous est bien annulé. Il est retiré de votre agenda si vous l’y aviez ajouté.',
         }),
-        icalEvent,
+        icalEvent: this.invitation(row, 'CANCEL', { withAttendee: true }),
       }),
       this.mailer.sendMail({
         to: OWNER_EMAIL,
@@ -92,7 +91,7 @@ export class BookingNotifier {
             ? `Vous avez annulé le rendez-vous de ${row.name} (${row.email}) ; un email d’annulation lui a été envoyé.`
             : `${row.name} (${row.email}) a annulé son rendez-vous.`,
         }),
-        icalEvent,
+        icalEvent: this.invitation(row, 'CANCEL', { withAttendee: false }),
       }),
     ]);
   }
@@ -124,8 +123,16 @@ export class BookingNotifier {
     };
   }
 
-  /** Même invitation (même UID) pour les deux destinataires, horodatée à l'envoi. */
-  private invitation(row: Booking, method: IcsMethod) {
+  /**
+   * Même événement (même UID) pour les deux destinataires, horodaté à l'envoi. Le visiteur est
+   * invité (`REQUEST`, participant nommé) ; le propriétaire, organisateur et destinataire à la
+   * fois, reçoit l'événement publié (`PUBLISH`, sans participant) qu'un client accepte d'ajouter.
+   */
+  private invitation(
+    row: Booking,
+    method: CalendarMethod,
+    { withAttendee }: { withAttendee: boolean },
+  ) {
     const meeting = meetingOf(row);
     return {
       method,
@@ -139,7 +146,9 @@ export class BookingNotifier {
         description: `Appel de cadrage de 30 minutes entre ${OWNER_NAME} et ${row.name}.\n${meeting.label} : ${meeting.value}`,
         location: meeting.location,
         organizer: { name: OWNER_NAME, email: OWNER_EMAIL },
-        attendee: { name: row.name, email: row.email },
+        ...(withAttendee && {
+          attendee: { name: row.name, email: row.email },
+        }),
       }),
     };
   }
