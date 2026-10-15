@@ -183,6 +183,13 @@
       "when": 1791998092919,
       "tag": "0025_availability_override",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792083709348,
+      "tag": "0026_booking_feed",
+      "breakpoints": true
     }
   ]
 }

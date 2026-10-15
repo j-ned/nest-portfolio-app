@@ -5,6 +5,7 @@ import type { Booking } from '../database/schema';
 import { OWNER_EMAIL } from '../mailer/mailer.constants';
 import { MailerService } from '../mailer/mailer.service';
 import { loadTemplate, renderTemplate } from '../mailer/mailer.utils';
+import { meetingOf } from './booking-meeting';
 import { formatParisLong } from './paris-time';
 import type { CalendarMethod } from '../mailer/mailer.service';
 import { toIcs } from './to-ics';
@@ -12,15 +13,6 @@ import { toIcs } from './to-ics';
 const TEMPLATES_DIR = resolve(__dirname, 'mail-templates');
 const OWNER_NAME = 'Julien Nédellec';
 const SUMMARY = 'Appel de cadrage · 30 min';
-
-/** Moyen de joindre le rendez-vous : lien de visio ou numéro du visiteur. */
-type Meeting = {
-  label: string;
-  href: string;
-  value: string;
-  hint: string;
-  location: string;
-};
 
 /**
  * Emails et invitations d'un rendez-vous. Toujours appelé après le commit, en fire-and-forget
@@ -153,26 +145,6 @@ export class BookingNotifier {
     };
   }
 }
-
-const meetingOf = (row: Booking): Meeting => {
-  if (row.format === 'video' && row.videoUrl) {
-    return {
-      label: 'Lien de visio',
-      href: row.videoUrl,
-      value: row.videoUrl,
-      hint: 'À l’heure du rendez-vous, ouvrez ce lien dans votre navigateur : aucune installation n’est nécessaire.',
-      location: row.videoUrl,
-    };
-  }
-  const phone = row.phone ?? '';
-  return {
-    label: 'Téléphone',
-    href: `tel:${phone.replace(/[^+0-9]/g, '')}`,
-    value: phone,
-    hint: 'Je vous appellerai à ce numéro à l’heure du rendez-vous.',
-    location: `Téléphone : ${phone}`,
-  };
-};
 
 const templateOf = (name: string): string =>
   loadTemplate(resolve(TEMPLATES_DIR, name));
