@@ -13,9 +13,13 @@ import { HttpExceptionFilter } from '../common/filters/http-exception.filter';
 import { AppConfigService } from '../config/app-config.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { type Booking, bookings, schema } from '../database/schema';
+import { AvailabilityService } from './availability.service';
+import { BookingAdminController } from './booking-admin.controller';
 import { BookingFeedController } from './booking-feed.controller';
 import { BookingFeedService } from './booking-feed.service';
+import { BookingService } from './booking.service';
 import { aBooking } from './booking-test-builders';
 
 const ADMIN_URL = process.env.BOOKING_IT_DATABASE_URL;
@@ -54,6 +58,35 @@ const DAY = 24 * 3_600_000;
     await app.init();
     apps.push(app);
     return { app, feed: module.get(BookingFeedService) };
+  };
+
+  const createAdminApp = async (
+    secret: string | undefined,
+  ): Promise<INestApplication<App>> => {
+    const module = await Test.createTestingModule({
+      controllers: [BookingAdminController, BookingFeedController],
+      providers: [
+        BookingFeedService,
+        { provide: AvailabilityService, useValue: {} },
+        { provide: BookingService, useValue: {} },
+        { provide: DRIZZLE, useValue: db },
+        {
+          provide: AppConfigService,
+          useValue: {
+            bookingFeedSecret: secret,
+            publicSiteUrl: 'https://nedellec-julien.fr',
+          },
+        },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+    const app = module.createNestApplication<INestApplication<App>>();
+    app.useGlobalFilters(new HttpExceptionFilter());
+    await app.init();
+    apps.push(app);
+    return app;
   };
 
   const insertBooking = async (
@@ -183,5 +216,113 @@ const DAY = 24 * 3_600_000;
     await insertBooking(3 * DAY);
 
     expect((await getFeed(app, 'A'.repeat(43))).status).toBe(404);
+  });
+
+  describe('administration du lien', () => {
+    const SUBSCRIPTION_URL = '/booking/feed-subscription';
+    const readLink = (app: INestApplication<App>) =>
+      request(app.getHttpServer()).get(SUBSCRIPTION_URL);
+    const createLink = (app: INestApplication<App>) =>
+      request(app.getHttpServer()).post(SUBSCRIPTION_URL);
+
+    it('Given aucun lien, When l’admin le crée puis le relit, Then le même jeton et la même date, et le flux répond', async () => {
+      const app = await createAdminApp(SECRET);
+      await insertBooking(3 * DAY);
+
+      const before = await readLink(app);
+      const created = await createLink(app);
+      const reread = await readLink(app);
+
+      expect(before.status).toBe(200);
+      expect(before.body).toEqual({ status: 'none' });
+      expect(created.status).toBe(201);
+      expect(Object.keys(created.body as object).sort()).toEqual([
+        'createdAt',
+        'status',
+        'token',
+      ]);
+      const link = created.body as { status: string; token: string };
+      expect(link.status).toBe('active');
+      expect(link.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(reread.status).toBe(200);
+      expect(reread.body).toEqual(created.body);
+      expect((await getFeed(app, link.token)).status).toBe(200);
+    });
+
+    it('Given un lien créé, Then la date rendue est celle enregistrée et ni le sel ni le secret ne sortent', async () => {
+      const app = await createAdminApp(SECRET);
+
+      const created = await createLink(app);
+
+      expect(created.status).toBe(201);
+      const [stored] = await db.execute<{
+        feed_salt: string;
+        feed_created_at: string;
+      }>(
+        sql`select feed_salt, feed_created_at::text as feed_created_at from booking_setting where id = 'main'`,
+      );
+      const body = created.body as { createdAt: string };
+      expect(new Date(body.createdAt).getTime()).toBe(
+        new Date(stored.feed_created_at).getTime(),
+      );
+      for (const res of [created, await readLink(app)]) {
+        expect(res.text).not.toContain(stored.feed_salt);
+        expect(res.text).not.toContain(SECRET);
+      }
+    });
+
+    it('Given un lien régénéré par l’admin, Then l’ancien jeton reçoit 404 et le nouveau 200', async () => {
+      const app = await createAdminApp(SECRET);
+      await insertBooking(3 * DAY);
+      const previous = (await createLink(app)).body as { token: string };
+
+      const current = await createLink(app);
+
+      expect(current.status).toBe(201);
+      const next = current.body as { token: string };
+      expect(next.token).not.toBe(previous.token);
+      expect((await readLink(app)).body).toEqual(current.body);
+      expect((await getFeed(app, previous.token)).status).toBe(404);
+      expect((await getFeed(app, next.token)).status).toBe(200);
+    });
+
+    it.each([false, true])(
+      'Given les fériés réglés à %s, When le lien est créé, Then le réglage des fériés est inchangé',
+      async (closePublicHolidays) => {
+        await db.execute(
+          sql`insert into booking_setting (id, close_public_holidays) values ('main', ${closePublicHolidays})`,
+        );
+        const app = await createAdminApp(SECRET);
+
+        expect((await createLink(app)).status).toBe(201);
+
+        const [setting] = await db.execute<{
+          close_public_holidays: boolean;
+        }>(
+          sql`select close_public_holidays from booking_setting where id = 'main'`,
+        );
+        expect(setting.close_public_holidays).toBe(closePublicHolidays);
+      },
+    );
+
+    it('Given aucun secret, Then la lecture rend unconfigured et la création 409 feed_not_configured sans rien écrire', async () => {
+      const app = await createAdminApp(undefined);
+
+      const read = await readLink(app);
+      const created = await createLink(app);
+
+      expect(read.status).toBe(200);
+      expect(read.body).toEqual({ status: 'unconfigured' });
+      expect(created.status).toBe(409);
+      expect(created.body).toEqual(
+        expect.objectContaining({
+          statusCode: 409,
+          error: 'feed_not_configured',
+          message: 'Abonnement non configuré.',
+        }),
+      );
+      const rows = await db.execute(sql`select id from booking_setting`);
+      expect(rows).toHaveLength(0);
+    });
   });
 });

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -26,6 +27,10 @@ import {
   AvailabilityService,
   type CalendarMonthResponse,
 } from './availability.service';
+import {
+  BookingFeedService,
+  type FeedSubscription,
+} from './booking-feed.service';
 import { type AdminBooking, BookingService } from './booking.service';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { CancelBookingByOwnerDto } from './dto/cancel-booking-by-owner.dto';
@@ -55,6 +60,7 @@ export class BookingAdminController {
   constructor(
     private readonly availability: AvailabilityService,
     private readonly booking: BookingService,
+    private readonly feed: BookingFeedService,
   ) {}
 
   @Get('availability/rules')
@@ -176,6 +182,27 @@ export class BookingAdminController {
     @Body() { reason }: CancelBookingByOwnerDto,
   ): Promise<AdminBooking> {
     return this.booking.cancelByOwner(id, reason);
+  }
+
+  @Get('feed-subscription')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Calendar subscription link state (unconfigured, none, active)',
+  })
+  @ApiResponse({ status: 200, description: 'The subscription state' })
+  readFeedSubscription(): Promise<FeedSubscription> {
+    return this.feed.readSubscription();
+  }
+
+  @Post('feed-subscription')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Create or regenerate the calendar link (the previous one stops)',
+  })
+  @ApiResponse({ status: 201, description: 'The new active link' })
+  @ApiResponse({ status: 409, description: 'feed_not_configured' })
+  regenerateFeedSubscription(): Promise<FeedSubscription> {
+    return this.feed.regenerate();
   }
 }
 
