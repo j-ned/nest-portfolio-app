@@ -1,6 +1,6 @@
 # Portfolio NestJS Backend
 
-Backend NestJS du portfolio J-Ned. Toutes les routes sont montées sous le préfixe global **`/api`** (`app.setGlobalPrefix('api')` dans `src/main.ts`) - le Swagger UI fait exception, il reste à la racine (`/docs`, non préfixé).
+Backend NestJS du portfolio J-Ned. Toutes les routes sont montées sous le préfixe global **`/api`** (`app.setGlobalPrefix('api')` dans `src/app.setup.ts`) - le Swagger UI fait exception, il reste à la racine (`/docs`, non préfixé). Toute route inconnue, sous `/api` ou hors préfixe, répond par la même erreur JSON (`HttpExceptionFilter`, repli `src/common/filters/out-of-prefix-fallback.ts` depuis NestJS 12).
 
 ## Quickstart
 
@@ -181,7 +181,7 @@ create(@CurrentUser() user: User, @Body() dto: CreateSomethingDto) { /* ... */ }
 
 ## Validation HTTP
 
-`ValidationPipe` global (`src/main.ts`) :
+`ValidationPipe` global (`src/app.setup.ts`) :
 
 - `whitelist: true` - strippe les champs non déclarés dans le DTO.
 - `forbidNonWhitelisted: true` - **400 si le client envoie un champ inattendu** (détection précoce de bugs frontend).
@@ -189,14 +189,15 @@ create(@CurrentUser() user: User, @Body() dto: CreateSomethingDto) { /* ... */ }
 
 ## Tests
 
-- **Unitaires** : `*.spec.ts` à côté du code source, runner Jest (config inline dans `package.json`, `rootDir: src`).
-- **E2E** : harnais `test/jest-e2e.json` présent, `pnpm test:e2e` exécutable, mais aucun test e2e écrit à ce jour.
+- **Unitaires** : `*.spec.ts` à côté du code source, runner Jest (config inline dans `package.json`, `rootDir: src`). NestJS 12 est publié en ESM pur : comme le template officiel Nest 12 CommonJS, Jest tourne sous `node --experimental-vm-modules` (support `require(esm)` de Jest, Node ≥ 24.9), avertissement `ExperimentalWarning` masqué.
+- **Intégration HTTP** : `src/app.setup.spec.ts` monte la configuration HTTP réelle (`setupApp`) et vérifie les erreurs JSON, Swagger et les replis.
+- **E2E** : harnais `test/jest-e2e.json` présent mais aucun test e2e écrit : `pnpm test:e2e` sort en 1 (« No tests found »).
 
 ```bash
 pnpm test           # Tous les tests unitaires
 pnpm test:watch     # Mode watch
 pnpm test:cov       # Avec coverage
-pnpm test:e2e       # E2E (harnais vide)
+pnpm test:e2e       # E2E (harnais vide, sort en 1)
 ```
 
 ## Scripts pnpm - récap
@@ -211,7 +212,7 @@ Liste réelle (`package.json`) - pas de script `s3:*` (démarrer MinIO à la mai
 | `pnpm start:prod`                                                   | `node dist/main` (nécessite `pnpm build` avant)                                                                          |
 | `pnpm build`                                                        | `nest build` → `dist/`                                                                                                   |
 | `pnpm lint` / `pnpm format`                                         | ESLint (`--fix`) / Prettier                                                                                              |
-| `pnpm test` / `test:watch` / `test:cov` / `test:e2e` / `test:debug` | Jest                                                                                                                     |
+| `pnpm test` / `test:watch` / `test:cov` / `test:e2e` / `test:debug` | Jest (sous `--experimental-vm-modules`, cf. Tests)                                                                       |
 | `pnpm db:up` / `db:down` / `db:wait`                                | Cycle container Postgres (`podman compose`)                                                                              |
 | `pnpm db:generate` / `db:migrate` / `db:studio`                     | Drizzle Kit                                                                                                              |
 | `pnpm db:seed`                                                      | Crée l'admin (idempotent, `ADMIN_EMAIL`/`ADMIN_INITIAL_PASSWORD`)                                                        |
@@ -219,6 +220,7 @@ Liste réelle (`package.json`) - pas de script `s3:*` (démarrer MinIO à la mai
 | `pnpm db:reset`                                                     | Wipe volume + recrée + migrate + seed (dev only)                                                                         |
 | `pnpm mail:up`                                                      | Démarre le container Mailpit                                                                                             |
 | `pnpm sentry:sourcemaps`                                            | Upload des sourcemaps vers Sentry (`scripts/upload-sentry-sourcemaps.mjs`)                                               |
+| `pnpm sentry:check-instrumentation`                                | Vérifie que Sentry trace `@Injectable`, `@Catch`, `@Cron` (`scripts/check-sentry-instrumentation.cjs`, après `pnpm build`) |
 
 ## S3 Storage
 
@@ -409,7 +411,7 @@ Collecte de page-views/events custom du portfolio public + agrégation quotidien
 
 **Cron** : `@Cron('0 0 * * *', { timeZone: 'UTC' })` dans `AnalyticsAggregatorService` - agrège J-1 dans `daily_stat` (upsert idempotent), purge `page_view` + `analytics_event` de plus de 30 jours.
 
-**`app.set('trust proxy', 1)`** activé dans `main.ts` pour lire `X-Forwarded-For` correctement derrière un reverse proxy.
+**`app.set('trust proxy', 1)`** activé dans `src/app.setup.ts` pour lire `X-Forwarded-For` correctement derrière un reverse proxy.
 
 ## Observabilité (Sentry)
 
@@ -421,6 +423,7 @@ Collecte de page-views/events custom du portfolio public + agrégation quotidien
 - `ThrottlerException` est ignorée (pas de bruit Sentry sur un simple rate-limit).
 - **`GET /api/config`** expose un DSN Sentry **distinct** (`SENTRY_FRONTEND_DSN`) pour le frontend Angular - projet Sentry séparé du backend, volontairement public (il ship dans le bundle browser une fois fetché).
 - `pnpm sentry:sourcemaps` (`scripts/upload-sentry-sourcemaps.mjs`) : upload des sourcemaps vers Sentry en CI/CD.
+- `pnpm sentry:check-instrumentation` (`scripts/check-sentry-instrumentation.cjs`, après `pnpm build`) : décore des classes témoins avec les vrais `@Injectable`, `@Catch`, `@Cron` après `dist/instrument.js` et vérifie les marques posées par Sentry ; exit 1 si l'un n'est pas tracé.
 
 ## Docker
 

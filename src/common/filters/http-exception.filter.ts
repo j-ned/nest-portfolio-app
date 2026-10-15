@@ -42,18 +42,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? { message: baseError, error: HttpStatus[status] ?? 'Error' }
         : (baseError as { message?: string | string[]; error?: string });
 
+    // `originalUrl` : URL complète, préfixe global compris. Depuis NestJS 12, le gestionnaire
+    // des routes inconnues est monté sous le préfixe et Express y retire `/api` de `req.url`.
+    const path = req.originalUrl ?? req.url;
     const payload: ErrorPayload = {
       statusCode: status,
       error: errorBody.error ?? HttpStatus[status] ?? 'Error',
       message: errorBody.message ?? 'Unexpected error',
-      path: req.url,
+      path,
       timestamp: new Date().toISOString(),
     };
 
     if (status >= 500) {
       this.logger.error(
-        { err: exception, path: req.url, method: req.method },
-        `Unhandled ${status} on ${req.method} ${req.url}`,
+        { err: exception, path, method: req.method },
+        `Unhandled ${status} on ${req.method} ${path}`,
       );
     }
     res.status(status).json(payload);
