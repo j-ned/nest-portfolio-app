@@ -5,6 +5,7 @@ import type { Booking } from '../database/schema';
 import { OWNER_EMAIL } from '../mailer/mailer.constants';
 import { MailerService } from '../mailer/mailer.service';
 import { loadTemplate, renderTemplate } from '../mailer/mailer.utils';
+import { meetingOf } from './booking-meeting';
 import { formatParisLong } from './paris-time';
 import type { CalendarMethod } from '../mailer/mailer.service';
 import { toIcs } from './to-ics';
@@ -12,15 +13,9 @@ import { toIcs } from './to-ics';
 const TEMPLATES_DIR = resolve(__dirname, 'mail-templates');
 const OWNER_NAME = 'Julien Nédellec';
 const SUMMARY = 'Appel de cadrage · 30 min';
-
-/** Moyen de joindre le rendez-vous : lien de visio ou numéro du visiteur. */
-type Meeting = {
-  label: string;
-  href: string;
-  value: string;
-  hint: string;
-  location: string;
-};
+/** L'annulation iTIP retire une invitation enregistrée, pas une copie ajoutée à la main (spec 026). */
+const MANUAL_CALENDAR_NOTE =
+  'Si votre agenda avait enregistré l’invitation, le rendez-vous en est retiré ; si vous l’y aviez ajouté à la main, supprimez-le.';
 
 /**
  * Emails et invitations d'un rendez-vous. Toujours appelé après le commit, en fire-and-forget
@@ -75,8 +70,8 @@ export class BookingNotifier {
           reason,
           greeting: `Bonjour ${row.name},`,
           intro: byOwner
-            ? `Je dois malheureusement annuler notre rendez-vous. Il est retiré de votre agenda si vous l’y aviez ajouté. Vous pouvez réserver un autre créneau sur ${this.siteUrl()}/rendez-vous.`
-            : 'Votre rendez-vous est bien annulé. Il est retiré de votre agenda si vous l’y aviez ajouté.',
+            ? `Je dois malheureusement annuler notre rendez-vous. ${MANUAL_CALENDAR_NOTE} Vous pouvez réserver un autre créneau sur ${this.siteUrl()}/rendez-vous.`
+            : `Votre rendez-vous est bien annulé. ${MANUAL_CALENDAR_NOTE}`,
         }),
         icalEvent: this.invitation(row, 'CANCEL', { withAttendee: true }),
       }),
@@ -153,26 +148,6 @@ export class BookingNotifier {
     };
   }
 }
-
-const meetingOf = (row: Booking): Meeting => {
-  if (row.format === 'video' && row.videoUrl) {
-    return {
-      label: 'Lien de visio',
-      href: row.videoUrl,
-      value: row.videoUrl,
-      hint: 'À l’heure du rendez-vous, ouvrez ce lien dans votre navigateur : aucune installation n’est nécessaire.',
-      location: row.videoUrl,
-    };
-  }
-  const phone = row.phone ?? '';
-  return {
-    label: 'Téléphone',
-    href: `tel:${phone.replace(/[^+0-9]/g, '')}`,
-    value: phone,
-    hint: 'Je vous appellerai à ce numéro à l’heure du rendez-vous.',
-    location: `Téléphone : ${phone}`,
-  };
-};
 
 const templateOf = (name: string): string =>
   loadTemplate(resolve(TEMPLATES_DIR, name));

@@ -78,9 +78,16 @@ export const bookingSettings = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /** Sel du lien d'abonnement d'agenda (ADR-0028) ; `null` tant qu'aucun lien n'a été créé. */
+    feedSalt: text('feed_salt'),
+    feedCreatedAt: timestamp('feed_created_at', { withTimezone: true }),
   },
   (t) => ({
     singleRow: check('booking_setting_single_row', sql`${t.id} = 'main'`),
+    feedCheck: check(
+      'booking_setting_feed_check',
+      sql`(${t.feedSalt} is null) = (${t.feedCreatedAt} is null)`,
+    ),
   }),
 );
 

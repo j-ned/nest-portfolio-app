@@ -17,6 +17,22 @@ export type IcsEvent = {
   attendee?: IcsPerson;
 };
 
+export type IcsFeedEvent = {
+  uid: string;
+  stamp: Date;
+  startsAt: Date;
+  endsAt: Date;
+  summary: string;
+  description: string;
+  location: string;
+};
+
+export type IcsFeed = {
+  name: string;
+  refreshMinutes: number;
+  events: readonly IcsFeedEvent[];
+};
+
 const CRLF = '\r\n';
 const MAX_LINE_BYTES = 75;
 
@@ -30,33 +46,78 @@ const REVISION: Record<CalendarMethod, { sequence: number; status: string }> = {
 export function toIcs(event: IcsEvent): string {
   const { sequence, status } = REVISION[event.method];
   const attendee = event.method === 'PUBLISH' ? undefined : event.attendee;
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//nedellec-julien.fr//Booking//FR',
-    'CALSCALE:GREGORIAN',
-    `METHOD:${event.method}`,
-    'BEGIN:VEVENT',
-    `UID:${event.uid}`,
-    `SEQUENCE:${sequence}`,
-    `STATUS:${status}`,
-    `DTSTAMP:${toUtcStamp(event.stamp)}`,
-    `DTSTART:${toUtcStamp(event.startsAt)}`,
-    `DTEND:${toUtcStamp(event.endsAt)}`,
-    `SUMMARY:${escapeText(event.summary)}`,
-    `DESCRIPTION:${escapeText(event.description)}`,
-    `LOCATION:${escapeText(event.location)}`,
-    `ORGANIZER;CN=${paramValue(event.organizer.name)}:mailto:${event.organizer.email}`,
-    ...(attendee
-      ? [
-          `ATTENDEE;CN=${paramValue(attendee.name)};PARTSTAT=ACCEPTED:mailto:${attendee.email}`,
-        ]
-      : []),
-    'END:VEVENT',
-    'END:VCALENDAR',
-  ];
-  return lines.map(foldLine).join(CRLF) + CRLF;
+  return serialize(
+    calendarLines(
+      [`METHOD:${event.method}`],
+      [
+        veventLines(event, sequence, status, [
+          `ORGANIZER;CN=${paramValue(event.organizer.name)}:mailto:${event.organizer.email}`,
+          ...(attendee
+            ? [
+                `ATTENDEE;CN=${paramValue(attendee.name)};PARTSTAT=ACCEPTED:mailto:${attendee.email}`,
+              ]
+            : []),
+        ]),
+      ],
+    ),
+  );
 }
+
+/**
+ * Calendrier publié par abonnement (RFC 5545, RFC 7986 §5.1 et §5.7) : un objet, pas un message
+ * iTIP, donc ni `METHOD` ni participants. Sans événement, l'enveloppe est rendue seule.
+ */
+export function toIcsFeed(feed: IcsFeed): string {
+  const refresh = `PT${feed.refreshMinutes}M`;
+  return serialize(
+    calendarLines(
+      [
+        `NAME:${escapeText(feed.name)}`,
+        `X-WR-CALNAME:${escapeText(feed.name)}`,
+        `REFRESH-INTERVAL;VALUE=DURATION:${refresh}`,
+        `X-PUBLISHED-TTL:${refresh}`,
+      ],
+      feed.events.map((event) => veventLines(event, 0, 'CONFIRMED', [])),
+    ),
+  );
+}
+
+const calendarLines = (
+  properties: readonly string[],
+  events: readonly (readonly string[])[],
+): string[] => [
+  'BEGIN:VCALENDAR',
+  'VERSION:2.0',
+  'PRODID:-//nedellec-julien.fr//Booking//FR',
+  'CALSCALE:GREGORIAN',
+  ...properties,
+  ...events.flat(),
+  'END:VCALENDAR',
+];
+
+/** Lignes communes d'un VEVENT, de `UID` à `LOCATION`, suivies des propriétés propres à l'appelant. */
+const veventLines = (
+  event: IcsFeedEvent,
+  sequence: number,
+  status: string,
+  extra: readonly string[],
+): string[] => [
+  'BEGIN:VEVENT',
+  `UID:${event.uid}`,
+  `SEQUENCE:${sequence}`,
+  `STATUS:${status}`,
+  `DTSTAMP:${toUtcStamp(event.stamp)}`,
+  `DTSTART:${toUtcStamp(event.startsAt)}`,
+  `DTEND:${toUtcStamp(event.endsAt)}`,
+  `SUMMARY:${escapeText(event.summary)}`,
+  `DESCRIPTION:${escapeText(event.description)}`,
+  `LOCATION:${escapeText(event.location)}`,
+  ...extra,
+  'END:VEVENT',
+];
+
+const serialize = (lines: readonly string[]): string =>
+  lines.map(foldLine).join(CRLF) + CRLF;
 
 /** `20261104T100000Z` : ISO 8601 de base, millisecondes tronquées. */
 const toUtcStamp = (instant: Date): string =>
