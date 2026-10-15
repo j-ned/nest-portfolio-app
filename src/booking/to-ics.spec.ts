@@ -133,6 +133,63 @@ describe('toIcs', () => {
     });
   });
 
+  describe('copie publiée (sans participant)', () => {
+    it('Given une publication, Then METHOD PUBLISH, SEQUENCE 0, STATUS CONFIRMED, organisateur présent', () => {
+      const lines = contentLines(
+        toIcs(icsEvent({ method: 'PUBLISH', attendee: undefined })),
+      );
+
+      expect(lines).toEqual(
+        expect.arrayContaining([
+          'METHOD:PUBLISH',
+          'SEQUENCE:0',
+          'STATUS:CONFIRMED',
+          'UID:dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          'ORGANIZER;CN=Julien Nédellec:mailto:contact@nedellec-julien.fr',
+        ]),
+      );
+    });
+
+    it.each([
+      ['sans participant', undefined],
+      [
+        'même si un participant est fourni',
+        { name: 'Camille Martin', email: 'camille@example.com' },
+      ],
+    ])(
+      'Given une publication %s, Then aucune ligne ATTENDEE ni RSVP',
+      (_case, attendee) => {
+        const ics = toIcs(icsEvent({ method: 'PUBLISH', attendee }));
+
+        expect(lineStartingWith(ics, 'ATTENDEE')).toBeUndefined();
+        expect(unfold(ics)).not.toContain('RSVP');
+      },
+    );
+
+    it('Given l’annulation d’une publication, Then METHOD CANCEL, SEQUENCE 1, STATUS CANCELLED, même UID, sans ATTENDEE', () => {
+      const published = contentLines(
+        toIcs(icsEvent({ method: 'PUBLISH', attendee: undefined })),
+      );
+      const ics = toIcs(icsEvent({ method: 'CANCEL', attendee: undefined }));
+      const cancel = contentLines(ics);
+
+      expect(cancel).toEqual(
+        expect.arrayContaining([
+          'METHOD:CANCEL',
+          'SEQUENCE:1',
+          'STATUS:CANCELLED',
+        ]),
+      );
+      expect(cancel.find((line) => line.startsWith('UID:'))).toBe(
+        published.find((line) => line.startsWith('UID:')),
+      );
+      expect(lineStartingWith(ics, 'ATTENDEE')).toBeUndefined();
+      expect(lineStartingWith(ics, 'ORGANIZER')).toBe(
+        'ORGANIZER;CN=Julien Nédellec:mailto:contact@nedellec-julien.fr',
+      );
+    });
+  });
+
   describe('fins de ligne', () => {
     it.each([
       ['une invitation', icsEvent()],

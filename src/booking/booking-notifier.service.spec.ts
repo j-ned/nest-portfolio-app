@@ -228,32 +228,56 @@ describe('BookingNotifier', () => {
       );
     });
 
-    it('Given une réservation, Then chaque email porte une invitation REQUEST, SEQUENCE 0, UID = id, horaires UTC, organisateur et participant', async () => {
+    it('Given une réservation, Then le visiteur reçoit une invitation REQUEST, SEQUENCE 0, UID = id, horaires UTC, organisateur et participant', async () => {
       await notifier.bookingConfirmed(VIDEO_BOOKING, TOKEN);
 
-      for (const to of ['camille@example.com', OWNER]) {
-        const mail = mailTo(to);
-        expect(mail?.icalEvent?.method).toBe('REQUEST');
-        const lines = icsLines(mail);
-        expect(lines).toEqual(
-          expect.arrayContaining([
-            'METHOD:REQUEST',
-            'SEQUENCE:0',
-            'UID:dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-            'DTSTAMP:20261102T080000Z',
-            'DTSTART:20261104T100000Z',
-            'DTEND:20261104T103000Z',
-          ]),
-        );
-        const organizer = lines.find((line) => line.startsWith('ORGANIZER'));
-        const attendee = lines.find((line) => line.startsWith('ATTENDEE'));
-        expect(organizer?.endsWith(`:mailto:${OWNER}`)).toBe(true);
-        expect(attendee).toContain('CN=Camille Martin');
-        expect(attendee?.endsWith(':mailto:camille@example.com')).toBe(true);
-        expect(lines.find((line) => line.startsWith('SUMMARY:'))).toContain(
-          'Appel de cadrage',
-        );
-      }
+      const mail = mailTo('camille@example.com');
+      expect(mail?.icalEvent?.method).toBe('REQUEST');
+      const lines = icsLines(mail);
+      expect(lines).toEqual(
+        expect.arrayContaining([
+          'METHOD:REQUEST',
+          'SEQUENCE:0',
+          'UID:dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          'DTSTAMP:20261102T080000Z',
+          'DTSTART:20261104T100000Z',
+          'DTEND:20261104T103000Z',
+        ]),
+      );
+      const organizer = lines.find((line) => line.startsWith('ORGANIZER'));
+      const attendee = lines.find((line) => line.startsWith('ATTENDEE'));
+      expect(organizer?.endsWith(`:mailto:${OWNER}`)).toBe(true);
+      expect(attendee).toContain('CN=Camille Martin');
+      expect(attendee?.endsWith(':mailto:camille@example.com')).toBe(true);
+      expect(lines.find((line) => line.startsWith('SUMMARY:'))).toContain(
+        'Appel de cadrage',
+      );
+    });
+
+    it('Given une réservation, Then le propriétaire reçoit l’événement publié : PUBLISH, même UID et horaires, organisateur, sans participant ni RSVP', async () => {
+      await notifier.bookingConfirmed(VIDEO_BOOKING, TOKEN);
+
+      const mail = mailTo(OWNER);
+      expect(mail?.icalEvent?.method).toBe('PUBLISH');
+      const lines = icsLines(mail);
+      expect(lines).toEqual(
+        expect.arrayContaining([
+          'METHOD:PUBLISH',
+          'SEQUENCE:0',
+          'STATUS:CONFIRMED',
+          'UID:dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          'DTSTART:20261104T100000Z',
+          'DTEND:20261104T103000Z',
+          `LOCATION:${VIDEO_URL}`,
+        ]),
+      );
+      expect(
+        lines
+          .find((line) => line.startsWith('ORGANIZER'))
+          ?.endsWith(`:mailto:${OWNER}`),
+      ).toBe(true);
+      expect(lines.filter((line) => line.startsWith('ATTENDEE'))).toEqual([]);
+      expect(lines.join('\n')).not.toContain('RSVP');
     });
   });
 
@@ -290,6 +314,59 @@ describe('BookingNotifier', () => {
         );
       }
     });
+
+    it.each([
+      ['le visiteur', CANCELLED_BY_VISITOR],
+      ['le propriétaire', CANCELLED_BY_OWNER],
+    ])(
+      'Given une annulation par %s, Then le visiteur reçoit un CANCEL qui le nomme en ATTENDEE',
+      async (_case, row) => {
+        await notifier.bookingCancelled(row);
+
+        const mail = mailTo('camille@example.com');
+        expect(mail?.icalEvent?.method).toBe('CANCEL');
+        const attendees = icsLines(mail).filter((line) =>
+          line.startsWith('ATTENDEE'),
+        );
+        expect(attendees).toHaveLength(1);
+        expect(attendees[0].endsWith(':mailto:camille@example.com')).toBe(true);
+      },
+    );
+
+    it.each([
+      ['le visiteur', CANCELLED_BY_VISITOR],
+      ['le propriétaire', CANCELLED_BY_OWNER],
+    ])(
+      'Given une annulation par %s, Then le propriétaire reçoit le retrait de l’événement publié : CANCEL du même UID, SEQUENCE supérieure, sans participant ni RSVP',
+      async (_case, row) => {
+        await notifier.bookingConfirmed(VIDEO_BOOKING, TOKEN);
+        const published = icsLines(mailTo(OWNER));
+        mailer.sendMail.mockClear();
+
+        await notifier.bookingCancelled(row);
+
+        const mail = mailTo(OWNER);
+        expect(mail?.icalEvent?.method).toBe('CANCEL');
+        const lines = icsLines(mail);
+        expect(lines).toEqual(
+          expect.arrayContaining(['METHOD:CANCEL', 'STATUS:CANCELLED']),
+        );
+        const uidOf = (ics: string[]) =>
+          ics.find((line) => line.startsWith('UID:'));
+        const sequenceOf = (ics: string[]) =>
+          Number(ics.find((line) => line.startsWith('SEQUENCE:'))?.slice(9));
+        expect(uidOf(lines)).toBe(uidOf(published));
+        expect(published).toContain('METHOD:PUBLISH');
+        expect(sequenceOf(lines)).toBeGreaterThan(sequenceOf(published));
+        expect(
+          lines
+            .find((line) => line.startsWith('ORGANIZER'))
+            ?.endsWith(`:mailto:${OWNER}`),
+        ).toBe(true);
+        expect(lines.filter((line) => line.startsWith('ATTENDEE'))).toEqual([]);
+        expect(lines.join('\n')).not.toContain('RSVP');
+      },
+    );
 
     it('Given une annulation, Then aucun email ne contient de lien d’annulation', async () => {
       await notifier.bookingCancelled(CANCELLED_BY_VISITOR);
