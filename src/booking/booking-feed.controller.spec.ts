@@ -19,11 +19,9 @@ const TOKEN = deriveFeedToken(SECRET, SALT);
 const BOOKING = aBooking({ id: '11111111-1111-4111-8111-111111111111' });
 
 type ErrorBody = Record<string, unknown>;
-const withoutVolatile = (body: ErrorBody): ErrorBody =>
+const withoutTimestamp = (body: ErrorBody): ErrorBody =>
   Object.fromEntries(
-    Object.entries(body).filter(
-      ([key]) => key !== 'timestamp' && key !== 'path',
-    ),
+    Object.entries(body).filter(([key]) => key !== 'timestamp'),
   );
 
 describe('BookingFeedController (HTTP)', () => {
@@ -48,6 +46,7 @@ describe('BookingFeedController (HTTP)', () => {
       ],
     }).compile();
     app = module.createNestApplication();
+    app.setGlobalPrefix('api');
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
   });
@@ -71,7 +70,7 @@ describe('BookingFeedController (HTTP)', () => {
 
     it('Given un abonnement actif, Then 200 et un corps iCalendar qui porte le rendez-vous', async () => {
       const res = await request(app.getHttpServer()).get(
-        `/booking/feed/${TOKEN}.ics`,
+        `/api/booking/feed/${TOKEN}.ics`,
       );
 
       expect(res.status).toBe(200);
@@ -81,7 +80,7 @@ describe('BookingFeedController (HTTP)', () => {
 
     it('Given un abonnement actif, Then les en-têtes text/calendar, no-store et noindex', async () => {
       const res = await request(app.getHttpServer()).get(
-        `/booking/feed/${TOKEN}.ics`,
+        `/api/booking/feed/${TOKEN}.ics`,
       );
 
       expect(res.headers['content-type']).toBe('text/calendar; charset=utf-8');
@@ -95,32 +94,33 @@ describe('BookingFeedController (HTTP)', () => {
       statusCode: 404,
       error: 'Not Found',
       message: 'Not Found',
+      path: '/api/booking/feed/[Filtered]',
     };
 
     const cases: [string, string, () => void][] = [
       [
         'aucun secret configuré',
-        `/booking/feed/${TOKEN}.ics`,
+        `/api/booking/feed/${TOKEN}.ics`,
         () => {
           config.bookingFeedSecret = undefined;
         },
       ],
-      ['un fichier malformé', `/booking/feed/${TOKEN}.txt`, () => {}],
+      ['un fichier malformé', `/api/booking/feed/${TOKEN}.txt`, () => {}],
       [
         'un / encodé dans le jeton',
-        `/booking/feed/${TOKEN.slice(0, 20)}%2F${TOKEN.slice(21)}.ics`,
+        `/api/booking/feed/${TOKEN.slice(0, 20)}%2F${TOKEN.slice(21)}.ics`,
         () => {},
       ],
       [
         'aucun abonnement créé',
-        `/booking/feed/${TOKEN}.ics`,
+        `/api/booking/feed/${TOKEN}.ics`,
         () => {
           db.limit.mockResolvedValueOnce([{ feedSalt: null }]);
         },
       ],
       [
         'un jeton bien formé mais faux',
-        `/booking/feed/${deriveFeedToken(SECRET, 'BBBBBBBBBBBBBBBBBBBBBB')}.ics`,
+        `/api/booking/feed/${deriveFeedToken(SECRET, 'BBBBBBBBBBBBBBBBBBBBBB')}.ics`,
         () => {
           db.limit.mockResolvedValueOnce([{ feedSalt: SALT }]);
         },
@@ -128,14 +128,14 @@ describe('BookingFeedController (HTTP)', () => {
     ];
 
     it.each(cases)(
-      'Given %s, Then 404 au corps Not Found indistinct, sans aucun rendez-vous lu',
+      'Given %s, Then 404 au corps Not Found indistinct, chemin masqué, sans aucun rendez-vous lu',
       async (_case, path, arrange) => {
         arrange();
 
         const res = await request(app.getHttpServer()).get(path);
 
         expect(res.status).toBe(404);
-        expect(withoutVolatile(res.body as ErrorBody)).toEqual(NOT_FOUND);
+        expect(withoutTimestamp(res.body as ErrorBody)).toEqual(NOT_FOUND);
         expect(res.text).not.toContain('BEGIN:VCALENDAR');
         expect(db.orderBy).not.toHaveBeenCalled();
       },

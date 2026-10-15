@@ -1,5 +1,5 @@
 import type { ErrorEvent } from '@sentry/nestjs';
-import { SENSITIVE_BODY_FIELDS } from './log-redact';
+import { SENSITIVE_BODY_FIELDS, redactUrl } from './log-redact';
 
 const FILTERED = '[Filtered]';
 const SENSITIVE_KEYS: ReadonlySet<string> = new Set(SENSITIVE_BODY_FIELDS);
@@ -29,10 +29,17 @@ const scrubBody = (data: unknown): unknown => {
   }
 };
 
-/** Retire cookies, en-têtes d'authentification et champs sensibles du corps, sans muter l'événement. */
+/**
+ * Retire cookies, en-têtes d'authentification et champs sensibles du corps, masque le jeton du flux
+ * d'agenda (URL, query string, transaction), sans muter l'événement.
+ */
 export function sentryBeforeSend(event: ErrorEvent): ErrorEvent {
-  const { request } = event;
-  if (!request) return event;
+  const { request, transaction } = event;
+  const named =
+    transaction === undefined
+      ? event
+      : { ...event, transaction: redactUrl(transaction) };
+  if (!request) return named;
 
   const scrubbed: ErrorEvent['request'] = { ...request };
   delete scrubbed.cookies;
@@ -43,5 +50,15 @@ export function sentryBeforeSend(event: ErrorEvent): ErrorEvent {
     scrubbed.headers = headers;
   }
   if (request.data !== undefined) scrubbed.data = scrubBody(request.data);
-  return { ...event, request: scrubbed };
+  const url = redactUrl(request.url);
+  if (url !== request.url) {
+    scrubbed.url = url;
+    delete scrubbed.query_string;
+  }
+  return { ...named, request: scrubbed };
+}
+
+/** Requêtes entrantes jamais tracées : la sonde de santé et le flux d'agenda (le jeton est dans le chemin). */
+export function isUntracedIncomingRequest(url: string): boolean {
+  return url.startsWith('/api/health') || url.startsWith('/api/booking/feed/');
 }

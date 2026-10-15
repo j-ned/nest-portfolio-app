@@ -5,7 +5,7 @@ import { AppConfigModule } from './config/app-config.module';
 import { AppConfigService } from './config/app-config.service';
 import { validateEnv } from './config/env.validation';
 import { LOGGER_ROUTES } from './config/logger-routes';
-import { LOG_REDACT_PATHS } from './common/log-redact';
+import { LOG_REDACT_PATHS, serializeRequest } from './common/log-redact';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -52,13 +52,7 @@ import { BookingModule } from './booking/booking.module';
             ignore: (req: { url?: string }) => req.url === '/api/health',
           },
           customProps: () => ({ context: 'HTTP' }),
-          serializers: {
-            req: (req: { id?: string; method?: string; url?: string }) => ({
-              id: req.id,
-              method: req.method,
-              url: req.url,
-            }),
-          },
+          serializers: { req: serializeRequest },
           hooks: {
             logMethod(args, method, level) {
               if (level >= 50) {

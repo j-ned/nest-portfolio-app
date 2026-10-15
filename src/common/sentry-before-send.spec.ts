@@ -1,6 +1,21 @@
 import type { ErrorEvent } from '@sentry/nestjs';
 import { SENSITIVE_BODY_FIELDS } from './log-redact';
-import { sentryBeforeSend } from './sentry-before-send';
+import {
+  isUntracedIncomingRequest,
+  sentryBeforeSend,
+} from './sentry-before-send';
+
+const FEED_TOKEN = 'XYJXH9MoGdppkZYT0jI3g2rP-qFcqKBWL0budyMj488';
+const API_ORIGIN = 'https://api.nedellec-julien.fr';
+const feedEvent = (): ErrorEvent => ({
+  type: undefined,
+  transaction: `GET /api/booking/feed/${FEED_TOKEN}.ics`,
+  request: {
+    url: `${API_ORIGIN}/api/booking/feed/${FEED_TOKEN}.ics?x=1`,
+    method: 'GET',
+    query_string: 'x=1',
+  },
+});
 
 const BOOKING_BODY = {
   startsAt: '2026-11-04T10:00:00.000Z',
@@ -135,5 +150,81 @@ describe('sentryBeforeSend', () => {
     sentryBeforeSend(event);
 
     expect(event.request?.data).toEqual(BOOKING_BODY);
+  });
+});
+
+describe('sentryBeforeSend sur le flux d’agenda', () => {
+  it('Given une requête du flux, Then request.url absolue est masquée après le préfixe du flux', () => {
+    const result = sentryBeforeSend(feedEvent());
+
+    expect(result.request?.url).toBe(
+      `${API_ORIGIN}/api/booking/feed/[Filtered]`,
+    );
+  });
+
+  it('Given une requête du flux, Then query_string est retirée', () => {
+    const result = sentryBeforeSend(feedEvent());
+
+    expect(result.request).not.toHaveProperty('query_string');
+  });
+
+  it('Given une requête du flux, Then la transaction est masquée', () => {
+    const result = sentryBeforeSend(feedEvent());
+
+    expect(result.transaction).toBe('GET /api/booking/feed/[Filtered]');
+  });
+
+  it('Given une requête du flux, Then le jeton n’apparaît nulle part dans l’événement', () => {
+    expect(JSON.stringify(sentryBeforeSend(feedEvent()))).not.toContain(
+      FEED_TOKEN,
+    );
+  });
+
+  it('Given un événement sans requête dont la transaction vise le flux, Then la transaction est masquée', () => {
+    const result = sentryBeforeSend({
+      type: undefined,
+      transaction: `GET /api/booking/feed/${FEED_TOKEN}.ics`,
+    });
+
+    expect(result.transaction).toBe('GET /api/booking/feed/[Filtered]');
+  });
+
+  it('Given une autre route, Then URL, query_string et transaction restent lisibles', () => {
+    const result = sentryBeforeSend({
+      type: undefined,
+      transaction: 'GET /api/booking/slots',
+      request: {
+        url: `${API_ORIGIN}/api/booking/slots?from=2026-10-01`,
+        method: 'GET',
+        query_string: 'from=2026-10-01',
+      },
+    });
+
+    expect(result.transaction).toBe('GET /api/booking/slots');
+    expect(result.request?.url).toBe(
+      `${API_ORIGIN}/api/booking/slots?from=2026-10-01`,
+    );
+    expect(result.request?.query_string).toBe('from=2026-10-01');
+  });
+
+  it('Given un événement du flux, Then l’original n’est pas modifié', () => {
+    const event = feedEvent();
+
+    sentryBeforeSend(event);
+
+    expect(event).toEqual(feedEvent());
+  });
+});
+
+describe('isUntracedIncomingRequest', () => {
+  it.each([
+    ['/api/health', true],
+    [`/api/booking/feed/${FEED_TOKEN}.ics`, true],
+    [`/api/booking/feed/${FEED_TOKEN}.ics?x=1`, true],
+    ['/api/booking/feed/x', true],
+    ['/api/booking/slots', false],
+    ['/api/booking/feed-subscription', false],
+  ])('Given %s, Then %s', (url, untraced) => {
+    expect(isUntracedIncomingRequest(url)).toBe(untraced);
   });
 });

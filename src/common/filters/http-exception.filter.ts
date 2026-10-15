@@ -8,6 +8,7 @@ import {
 import type { ArgumentsHost } from '@nestjs/common';
 import { SentryExceptionCaptured } from '@sentry/nestjs';
 import type { Request, Response } from 'express';
+import { redactUrl } from '../log-redact';
 
 type ErrorPayload = {
   statusCode: number;
@@ -42,18 +43,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? { message: baseError, error: HttpStatus[status] ?? 'Error' }
         : (baseError as { message?: string | string[]; error?: string });
 
+    const path = redactUrl(req.url);
     const payload: ErrorPayload = {
       statusCode: status,
       error: errorBody.error ?? HttpStatus[status] ?? 'Error',
       message: errorBody.message ?? 'Unexpected error',
-      path: req.url,
+      path,
       timestamp: new Date().toISOString(),
     };
 
     if (status >= 500) {
       this.logger.error(
-        { err: exception, path: req.url, method: req.method },
-        `Unhandled ${status} on ${req.method} ${req.url}`,
+        { err: exception, path, method: req.method },
+        `Unhandled ${status} on ${req.method} ${path}`,
       );
     }
     res.status(status).json(payload);
