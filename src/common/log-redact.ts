@@ -27,3 +27,23 @@ export const LOG_REDACT_PATHS = [
   // Le cookie de session (JWT complet) était écrit dans les logs à chaque login.
   'res.headers["set-cookie"]',
 ] as const;
+
+/**
+ * Le segment qui suit `/api/booking/feed/` est le jeton du flux d'agenda (un secret) : il est masqué avec
+ * tout ce qui le suit (extension, query string). Non ancrée, la recherche couvre aussi l'URL absolue et le
+ * nom de transaction (`GET /api/…`) que Sentry construit.
+ */
+const FEED_PATH = /(\/api\/booking\/feed\/)[\s\S]*$/;
+
+export function redactUrl(url: string): string;
+export function redactUrl(url: string | undefined): string | undefined;
+export function redactUrl(url: string | undefined): string | undefined {
+  return url?.replace(FEED_PATH, '$1[Filtered]');
+}
+
+export type SerializedRequest = { id?: string; method?: string; url?: string };
+
+/** Sérialiseur pino des requêtes : ni en-têtes ni corps, URL passée à `redactUrl`. */
+export function serializeRequest(req: SerializedRequest): SerializedRequest {
+  return { id: req.id, method: req.method, url: redactUrl(req.url) };
+}
