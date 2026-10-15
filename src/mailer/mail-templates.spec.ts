@@ -54,6 +54,10 @@ const TEMPLATES: readonly (readonly [string, string])[] = [
 ];
 
 const MIN_CONTRAST = 4.5;
+const ACCENT_BORDERS = new Set(['#4f46e5', '#4338ca']);
+// Fond sombre que Thunderbird impose quand il recolore lui-même un email.
+const CLIENT_DARK: Rgb = [28, 27, 34];
+const WHITE: Rgb = [255, 255, 255];
 const VOID_TAGS = new Set(['br', 'img', 'hr', 'meta', 'input', 'link', 'wbr']);
 const BLANK_TEXT = /^(?:\s|&nbsp;|&#160;|&#xa0;)*$/i;
 const DARK_QUERY = /@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)/i;
@@ -357,6 +361,39 @@ describe('Gabarits d’email', () => {
         expect(rendered).toContain(`&lt;b&gt;${key}&lt;/b&gt;&quot;`);
       }
     });
+
+    it('Given un client qui retire les fonds en sombre (Thunderbird), Then chaque bordure décorative reste visible sur blanc comme sur fond sombre, sans y ressortir en blanc', () => {
+      const decorative = [
+        ...html.matchAll(
+          /border(?:-(?:top|bottom|left|right))?:\s*\d+px\s+solid\s+(#[0-9a-f]{3,6})/gi,
+        ),
+      ]
+        .map((match) => match[1].toLowerCase())
+        .filter((color) => !ACCENT_BORDERS.has(color));
+
+      expect(decorative.length).toBeGreaterThan(0);
+      for (const color of new Set(decorative)) {
+        const rgb = parseColor(color);
+        expect([color, contrastRatio(rgb, WHITE) >= 2]).toEqual([color, true]);
+        expect([color, contrastRatio(rgb, CLIENT_DARK) >= 2]).toEqual([
+          color,
+          true,
+        ]);
+        expect([color, contrastRatio(rgb, CLIENT_DARK) <= 8]).toEqual([
+          color,
+          true,
+        ]);
+      }
+    });
+
+    it('Given le badge d’en-tête, Then il garde un contour d’accent si le client retire son fond', () => {
+      const badge = html.match(
+        /<span style="([^"]*background-color:#4f46e5[^"]*)"/i,
+      )?.[1];
+
+      expect(badge).toBeDefined();
+      expect(badge).toMatch(/(?:^|;)border:\s*\d+px\s+solid\s+#4f46e5/i);
+    });
   });
 
   describe('outil de mesure', () => {
@@ -391,5 +428,16 @@ describe('Gabarits d’email', () => {
         '« Texte » contraste 1.16:1',
       ]);
     });
+  });
+});
+
+describe('Texte de la confirmation', () => {
+  it('Given la confirmation au visiteur, Then elle dit que l’invitation permet l’ajout à l’agenda, sans promettre un ajout automatique', () => {
+    const html = read('booking/mail-templates/booking-confirmation.html');
+
+    expect(html).toContain(
+      'L&#8217;invitation jointe permet de l&#8217;ajouter &#224; votre agenda.',
+    );
+    expect(html).not.toContain('l&#8217;ajoute &#224; votre agenda');
   });
 });
