@@ -6,10 +6,13 @@ import { maskEmail } from './mailer.utils';
 
 const MAX_RETRIES = 3;
 
-/** Invitation calendrier, envoyée en une seule alternative `text/calendar` (iMIP, RFC 6047). */
-/** Méthode iTIP (RFC 5546) de la partie `text/calendar` jointe à un email. */
+/**
+ * Méthode iTIP (RFC 5546) de la partie `text/calendar` : `REQUEST` invite un participant ; `PUBLISH`
+ * publie sans réponse attendue (copie de l'organisateur, refusée comme invitation adressée à lui-même).
+ */
 export type CalendarMethod = 'REQUEST' | 'PUBLISH' | 'CANCEL';
 
+/** Invitation calendrier, envoyée en une seule alternative `text/calendar` (iMIP, RFC 6047). */
 export type IcalEvent = {
   method: CalendarMethod;
   content: string;

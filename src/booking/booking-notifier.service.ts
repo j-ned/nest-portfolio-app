@@ -6,7 +6,8 @@ import { OWNER_EMAIL } from '../mailer/mailer.constants';
 import { MailerService } from '../mailer/mailer.service';
 import { loadTemplate, renderTemplate } from '../mailer/mailer.utils';
 import { formatParisLong } from './paris-time';
-import { type IcsMethod, toIcs } from './to-ics';
+import type { CalendarMethod } from '../mailer/mailer.service';
+import { toIcs } from './to-ics';
 
 const TEMPLATES_DIR = resolve(__dirname, 'mail-templates');
 const OWNER_NAME = 'Julien Nédellec';
@@ -129,7 +130,7 @@ export class BookingNotifier {
    */
   private invitation(
     row: Booking,
-    method: IcsMethod,
+    method: CalendarMethod,
     { withAttendee }: { withAttendee: boolean },
   ) {
     const meeting = meetingOf(row);

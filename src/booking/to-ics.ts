@@ -1,16 +1,10 @@
 import type { CalendarMethod } from '../mailer/mailer.service';
 
-/**
- * Invitation calendrier RFC 5545 (iTIP RFC 5546) d'un rendez-vous : un VEVENT, instants en UTC.
- * `REQUEST` invite un participant ; `PUBLISH` publie l'événement sans réponse attendue (copie de
- * l'organisateur, qu'un client refuse d'ajouter comme invitation adressée à lui-même).
- */
-export type IcsMethod = CalendarMethod;
-
 export type IcsPerson = { name: string; email: string };
 
+/** Invitation calendrier RFC 5545 (iTIP RFC 5546) d'un rendez-vous : un VEVENT, instants en UTC. */
 export type IcsEvent = {
-  method: IcsMethod;
+  method: CalendarMethod;
   uid: string;
   stamp: Date;
   startsAt: Date;
@@ -27,7 +21,7 @@ const CRLF = '\r\n';
 const MAX_LINE_BYTES = 75;
 
 /** Une annulation est une révision de l'invitation : séquence incrémentée, statut annulé. */
-const REVISION: Record<IcsMethod, { sequence: number; status: string }> = {
+const REVISION: Record<CalendarMethod, { sequence: number; status: string }> = {
   REQUEST: { sequence: 0, status: 'CONFIRMED' },
   PUBLISH: { sequence: 0, status: 'CONFIRMED' },
   CANCEL: { sequence: 1, status: 'CANCELLED' },
