@@ -782,7 +782,13 @@ const errorCode = (reason: unknown): unknown =>
       expect(await rowCount()).toBe(2);
     });
 
-    it('Given des rendez-vous passés, à venir et annulés, Then les listes admin et le compteur les répartissent', async () => {
+    it('Given des rendez-vous passés, à venir et annulés, Then à venir et passés ne gardent que les confirmés, archivés tous les annulés, et le compteur suit', async () => {
+      const latest = await service.create(
+        aBookingRequest({
+          startsAt: inDays(10, 12).toISOString(),
+          email: 'c@example.com',
+        }),
+      );
       const later = await service.create(
         aBookingRequest({
           startsAt: inDays(9, 12).toISOString(),
@@ -798,20 +804,27 @@ const errorCode = (reason: unknown): unknown =>
       await service.cancelByOwner(later.id, undefined);
       await insertBooking(inDays(-3, 9), 30, 'confirmed');
       await insertBooking(inDays(-2, 9), 30, 'confirmed');
+      await insertBooking(inDays(-4, 9), 30, 'cancelled');
 
       const upcoming = await service.listBookings('upcoming');
       const past = await service.listBookings('past');
+      const archived = await service.listBookings('archived');
 
-      expect(upcoming.map((row) => row.id)).toEqual([sooner.id, later.id]);
-      expect(upcoming.map((row) => row.status)).toEqual([
-        'confirmed',
-        'cancelled',
-      ]);
+      expect(upcoming.map((row) => row.id)).toEqual([sooner.id, latest.id]);
       expect(past.map((row) => row.startsAt)).toEqual([
         inDays(-2, 9).toISOString(),
         inDays(-3, 9).toISOString(),
       ]);
-      await expect(service.countUpcoming()).resolves.toEqual({ count: 1 });
+      expect(past.map((row) => row.status)).toEqual(['confirmed', 'confirmed']);
+      expect(archived.map((row) => row.startsAt)).toEqual([
+        inDays(9, 12).toISOString(),
+        inDays(-4, 9).toISOString(),
+      ]);
+      expect(archived.map((row) => row.status)).toEqual([
+        'cancelled',
+        'cancelled',
+      ]);
+      await expect(service.countUpcoming()).resolves.toEqual({ count: 2 });
     });
   },
 );

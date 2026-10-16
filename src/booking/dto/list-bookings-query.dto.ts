@@ -5,6 +5,7 @@ import type { BookingScope } from '../booking.service';
 const BOOKING_SCOPES = [
   'upcoming',
   'past',
+  'archived',
 ] as const satisfies readonly BookingScope[];
 
 export class ListBookingsQueryDto {
