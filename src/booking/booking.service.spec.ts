@@ -1442,7 +1442,7 @@ describe('BookingService, administration', () => {
       ['upcoming', '"ends_at" >', '"starts_at" asc'],
       ['past', '"ends_at" <=', '"starts_at" desc'],
     ] as const)(
-      'Given scope=%s, Then filtre %s maintenant et tri %s, les deux statuts compris',
+      'Given scope=%s, Then confirmés seulement, filtre %s maintenant et tri %s',
       async (scope, filter, order) => {
         db.orderBy.mockResolvedValueOnce([]);
 
@@ -1450,13 +1450,27 @@ describe('BookingService, administration', () => {
 
         expect(db.from).toHaveBeenCalledWith(bookings);
         const where = render((db.where.mock.calls as unknown[][])[0][0]);
+        expect(where.sql).toContain('"status" =');
         expect(where.sql).toContain(filter);
-        expect(where.sql).not.toContain('"status"');
-        expect(where.params).toEqual([NOW.toISOString()]);
+        expect(where.params).toEqual(['confirmed', NOW.toISOString()]);
         const orderBy = render((db.orderBy.mock.calls as unknown[][])[0][0]);
         expect(orderBy.sql).toContain(order);
       },
     );
+
+    it('Given scope=archived, Then annulés seulement, sans condition de date, tri décroissant', async () => {
+      db.orderBy.mockResolvedValueOnce([]);
+
+      await service.listBookings('archived');
+
+      expect(db.from).toHaveBeenCalledWith(bookings);
+      const where = render((db.where.mock.calls as unknown[][])[0][0]);
+      expect(where.sql).toContain('"status" =');
+      expect(where.sql).not.toContain('"ends_at"');
+      expect(where.params).toEqual(['cancelled']);
+      const orderBy = render((db.orderBy.mock.calls as unknown[][])[0][0]);
+      expect(orderBy.sql).toContain('"starts_at" desc');
+    });
 
     it('Given aucun rendez-vous, Then une liste vide', async () => {
       db.orderBy.mockResolvedValueOnce([]);

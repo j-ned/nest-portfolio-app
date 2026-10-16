@@ -7,7 +7,18 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { and, asc, count, desc, eq, gt, lt, lte, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  lt,
+  lte,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { fireAndForget, isExclusionViolation } from '../common/utils';
 import { AppConfigService } from '../config/app-config.service';
 import { DRIZZLE } from '../database/drizzle.constants';
@@ -67,7 +78,7 @@ export type AdminBooking = {
   createdAt: string;
 };
 
-export type BookingScope = 'upcoming' | 'past';
+export type BookingScope = 'upcoming' | 'past' | 'archived';
 
 @Injectable()
 export class BookingService {
@@ -197,17 +208,21 @@ export class BookingService {
     return { status: 'cancelled' };
   }
 
-  /** `upcoming` : fin après maintenant, croissant ; `past` : le reste, décroissant ; les deux statuts. */
+  /**
+   * `upcoming` : confirmés finissant après maintenant, croissant ; `past` : confirmés finis,
+   * décroissant ; `archived` : tous les annulés, sans condition de date, décroissant.
+   */
   async listBookings(scope: BookingScope): Promise<AdminBooking[]> {
     const now = new Date();
+    const filters = {
+      upcoming: and(eq(bookings.status, 'confirmed'), gt(bookings.endsAt, now)),
+      past: and(eq(bookings.status, 'confirmed'), lte(bookings.endsAt, now)),
+      archived: eq(bookings.status, 'cancelled'),
+    } satisfies Record<BookingScope, SQL | undefined>;
     const rows = await this.db
       .select()
       .from(bookings)
-      .where(
-        scope === 'upcoming'
-          ? gt(bookings.endsAt, now)
-          : lte(bookings.endsAt, now),
-      )
+      .where(filters[scope])
       .orderBy(
         scope === 'upcoming' ? asc(bookings.startsAt) : desc(bookings.startsAt),
       );
