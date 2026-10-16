@@ -763,7 +763,7 @@ describe('BookingAdminController (HTTP)', () => {
   });
 
   describe('GET bookings', () => {
-    it.each(['upcoming', 'past'] as const)(
+    it.each(['upcoming', 'past', 'archived'] as const)(
       'Given scope=%s, Then 200 { data } des rendez-vous du service, coordonnées comprises',
       async (scope) => {
         const rows = [
