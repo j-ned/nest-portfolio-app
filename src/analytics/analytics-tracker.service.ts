@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { isIPv4, isIPv6 } from 'node:net';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, gte, sql } from 'drizzle-orm';
@@ -54,10 +54,20 @@ function isExcludedUrl(url: string): boolean {
 export class AnalyticsTrackerService {
   private readonly logger = new Logger(AnalyticsTrackerService.name);
 
+  /**
+   * Clé de l'empreinte de session, dérivée du secret JWT : rien de plus à configurer, et distincte
+   * de la clé qui signe les sessions. Sans elle, l'empreinte ne se recalcule pas depuis une IP.
+   */
+  private readonly hashKey: Buffer;
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly cfg: AppConfigService,
-  ) {}
+  ) {
+    this.hashKey = createHash('sha256')
+      .update(`analytics|${cfg.jwtSecret}`)
+      .digest();
+  }
 
   /**
    * Track une page-view ou un custom event. Ne throw JAMAIS - toute erreur
@@ -87,7 +97,9 @@ export class AnalyticsTrackerService {
       }
 
       const day = new Date().toISOString().slice(0, 10);
-      const sessionHash = createHash('sha256')
+      // HMAC et non SHA-256 brut : avec ~4 milliards d'IPv4, une empreinte non clée se renverse
+      // en quelques minutes pour un user-agent donné. Le jour la renouvelle chaque jour.
+      const sessionHash = createHmac('sha256', this.hashKey)
         .update(`${ip}|${ua}|${day}`)
         .digest('hex');
 
