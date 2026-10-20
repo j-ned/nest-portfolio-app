@@ -1,6 +1,6 @@
 /**
  * Champs du corps de requête jamais transmis tels quels hors du processus : secrets
- * d'authentification et coordonnées du visiteur (réservation de rendez-vous, contact).
+ * d'authentification et coordonnées du visiteur (formulaire de contact).
  * Source unique des masques pino (`LOG_REDACT_PATHS`) et du filtre Sentry (`sentryBeforeSend`).
  */
 export const SENSITIVE_BODY_FIELDS = [
