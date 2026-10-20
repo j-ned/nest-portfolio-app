@@ -34,8 +34,6 @@ export type AnalyticsType = (typeof ANALYTICS_TYPES)[number];
 /** Canal d'un lien sortant : jamais l'adresse elle-même (RGPD, spec 020). */
 export const OUTBOUND_CHANNELS = [
   'email',
-  'phone',
-  'malt',
   'discord',
   'linkedin',
   'github',
@@ -43,14 +41,24 @@ export const OUTBOUND_CHANNELS = [
 ] as const;
 export type OutboundChannel = (typeof OUTBOUND_CHANNELS)[number];
 
+/**
+ * Canaux retirés du site avec l'activité freelance (spec 029 du front) : refusés à l'entrée, encore
+ * présents dans l'historique brut et recomptés par le rattrapage des agrégats.
+ */
+export const RETIRED_OUTBOUND_CHANNELS = ['phone', 'malt'] as const;
+
 const SECTION_IDS = ['home_contact'] as const;
 
-/** Emplacement d'un formulaire de contact : `home`, `offer_site-vitrine`. */
-const CONTACT_PLACEMENT = /^[a-z0-9_-]{1,64}$/;
+/**
+ * Emplacement d'un formulaire de contact. Les pages d'offre (`offer_*`) ont disparu avec la spec 029
+ * du front : leurs envois passés restent en base, un nouvel envoi est refusé.
+ */
+const CONTACT_PLACEMENTS = ['home'] as const;
 
 const ENTITY_ID_RULES: Partial<Record<AnalyticsType, (id: string) => boolean>> =
   {
-    contact_submit: (id) => CONTACT_PLACEMENT.test(id),
+    contact_submit: (id) =>
+      (CONTACT_PLACEMENTS as readonly string[]).includes(id),
     outbound_click: (id) =>
       (OUTBOUND_CHANNELS as readonly string[]).includes(id),
     section_view: (id) => (SECTION_IDS as readonly string[]).includes(id),
@@ -147,7 +155,7 @@ export class TrackEventDto {
   @ApiPropertyOptional({
     maxLength: 255,
     description:
-      'Requis pour contact_submit (emplacement /^[a-z0-9_-]{1,64}$/), outbound_click (canal) et section_view (section)',
+      'Requis pour contact_submit (emplacement), outbound_click (canal) et section_view (section)',
   })
   @ValidateIf(
     (o: TrackEventDto) =>
