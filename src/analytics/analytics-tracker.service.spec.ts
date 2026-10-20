@@ -129,7 +129,7 @@ describe('AnalyticsTrackerService', () => {
   });
 
   describe('referrer', () => {
-    it.each([
+    it.each<[string | undefined, string | null, string]>([
       [
         'https://www.google.com/',
         'google.com',

@@ -349,7 +349,7 @@ describe('AuthService', () => {
       expect(users.revokeSessions).toHaveBeenCalledWith('u1');
     });
 
-    it.each([
+    it.each<[string | undefined, string]>([
       [undefined, 'cookie absent'],
       ['', 'cookie vide'],
     ])('token %s (%s) → aucune révocation', async (token) => {
