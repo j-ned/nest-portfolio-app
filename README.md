@@ -78,9 +78,6 @@ Toute la config passe par les variables d'env, validées au boot par Zod (`src/c
 | `SMTP_USER`                 | string                                             | _(requis)_                   | User SMTP                                                                                                                                                                                                                                                                                     |
 | `SMTP_PASS`                 | string                                             | _(requis)_                   | Password SMTP                                                                                                                                                                                                                                                                                 |
 | `SMTP_FROM`                 | email                                              | _(requis)_                   | Expéditeur des mails                                                                                                                                                                                                                                                                          |
-| `BOOKING_VIDEO_URL_BASE`    | URL                                                | `https://meet.jit.si`        | Base des salles de visio des rendez-vous (Jitsi public ou auto-hébergé)                                                                                                                                                                                                                       |
-| `PUBLIC_SITE_URL`           | URL                                                | `https://nedellec-julien.fr` | Origine publique du site, base du lien d'annulation envoyé par email au visiteur                                                                                                                                                                                                              |
-| `BOOKING_FEED_SECRET`       | chaîne ≥ 32 caractères, facultatif                 | —                            | Secret de dérivation du lien d'abonnement d'agenda (ADR 0028). **À ajouter dans Dokploy** : `openssl rand -base64 48`. Absent ou vide : abonnement non configuré, flux en 404. Trop court : ignoré avec un avertissement (sans la valeur), l'API démarre. Le changer invalide tous les liens. |
 | `SENTRY_DSN`                | URL                                                | _(optionnel)_                | DSN backend ; vide = Sentry désactivé                                                                                                                                                                                                                                                         |
 | `SENTRY_RELEASE`            | string                                             | _(optionnel)_                | Tag de release Sentry                                                                                                                                                                                                                                                                         |
 | `SENTRY_TRACES_SAMPLE_RATE` | float 0-1                                          | `0.2` prod / `1.0` dev       | Sample rate tracing                                                                                                                                                                                                                                                                           |
@@ -120,7 +117,7 @@ pnpm db:down            # Stoppe le container
 - **Dev** : sortie `pino-pretty`.
 - **Prod/test** : JSON structuré.
 - **Redaction** automatique (liste unique `LOG_REDACT_PATHS`, `src/common/log-redact.ts`) : `authorization`, `cookie`, `set-cookie`, et dans le body `password`, `newPassword`, `currentPassword`, `code`, `token`, `refreshToken`, `phone`, `email`.
-- **Jeton du flux d'agenda** : le sérialiseur `req` (`serializeRequest`) ne garde que `id`, `method` et l'URL passée à `redactUrl`, qui remplace tout ce qui suit `/api/booking/feed/` par `[Filtered]` (insensible à la casse, comme le routage Express) et, en renfort, tout segment à la forme du jeton (43 caractères base64url puis `.ics`) : `//`, segment encodé (`%66eed`) ou route mal formée ne le laissent pas passer. Le `path` des corps d'erreur et le log des 5xx de `HttpExceptionFilter` passent par la même fonction.
+- **Jeton du flux d'agenda** (abonnement retiré avec la prise de rendez-vous, spec 029 du front : les agendas déjà abonnés continuent d'appeler l'URL, jeton compris, et reçoivent un 404) : le sérialiseur `req` (`serializeRequest`) ne garde que `id`, `method` et l'URL passée à `redactUrl`, qui remplace tout ce qui suit `/api/booking/feed/` par `[Filtered]` (insensible à la casse, comme le routage Express) et, en renfort, tout segment à la forme du jeton (43 caractères base64url puis `.ics`) : `//`, segment encodé (`%66eed`) ou route mal formée ne le laissent pas passer. Le `path` des corps d'erreur et le log des 5xx de `HttpExceptionFilter` passent par la même fonction.
 - **`/api/health`** est ignoré par le logger HTTP (évite de polluer les logs au rythme du pinger/healthcheck Docker).
 - Tout log `error` (level ≥ 50) est aussi envoyé à Sentry via `Sentry.captureMessage`, sauf s'il s'agit déjà d'une exception capturée par le filter global (anti-doublon).
 
@@ -223,7 +220,7 @@ Liste réelle (`package.json`) - pas de script `s3:*` (démarrer MinIO à la mai
 | `pnpm mail:up`                                                      | Démarre le container Mailpit                                                                                             |
 | `pnpm sentry:sourcemaps`                                            | Upload des sourcemaps vers Sentry (`scripts/upload-sentry-sourcemaps.mjs`)                                               |
 
-**CI** (`.github/workflows/ci.yml`, à chaque PR et sur `master`) : `install --frozen-lockfile`, `lint:check`, `format:check`, `typecheck`, `pnpm test` **avec** les tests d'intégration (service `postgres:17-alpine`, une base par suite : `BOOKING_IT_DATABASE_URL`, `PROFILE_IT_DATABASE_URL`), `build`, puis le build de l'image Docker tel que Dokploy l'exécute (sans push).
+**CI** (`.github/workflows/ci.yml`, à chaque PR et sur `master`) : `install --frozen-lockfile`, `lint:check`, `format:check`, `typecheck`, `pnpm test` **avec** les tests d'intégration (service `postgres:17-alpine`, base jetable `PROFILE_IT_DATABASE_URL`), `build`, puis le build de l'image Docker tel que Dokploy l'exécute (sans push).
 
 ## S3 Storage
 
@@ -335,46 +332,9 @@ Formulaire de contact public + gestion admin des messages.
 
 **Stratégie mails** : fire-and-forget après le `db.insert` (helper `fireAndForget` dans `src/common/utils.ts`) - le visiteur reçoit 201 dès la persistance garantie ; un échec SMTP (3 retries épuisés) est loggé mais invisible côté visiteur, le message reste consultable côté admin.
 
-**Destinataire admin codé en dur** : `OWNER_EMAIL = 'contact@nedellec-julien.fr'` dans `src/mailer/mailer.constants.ts` (partagé par le contact et les rendez-vous) - pas de variable d'env dédiée. `SMTP_FROM` reste l'expéditeur (rôle distinct).
+**Destinataire admin codé en dur** : `OWNER_EMAIL = 'contact@nedellec-julien.fr'` dans `src/mailer/mailer.constants.ts` (utilisé par le contact) - pas de variable d'env dédiée. `SMTP_FROM` reste l'expéditeur (rôle distinct).
 
 **Templates** : `src/contact/mail-templates/contact-notification.html` (admin) et `contact-confirmation.html` (visiteur). Variables : `{{name}}`, `{{email}}`, `{{subject}}`, `{{message}}`.
-
-## Rendez-vous
-
-Prise de rendez-vous publique (appel de cadrage de 30 min, visio ou téléphone) et gestion admin (spec 024, ADR 0026). Module `src/booking/`.
-
-**Routes sous `/api/booking`** : publiques `GET /slots`, `POST /bookings`, `POST /bookings/cancel/preview`, `POST /bookings/cancel` ; admin (session) `GET|PUT /availability/rules` (168 plages au plus), `GET|POST /availability/closures`, `DELETE /availability/closures/:id`, `GET /availability/calendar?month=YYYY-MM`, `PUT /availability/days/:date`, `PUT /availability/settings`, `GET /bookings`, `GET /bookings/upcoming-count`, `PATCH /bookings/:id/cancel`, `GET|POST /feed-subscription` ; publique par jeton `GET /feed/<jeton>.ics`.
-
-**Calendrier des disponibilités** (spec 025, ADR 0027). Un jour est résolu côté serveur par une seule priorité (`closedReason`, `src/booking/resolve-day.ts`), partagée par les créneaux publics et le calendrier admin : passé → fermeture par période → exception par date → jour férié → semaine type.
-
-- **Jours fériés** de métropole (Code du travail, art. L3133-1 : 8 fixes, lundi de Pâques, Ascension, lundi de Pentecôte), calculés sans dépendance (`src/booking/french-public-holidays.ts`). Fermés par défaut ; l'interrupteur `PUT /availability/settings { closePublicHolidays }` (ligne singleton `booking_setting`, défaut `DEFAULT_CLOSE_PUBLIC_HOLIDAYS = true` si la ligne est absente) les rouvre selon la semaine type.
-- **Exceptions par date** (`availability_override`, `open` | `closed`) : `PUT /availability/days/:date { open }` écrit l'état souhaité ; l'exception est supprimée quand le jour aurait cet état sans elle, insérée ou remplacée sinon. Refus : 422 `day_in_past`, 422 `day_out_of_range` (après le dernier jour du mois courant + 12), 409 `day_in_closure`. Réponse : le jour résolu.
-- **Calendrier admin** : `GET /availability/calendar` rend le mois de Paris demandé (mois courant si absent) jour par jour (`state` : `past` | `closed-period` | `closed` | `holiday` | `open` | `empty`, nom du férié, nombre de créneaux de la semaine type, fermeture couvrante), avec `today`, `previousMonth` / `nextMonth` (nuls aux bornes) et `closePublicHolidays`. Mois lisibles : du mois courant au mois courant + 12, sinon 400 `month_out_of_range`.
-
-**Emails** (`BookingNotifier`, gabarits `src/booking/mail-templates/`) : confirmation au visiteur (invitation `.ics` + lien d'annulation `PUBLIC_SITE_URL/rendez-vous/annulation#<jeton>`), notification au propriétaire, annulation des deux côtés (`.ics` `CANCEL`), rappel la veille au visiteur seul (sans lien d'annulation : seule l'empreinte du jeton est conservée). Destinataire propriétaire : `OWNER_EMAIL` (`src/mailer/mailer.constants.ts`), comme le contact.
-
-**Variables d'env** : `BOOKING_VIDEO_URL_BASE` (base des salles de visio, défaut `https://meet.jit.si`) et `PUBLIC_SITE_URL` (origine des liens envoyés par email, défaut `https://nedellec-julien.fr`).
-
-**Abonnement d'agenda** (spec 026, ADR 0028) : `GET /api/booking/feed/<jeton>.ics`, public et sans garde (un client d'abonnement fait un `GET` nu), rend en `text/calendar` les rendez-vous confirmés terminés depuis moins de 6 mois ou à venir (même borne que la purge), avec `Cache-Control: no-store` et `X-Robots-Tag: noindex, nofollow`. Le jeton est dérivé, jamais stocké : `base64url(HMAC-SHA256(BOOKING_FEED_SECRET, 'booking-feed:' + sel))`, le sel étant dans `booking_setting.feed_salt`. Régénérer tire un nouveau sel : l'ancien lien répond 404 dès la requête suivante. Secret absent, fichier malformé, aucun lien créé ou jeton faux : même 404.
-
-- **Lecture admin** : `GET /api/booking/feed-subscription` (session) rend `{ status: 'unconfigured' }` sans secret, `{ status: 'none' }` tant qu'aucun lien n'a été créé, sinon `{ status: 'active', token, createdAt }` : le jeton est recalculé depuis le sel à chaque lecture, ni le sel ni le secret ne sortent. Le front compose l'URL du flux.
-- **Création et régénération** : `POST /api/booking/feed-subscription` (session, sans corps) tire un nouveau sel aléatoire (16 octets) et rend 201 avec le nouveau lien actif ; l'ancien répond 404 dès la requête suivante. L'upsert de `booking_setting` ne touche pas `close_public_holidays`. Sans secret : 409 `feed_not_configured`, rien n'est écrit. Les deux routes répondent en `Cache-Control: no-store`.
-- **Rotation du secret** : changer `BOOKING_FEED_SECRET` dans Dokploy puis redéployer invalide **tous** les liens (404) sans toucher la base ; l'admin relit alors un nouveau jeton (même sel, nouveau secret) qu'il faut réabonner dans l'agenda. Retirer la variable rend l'abonnement non configuré (flux en 404, `unconfigured`).
-
-**Crons** (`BookingScheduler`, UTC, surveillés par Sentry Crons) :
-
-| Cron           | Moniteur Sentry     | Rôle                                                                                                                                                                                                                                                                     |
-| -------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `*/15 * * * *` | `booking-reminders` | Rappel des rendez-vous confirmés qui commencent dans les 24 h et réservés au moins 30 h avant leur début. Réclamation atomique (`update … set reminder_sent_at = now() … returning`) puis envoi : au plus un rappel, un envoi raté est journalisé (id seul), pas rejoué. |
-| `30 3 * * *`   | `booking-purge`     | Purge des rendez-vous terminés depuis plus de **6 mois**, quel que soit leur statut ; le nombre de lignes supprimées est journalisé.                                                                                                                                     |
-
-**Tests d'intégration** (Postgres réel, ignorés sans `BOOKING_IT_DATABASE_URL`) :
-
-```bash
-docker run --rm -d --name booking-it -e POSTGRES_PASSWORD=it -p 55433:5432 docker.io/postgres:17-alpine
-BOOKING_IT_DATABASE_URL=postgres://postgres:it@127.0.0.1:55433/postgres pnpm test -- booking.integration booking-scheduler.integration booking-feed.integration
-docker stop booking-it
-```
 
 ## CV
 
