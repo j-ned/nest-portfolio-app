@@ -23,7 +23,7 @@ describe('normalizeReferrer', () => {
     expect(normalizeReferrer(raw, SITE)).toBeNull();
   });
 
-  it.each([
+  it.each<[string | undefined, string]>([
     [undefined, 'absent'],
     ['', 'vide'],
     ['not a url', 'texte libre'],
