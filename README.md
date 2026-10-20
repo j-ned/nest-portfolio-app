@@ -213,6 +213,7 @@ Liste réelle (`package.json`) - pas de script `s3:*` (démarrer MinIO à la mai
 | `pnpm start:prod`                                                   | `node dist/main` (nécessite `pnpm build` avant)                                                                          |
 | `pnpm build`                                                        | `nest build` → `dist/`                                                                                                   |
 | `pnpm lint` / `pnpm format`                                         | ESLint (`--fix`) / Prettier                                                                                              |
+| `pnpm lint:check` / `format:check` / `typecheck`                    | Vérifications sans écriture : ESLint, Prettier, `tsc --noEmit` (specs comprises). Ce que joue la CI                      |
 | `pnpm test` / `test:watch` / `test:cov` / `test:e2e` / `test:debug` | Jest                                                                                                                     |
 | `pnpm db:up` / `db:down` / `db:wait`                                | Cycle container Postgres (`podman compose`)                                                                              |
 | `pnpm db:generate` / `db:migrate` / `db:studio`                     | Drizzle Kit                                                                                                              |
@@ -221,6 +222,8 @@ Liste réelle (`package.json`) - pas de script `s3:*` (démarrer MinIO à la mai
 | `pnpm db:reset`                                                     | Wipe volume + recrée + migrate + seed (dev only)                                                                         |
 | `pnpm mail:up`                                                      | Démarre le container Mailpit                                                                                             |
 | `pnpm sentry:sourcemaps`                                            | Upload des sourcemaps vers Sentry (`scripts/upload-sentry-sourcemaps.mjs`)                                               |
+
+**CI** (`.github/workflows/ci.yml`, à chaque PR et sur `master`) : `install --frozen-lockfile`, `lint:check`, `format:check`, `typecheck`, `pnpm test` **avec** les tests d'intégration (service `postgres:17-alpine`, une base par suite : `BOOKING_IT_DATABASE_URL`, `PROFILE_IT_DATABASE_URL`), `build`, puis le build de l'image Docker tel que Dokploy l'exécute (sans push).
 
 ## S3 Storage
 
