@@ -34,8 +34,8 @@ function violations(errors: ValidationError[], parent = ''): string[] {
   });
 }
 
-/** Mêmes options que la ValidationPipe globale (main.ts). */
-async function violationsOf(body: Body): Promise<string[]> {
+/** Mêmes options que la ValidationPipe globale (main.ts). Tout payload, seed en lecture seule compris. */
+async function violationsOf(body: object): Promise<string[]> {
   const dto = plainToInstance(UpdateProfileDto, body, {
     enableImplicitConversion: true,
   });
