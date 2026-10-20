@@ -1,4 +1,8 @@
-import type { AnalyticsType, OutboundChannel } from './dto/track-event.dto';
+import type {
+  AnalyticsType,
+  OutboundChannel,
+  RETIRED_OUTBOUND_CHANNELS,
+} from './dto/track-event.dto';
 
 /** Temps visible cumulé à partir duquel une visite d'une page est engagée (ADR-0022, validé le 2026-10-10). */
 export const ENGAGED_DURATION_SECONDS = 30;
@@ -24,8 +28,12 @@ export const V2_EVENT_TYPES = [
   'section_view',
 ] as const satisfies readonly AnalyticsType[];
 
+type CountedChannel =
+  OutboundChannel | (typeof RETIRED_OUTBOUND_CHANNELS)[number];
+
+/** Les canaux retirés restent dans `contact` : un rattrapage d'un jour ancien les compte encore. */
 export const OUTBOUND_GROUPS = {
-  contact: ['email', 'phone', 'malt', 'discord'],
+  contact: ['email', 'discord', 'phone', 'malt'],
   profile: ['linkedin', 'github'],
   demo: ['demo'],
-} as const satisfies Record<string, readonly OutboundChannel[]>;
+} as const satisfies Record<string, readonly CountedChannel[]>;
