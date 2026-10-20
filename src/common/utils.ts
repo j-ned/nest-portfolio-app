@@ -98,9 +98,3 @@ function hasPgViolation(err: unknown, code: string, hint?: string): boolean {
 /** Violation d'unicité (`23505`), éventuellement sur une contrainte dont le nom contient `columnHint`. */
 export const isUniqueViolation = (err: unknown, columnHint?: string): boolean =>
   hasPgViolation(err, '23505', columnHint);
-
-/** Violation d'une contrainte d'exclusion (`23P01`), par exemple `booking_no_overlap`. */
-export const isExclusionViolation = (
-  err: unknown,
-  constraintHint?: string,
-): boolean => hasPgViolation(err, '23P01', constraintHint);

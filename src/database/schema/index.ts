@@ -7,7 +7,6 @@ import * as cvFiles from './cv-files';
 import * as analytics from './analytics';
 import * as blogPosts from './blog-posts';
 import * as profileContent from './profile-content';
-import * as booking from './booking';
 
 export * from './users';
 export * from './projects';
@@ -17,7 +16,6 @@ export * from './cv-files';
 export * from './analytics';
 export * from './blog-posts';
 export * from './profile-content';
-export * from './booking';
 
 export const schema = {
   ...users,
@@ -28,5 +26,4 @@ export const schema = {
   ...analytics,
   ...blogPosts,
   ...profileContent,
-  ...booking,
 } as const;

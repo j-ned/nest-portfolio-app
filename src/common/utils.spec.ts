@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common';
 import {
-  isExclusionViolation,
   isUniqueViolation,
   slugify,
   fireAndForget,
@@ -76,48 +75,6 @@ describe('isUniqueViolation', () => {
       constraint_name: 'other_unique_constraint',
     };
     expect(isUniqueViolation(drizzleErr, 'slug')).toBe(false);
-  });
-});
-
-const wrapped = (cause: unknown): Error => {
-  const err = new Error('Failed query: insert into "booking" …');
-  (err as unknown as Record<string, unknown>).cause = cause;
-  return err;
-};
-
-const EXCLUSION = { code: '23P01', constraint_name: 'booking_no_overlap' };
-
-describe('isExclusionViolation', () => {
-  it.each([
-    ['erreur Postgres brute', EXCLUSION],
-    ['erreur enveloppée par Drizzle', wrapped(EXCLUSION)],
-    ['erreur enveloppée deux fois', wrapped(wrapped(EXCLUSION))],
-  ])('Given une %s 23P01, Then elle est reconnue', (_case, err) => {
-    expect(isExclusionViolation(err)).toBe(true);
-  });
-
-  it.each([
-    ['contrainte attendue', 'no_overlap', true],
-    ['autre contrainte', 'room_overlap', false],
-  ])(
-    'Given une violation 23P01 enveloppée et un indice de %s, Then %p',
-    (_case, hint, expected) => {
-      expect(isExclusionViolation(wrapped(EXCLUSION), hint)).toBe(expected);
-    },
-  );
-
-  it.each([
-    ['violation d’unicité', { code: '23505', constraint_name: 'x_unique' }],
-    ['violation d’unicité enveloppée', wrapped({ code: '23505' })],
-    ['erreur sans code', new Error('connection reset')],
-    ['valeur nulle', null],
-    ['chaîne', '23P01'],
-  ])('Given une %s, Then elle n’est pas reconnue', (_case, err) => {
-    expect(isExclusionViolation(err)).toBe(false);
-  });
-
-  it('Given une violation 23P01, Then elle n’est pas prise pour une violation d’unicité', () => {
-    expect(isUniqueViolation(wrapped(EXCLUSION))).toBe(false);
   });
 });
 

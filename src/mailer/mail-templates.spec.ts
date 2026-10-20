@@ -18,31 +18,7 @@ const SRC = resolve(__dirname, '..');
 const read = (path: string): string =>
   readFileSync(resolve(SRC, path), 'utf-8');
 
-const CANCELLED_WITH_REASON = read(
-  'booking/mail-templates/booking-cancelled.html',
-).replace(
-  '{{reasonRow}}',
-  read('booking/mail-templates/booking-cancelled-reason.html').trim(),
-);
-
 const TEMPLATES: readonly (readonly [string, string])[] = [
-  [
-    'booking-confirmation',
-    read('booking/mail-templates/booking-confirmation.html'),
-  ],
-  [
-    'booking-notification',
-    read('booking/mail-templates/booking-notification.html'),
-  ],
-  ['booking-reminder', read('booking/mail-templates/booking-reminder.html')],
-  [
-    'booking-cancelled',
-    read('booking/mail-templates/booking-cancelled.html').replace(
-      '{{reasonRow}}',
-      '',
-    ),
-  ],
-  ['booking-cancelled + booking-cancelled-reason', CANCELLED_WITH_REASON],
   [
     'contact-confirmation',
     read('contact/mail-templates/contact-confirmation.html'),
@@ -428,16 +404,5 @@ describe('Gabarits d’email', () => {
         '« Texte » contraste 1.16:1',
       ]);
     });
-  });
-});
-
-describe('Texte de la confirmation', () => {
-  it('Given la confirmation au visiteur, Then elle dit que l’invitation permet l’ajout à l’agenda, sans promettre un ajout automatique', () => {
-    const html = read('booking/mail-templates/booking-confirmation.html');
-
-    expect(html).toContain(
-      'L&#8217;invitation jointe permet de l&#8217;ajouter &#224; votre agenda.',
-    );
-    expect(html).not.toContain('l&#8217;ajoute &#224; votre agenda');
   });
 });
