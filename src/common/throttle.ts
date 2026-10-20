@@ -29,13 +29,3 @@ export const ADMIN_WRITE_THROTTLE = {
 } as const;
 
 export const AdminWriteThrottle = () => Throttle(ADMIN_WRITE_THROTTLE);
-
-/**
- * Réservations publiques : 5 par IP sur 10 min. Un visiteur réserve une fois ; la limite borne un
- * robot qui contournerait le plafond par email avec plusieurs adresses (spec 024).
- */
-export const BOOKING_CREATE_THROTTLE = {
-  default: { limit: 5, ttl: 600_000 },
-} as const;
-
-export const BookingCreateThrottle = () => Throttle(BOOKING_CREATE_THROTTLE);

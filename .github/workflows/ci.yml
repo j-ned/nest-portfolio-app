@@ -20,8 +20,7 @@ jobs:
     timeout-minutes: 15
 
     # Même image que le README et compose.yaml. Les tests d'intégration appliquent eux-mêmes les
-    # migrations Drizzle sur une base jetable : une base par variable, pour que deux suites ne se
-    # disputent jamais la table des migrations.
+    # migrations Drizzle sur une base jetable dédiée.
     services:
       postgres:
         image: postgres:17-alpine
@@ -36,7 +35,6 @@ jobs:
           --health-retries 10
 
     env:
-      BOOKING_IT_DATABASE_URL: postgres://postgres:it@127.0.0.1:5432/booking_it
       PROFILE_IT_DATABASE_URL: postgres://postgres:it@127.0.0.1:5432/profile_it
 
     steps:
@@ -68,12 +66,8 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Create integration databases
-        run: |
-          set -euo pipefail
-          for db in booking_it profile_it; do
-            psql "postgres://postgres:it@127.0.0.1:5432/postgres" -c "CREATE DATABASE $db"
-          done
+      - name: Create integration database
+        run: psql "postgres://postgres:it@127.0.0.1:5432/postgres" -c "CREATE DATABASE profile_it"
 
       # Unitaires et intégration ensemble : sans les variables *_IT_DATABASE_URL, les suites
       # d'intégration seraient ignorées (describe.skip) et le job resterait vert sans les jouer.
