@@ -51,6 +51,39 @@ describe('instrument', () => {
     },
   );
 
+  it('Given Sentry initialisé, Then toute collecte de données personnelles est fermée catégorie par catégorie', () => {
+    const { sentry } = loadInstrument();
+    const options = jest.mocked(sentry.init).mock.calls[0]?.[0];
+
+    expect(options).not.toHaveProperty('sendDefaultPii');
+    expect(options?.dataCollection).toEqual({
+      userInfo: false,
+      cookies: false,
+      httpHeaders: { request: { allow: ['user-agent'] }, response: false },
+      httpBodies: [],
+      urlQueryParams: false,
+      graphQL: { document: false, variables: false },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      stackFrameVariables: false,
+    });
+  });
+
+  it('Given Sentry initialisé, Then les erreurs passent par sentryBeforeSend', () => {
+    const { sentry, hooks } = loadInstrument();
+    const options = jest.mocked(sentry.init).mock.calls[0]?.[0];
+
+    expect(options?.beforeSend).toBe(hooks.sentryBeforeSend);
+  });
+
+  it('Given Sentry initialisé, Then les transactions sont envoyées entières (static) : la v11 ignorerait beforeSendTransaction en streaming', () => {
+    const { sentry } = loadInstrument();
+    const options = jest.mocked(sentry.init).mock.calls[0]?.[0];
+
+    expect(options?.traceLifecycle).toBe('static');
+  });
+
   it('Given Sentry initialisé, Then les transactions passent par sentryBeforeSendTransaction', () => {
     const { sentry, hooks } = loadInstrument();
     const options = jest.mocked(sentry.init).mock.calls[0]?.[0];
