@@ -107,7 +107,7 @@ describe('ContactService', () => {
       expect(adminCall![0].html).toContain('Demande de devis');
     });
 
-    it('envoie le mail confirmation à dto.email avec sujet "Confirmation de votre message"', async () => {
+    it('envoie le mail confirmation à dto.email avec sujet "J’ai bien reçu ton message"', async () => {
       const created = mkMessage({ email: 'visitor@example.com' });
       db.returning.mockResolvedValueOnce([created]);
       await service.create({
@@ -121,7 +121,38 @@ describe('ContactService', () => {
         (call) => call[0].to === 'visitor@example.com',
       );
       expect(visitorCall).toBeDefined();
-      expect(visitorCall![0].subject).toBe('Confirmation de votre message');
+      expect(visitorCall![0].subject).toBe('J’ai bien reçu ton message');
+    });
+
+    it('Given le mail de confirmation, When il est rendu, Then il tutoie le visiteur en « je », sans vouvoiement, « nous » ni tiret cadratin', async () => {
+      db.returning.mockResolvedValueOnce([mkMessage({ name: 'Alice' })]);
+      await service.create({
+        name: 'Alice',
+        email: 'visitor@example.com',
+        subject: 's',
+        message: 'm',
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      const html =
+        mailer.sendMail.mock.calls.find(
+          (call) => call[0].to === 'visitor@example.com',
+        )?.[0].html ?? '';
+      const text = html
+        .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&#(\d+);/g, (_entity, code: string) =>
+          String.fromCodePoint(Number(code)),
+        )
+        .replace(/[ \t\r\n]+/g, ' ');
+
+      expect(text).toContain('J’ai bien reçu ton message');
+      expect(text).toContain('Salut Alice,');
+      expect(text).toContain(
+        'Merci pour ton message\u00a0! Je l’ai bien reçu et je te réponds dès que je peux.',
+      );
+      expect(text).toContain('Tourneur CN et développeur web Angular / NestJS');
+      expect(text).not.toMatch(/\b(?:vous|votre|vos|nous|notre|nos)\b/i);
+      expect(text).not.toContain('—');
     });
 
     it('resolve quand même si MailerService.sendMail reject (fire-and-forget)', async () => {
