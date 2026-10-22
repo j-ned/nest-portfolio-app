@@ -1,4 +1,7 @@
-import { OUTBOUND_CHANNELS } from './dto/track-event.dto';
+import {
+  OUTBOUND_CHANNELS,
+  RETIRED_OUTBOUND_CHANNELS,
+} from './dto/track-event.dto';
 import {
   ENGAGED_DURATION_SECONDS,
   ENGAGEMENT_EVENT_TYPES,
@@ -40,12 +43,12 @@ describe('engagement (ADR-0022)', () => {
 
   it('Given the outbound channels, Then contact, profile and demo groups match the ADR and cover every channel once', () => {
     expect(OUTBOUND_GROUPS).toEqual({
-      contact: ['email', 'phone', 'malt', 'discord'],
+      contact: ['email', 'discord', 'phone', 'malt'],
       profile: ['linkedin', 'github'],
       demo: ['demo'],
     });
     expect(Object.values(OUTBOUND_GROUPS).flat().sort()).toEqual(
-      [...OUTBOUND_CHANNELS].sort(),
+      [...OUTBOUND_CHANNELS, ...RETIRED_OUTBOUND_CHANNELS].sort(),
     );
   });
 });

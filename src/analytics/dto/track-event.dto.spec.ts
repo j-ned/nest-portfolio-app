@@ -95,10 +95,7 @@ describe('TrackEventDto', () => {
   describe('événements v2 : entityId validé par type', () => {
     it.each([
       [{ type: 'contact_submit', entityId: 'home' }],
-      [{ type: 'contact_submit', entityId: 'offer_site-vitrine' }],
       [{ type: 'outbound_click', entityId: 'email', entityTitle: '/' }],
-      [{ type: 'outbound_click', entityId: 'phone', entityTitle: '/about' }],
-      [{ type: 'outbound_click', entityId: 'malt' }],
       [{ type: 'outbound_click', entityId: 'discord' }],
       [{ type: 'outbound_click', entityId: 'linkedin' }],
       [{ type: 'outbound_click', entityId: 'github' }],
@@ -116,6 +113,15 @@ describe('TrackEventDto', () => {
       ['65 caractères', { type: 'contact_submit', entityId: 'a'.repeat(65) }],
       ['canal absent', { type: 'outbound_click' }],
       ['canal hors liste', { type: 'outbound_click', entityId: 'twitter' }],
+      [
+        'canal retiré : téléphone',
+        { type: 'outbound_click', entityId: 'phone' },
+      ],
+      ['canal retiré : Malt', { type: 'outbound_click', entityId: 'malt' }],
+      [
+        "page d'offre retirée",
+        { type: 'contact_submit', entityId: 'offer_site-vitrine' },
+      ],
       ['adresse', { type: 'outbound_click', entityId: 'mailto:a@b.fr' }],
       ['section absente', { type: 'section_view' }],
       ['section inconnue', { type: 'section_view', entityId: 'home_hero' }],

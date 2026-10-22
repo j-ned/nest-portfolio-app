@@ -8,6 +8,7 @@ import {
 import type { ArgumentsHost } from '@nestjs/common';
 import { SentryExceptionCaptured } from '@sentry/nestjs';
 import type { Request, Response } from 'express';
+import { redactUrl } from '../log-redact';
 
 type ErrorPayload = {
   statusCode: number;
@@ -44,7 +45,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     // `originalUrl` : URL complète, préfixe global compris. Depuis NestJS 12, le gestionnaire
     // des routes inconnues est monté sous le préfixe et Express y retire `/api` de `req.url`.
-    const path = req.originalUrl ?? req.url;
+    const path = redactUrl(req.originalUrl ?? req.url);
     const payload: ErrorPayload = {
       statusCode: status,
       error: errorBody.error ?? HttpStatus[status] ?? 'Error',

@@ -160,4 +160,20 @@ describe('validateEnv', () => {
       validateEnv({ ...baseValid, SMTP_FROM: 'not-an-email' }),
     ).toThrow(/SMTP_FROM/);
   });
+
+  // Retrait de la prise de rendez-vous (spec 029) : des variables encore définies dans Dokploy ne
+  // doivent ni bloquer le démarrage ni réapparaître dans la configuration.
+  it.each([
+    ['BOOKING_FEED_SECRET', 'f'.repeat(48)],
+    ['BOOKING_VIDEO_URL_BASE', 'https://meet.jit.si'],
+    ['PUBLIC_SITE_URL', 'https://nedellec-julien.fr'],
+  ])(
+    'Given %s encore définie, Then le démarrage passe et la variable est ignorée',
+    (name, value) => {
+      const result = validateEnv({ ...baseValid, [name]: value });
+
+      expect(result).not.toHaveProperty(name);
+      expect(result.DATABASE_URL).toBe(baseValid.DATABASE_URL);
+    },
+  );
 });
