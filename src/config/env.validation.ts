@@ -8,10 +8,10 @@ export function validateEnv(raw: Record<string, unknown>) {
       .join('\n');
     throw new Error(`Invalid environment variables:\n${formatted}`);
   }
+  const data = result.data;
   return {
-    ...result.data,
+    ...data,
     LOG_LEVEL:
-      result.data.LOG_LEVEL ??
-      (result.data.NODE_ENV === 'development' ? 'debug' : 'info'),
+      data.LOG_LEVEL ?? (data.NODE_ENV === 'development' ? 'debug' : 'info'),
   };
 }

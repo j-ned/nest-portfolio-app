@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsTrackerService } from './analytics-tracker.service';
@@ -39,7 +40,10 @@ describe('AnalyticsTrackerService', () => {
         { provide: DRIZZLE, useValue: db },
         {
           provide: AppConfigService,
-          useValue: { corsOrigins: ['https://nedellec-julien.fr'] },
+          useValue: {
+            corsOrigins: ['https://nedellec-julien.fr'],
+            jwtSecret: 'test-jwt-secret',
+          },
         },
       ],
     }).compile();
@@ -125,7 +129,7 @@ describe('AnalyticsTrackerService', () => {
   });
 
   describe('referrer', () => {
-    it.each([
+    it.each<[string | undefined, string | null, string]>([
       [
         'https://www.google.com/',
         'google.com',
@@ -366,6 +370,50 @@ describe('AnalyticsTrackerService', () => {
 
       expect(firstCall.sessionHash).toBe(secondCall.sessionHash);
       expect(firstCall.sessionHash).toHaveLength(64); // SHA256 hex = 64 chars
+    });
+
+    it("ne se recalcule pas depuis l'IP seule : différent du SHA-256 brut de ip|ua|jour", async () => {
+      db.limit.mockResolvedValue([]);
+      db.returning.mockResolvedValue([{ id: 'x' }]);
+
+      await service.track(
+        { type: 'page_view', url: '/a' },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+      const { sessionHash } = db.values.mock.calls[0][0] as {
+        sessionHash: string;
+      };
+
+      // Sans clé, 4 milliards d'IPv4 suffisent à retrouver l'adresse à partir de l'empreinte
+      const unkeyed = createHash('sha256')
+        .update(`1.2.3.4|${NORMAL_UA}|2026-04-26`)
+        .digest('hex');
+      expect(sessionHash).not.toBe(unkeyed);
+    });
+
+    it('dépend de la clé secrète : un autre secret donne une autre empreinte', async () => {
+      db.limit.mockResolvedValue([]);
+      db.returning.mockResolvedValue([{ id: 'x' }]);
+      const other = new AnalyticsTrackerService(
+        db as never,
+        {
+          corsOrigins: [],
+          jwtSecret: 'un-autre-secret',
+        } as unknown as AppConfigService,
+      );
+
+      await service.track(
+        { type: 'page_view', url: '/a' },
+        '1.2.3.4',
+        NORMAL_UA,
+      );
+      await other.track({ type: 'page_view', url: '/a' }, '1.2.3.4', NORMAL_UA);
+
+      const [first, second] = db.values.mock.calls.map(
+        ([row]) => (row as { sessionHash: string }).sessionHash,
+      );
+      expect(first).not.toBe(second);
     });
 
     it('même IP+UA mais 2 jours différents → hash différent', async () => {

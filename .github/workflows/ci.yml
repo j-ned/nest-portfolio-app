@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Un run par branche/PR : le nouveau push annule le précédent.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint · Typecheck · Test · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Même image que le README et compose.yaml. Les tests d'intégration appliquent eux-mêmes les
+    # migrations Drizzle sur une base jetable dédiée.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: it
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      PROFILE_IT_DATABASE_URL: postgres://postgres:it@127.0.0.1:5432/profile_it
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # pnpm avant setup-node : la version vient du champ `packageManager` de package.json.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc # même majeure que le Dockerfile (node:24-alpine)
+          cache: pnpm
+
+      # Même commande que le Dockerfile : un lockfile incohérent échoue ici, pas chez Dokploy.
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm lint` corrige (--fix) : en CI on vérifie seulement.
+      - name: Lint
+        run: pnpm lint:check
+
+      - name: Format
+        run: pnpm format:check
+
+      # Jest (ts-jest) ne vérifie pas les types des specs : tsc couvre code et tests.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Create integration database
+        run: psql "postgres://postgres:it@127.0.0.1:5432/postgres" -c "CREATE DATABASE profile_it"
+
+      # Unitaires et intégration ensemble : sans les variables *_IT_DATABASE_URL, les suites
+      # d'intégration seraient ignorées (describe.skip) et le job resterait vert sans les jouer.
+      - name: Test (unit + integration on Postgres)
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  docker:
+    name: Docker build (réplique Dokploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Exactement ce que Dokploy exécute : le Dockerfile du repo, sans push.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: nest-portfolio-app:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
