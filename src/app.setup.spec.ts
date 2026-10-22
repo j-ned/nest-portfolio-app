@@ -85,6 +85,23 @@ describe('setupApp', () => {
     },
   );
 
+  it('Given a JSON body over the parser limit, When posted, Then the 413 is the API JSON error body', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/things')
+      .set('content-type', 'application/json')
+      .send(JSON.stringify({ text: 'x'.repeat(200 * 1024) }));
+
+    expect(res.status).toBe(413);
+    expect(res.headers['content-type']).toMatch(/^application\/json/);
+    expect(Object.keys(res.body as object).sort()).toEqual(ERROR_KEYS);
+    expect(res.body).toMatchObject({
+      statusCode: 413,
+      error: 'Payload Too Large',
+      message: 'request entity too large',
+      path: '/api/things',
+    });
+  });
+
   it('Given a non-production app, When /docs is requested, Then Swagger UI is served', async () => {
     const res = await request(app.getHttpServer()).get('/docs');
 

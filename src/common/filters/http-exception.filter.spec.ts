@@ -104,3 +104,96 @@ describe('HttpExceptionFilter sur les variantes du chemin du flux', () => {
     },
   );
 });
+
+/** Erreur au format `http-errors` (body-parser, Express) : statut porté par `status` ou `statusCode`. */
+const httpError = (props: Record<string, unknown>, message = 'raw message') =>
+  Object.assign(new Error(message), props);
+
+describe('HttpExceptionFilter sur les erreurs http-errors (body-parser)', () => {
+  let logError: jest.SpyInstance;
+
+  beforeEach(() => {
+    logError = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    logError.mockRestore();
+  });
+
+  it.each([
+    [
+      'corps trop gros',
+      httpError(
+        {
+          status: 413,
+          statusCode: 413,
+          expose: true,
+          type: 'entity.too.large',
+        },
+        'request entity too large',
+      ),
+      413,
+      'Payload Too Large',
+      'request entity too large',
+    ],
+    [
+      'encodage non supporté (statusCode seul)',
+      httpError(
+        { statusCode: 415, expose: true },
+        'unsupported content encoding',
+      ),
+      415,
+      'Unsupported Media Type',
+      'unsupported content encoding',
+    ],
+    [
+      '4xx non exposable',
+      httpError({ status: 400, expose: false }, 'internal detail'),
+      400,
+      'Bad Request',
+      'Bad Request',
+    ],
+  ])(
+    'Given une erreur %s, Then son statut 4xx est respecté avec un message sûr, sans log d’erreur',
+    (_label, error, status, label, message) => {
+      const { host, res } = httpHost('/api/contact/messages');
+
+      new HttpExceptionFilter().catch(error, host);
+
+      expect(res.status).toHaveBeenCalledWith(status);
+      expect(res.json).toHaveBeenCalledWith({
+        statusCode: status,
+        error: label,
+        message,
+        path: '/api/contact/messages',
+        timestamp: expect.any(String) as string,
+      });
+      expect(logError).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['5xx', httpError({ status: 503, expose: false }, 'upstream secret')],
+    ['statut non numérique', httpError({ status: '413' })],
+    ['statut hors erreur client', httpError({ status: 302 })],
+  ])(
+    'Given une erreur au statut %s, Then c’est un 500 générique, journalisé',
+    (_label, error) => {
+      const { host, res } = httpHost('/api/x');
+
+      new HttpExceptionFilter().catch(error, host);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Internal server error',
+        }),
+      );
+      expect(logError).toHaveBeenCalled();
+    },
+  );
+});
