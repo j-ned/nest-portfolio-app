@@ -1,5 +1,10 @@
 import type { ErrorEvent, Event } from '@sentry/nestjs';
-import { SENSITIVE_BODY_FIELDS, redactUrl } from './log-redact';
+import {
+  SENSITIVE_BODY_FIELDS,
+  redactQueryParams,
+  redactUrl,
+  stripQueryAndFragment,
+} from './log-redact';
 
 const FILTERED = '[Filtered]';
 const SENSITIVE_KEYS: ReadonlySet<string> = new Set(SENSITIVE_BODY_FIELDS);
@@ -37,15 +42,7 @@ const SECRET_HEADERS: ReadonlySet<string> = new Set([
   'set-cookie',
 ]);
 
-/** Coupe la query string et le fragment : ils peuvent porter un e-mail, un jeton ou un terme recherché. */
-const stripQueryAndFragment = (url: string): string => url.split(/[?#]/, 1)[0];
-
-/**
- * `DrizzleQueryError` écrit les paramètres liés (valeurs saisies : nom, e-mail, message) après
- * `\nparams: ` dans son message ; `dataCollection.databaseQueryData` ne touche pas aux messages d'erreur.
- */
-const QUERY_PARAMS = /\nparams: [\s\S]*$/;
-
+/** `dataCollection.databaseQueryData` ne touche pas aux messages d'erreur : `redactQueryParams` s'en charge. */
 const scrubExceptionValues = (
   exception: ErrorEvent['exception'],
 ): ErrorEvent['exception'] =>
@@ -56,7 +53,7 @@ const scrubExceptionValues = (
         ? value
         : {
             ...value,
-            value: value.value.replace(QUERY_PARAMS, `\nparams: ${FILTERED}`),
+            value: redactQueryParams(value.value),
           },
     ),
   };
