@@ -5,7 +5,12 @@ import { AppConfigModule } from './config/app-config.module';
 import { AppConfigService } from './config/app-config.service';
 import { validateEnv } from './config/env.validation';
 import { LOGGER_ROUTES } from './config/logger-routes';
-import { LOG_REDACT_PATHS, serializeRequest } from './common/log-redact';
+import {
+  LOG_REDACT_PATHS,
+  redactLogArguments,
+  serializeError,
+  serializeRequest,
+} from './common/log-redact';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -51,9 +56,10 @@ import { RuntimeConfigModule } from './runtime-config/runtime-config.module';
             ignore: (req: { url?: string }) => req.url === '/api/health',
           },
           customProps: () => ({ context: 'HTTP' }),
-          serializers: { req: serializeRequest },
+          serializers: { req: serializeRequest, err: serializeError },
           hooks: {
-            logMethod(args, method, level) {
+            logMethod(rawArgs, method, level) {
+              const args = redactLogArguments(rawArgs) as typeof rawArgs;
               if (level >= 50) {
                 const [first, second] = args as [unknown, string?];
                 const ctx =

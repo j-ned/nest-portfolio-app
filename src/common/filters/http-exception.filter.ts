@@ -9,7 +9,7 @@ import type { ArgumentsHost } from '@nestjs/common';
 import { SentryExceptionCaptured } from '@sentry/nestjs';
 import type { Request, Response } from 'express';
 import { STATUS_CODES } from 'node:http';
-import { redactUrl } from '../log-redact';
+import { redactUrl, stripQueryAndFragment } from '../log-redact';
 
 type ErrorPayload = {
   statusCode: number;
@@ -87,9 +87,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     };
 
     if (status >= 500) {
+      // Le corps rend la requête à son auteur ; le log, lui, ne garde que le chemin.
+      const loggedPath = stripQueryAndFragment(path);
       this.logger.error(
-        { err: exception, path, method: req.method },
-        `Unhandled ${status} on ${req.method} ${path}`,
+        { err: exception, path: loggedPath, method: req.method },
+        `Unhandled ${status} on ${req.method} ${loggedPath}`,
       );
     }
     res.status(status).json(payload);
