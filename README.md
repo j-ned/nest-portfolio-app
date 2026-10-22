@@ -1,6 +1,6 @@
 # Portfolio NestJS Backend
 
-Backend NestJS du portfolio J-Ned. Toutes les routes sont montées sous le préfixe global **`/api`** (`app.setGlobalPrefix('api')` dans `src/main.ts`) - le Swagger UI fait exception, il reste à la racine (`/docs`, non préfixé).
+Backend NestJS du portfolio J-Ned. Toutes les routes sont montées sous le préfixe global **`/api`** (`app.setGlobalPrefix('api')` dans `src/app.setup.ts`) - le Swagger UI fait exception, il reste à la racine (`/docs`, non préfixé). Toute route inconnue, sous `/api` ou hors préfixe, répond par la même erreur JSON (`HttpExceptionFilter`, repli `src/common/filters/out-of-prefix-fallback.ts` depuis NestJS 12).
 
 ## Quickstart
 
@@ -180,7 +180,7 @@ create(@CurrentUser() user: User, @Body() dto: CreateSomethingDto) { /* ... */ }
 
 ## Validation HTTP
 
-`ValidationPipe` global (`src/main.ts`) :
+`ValidationPipe` global (`src/app.setup.ts`) :
 
 - `whitelist: true` - strippe les champs non déclarés dans le DTO.
 - `forbidNonWhitelisted: true` - **400 si le client envoie un champ inattendu** (détection précoce de bugs frontend).
@@ -188,14 +188,15 @@ create(@CurrentUser() user: User, @Body() dto: CreateSomethingDto) { /* ... */ }
 
 ## Tests
 
-- **Unitaires** : `*.spec.ts` à côté du code source, runner Jest (config inline dans `package.json`, `rootDir: src`).
-- **E2E** : harnais `test/jest-e2e.json` présent, `pnpm test:e2e` exécutable, mais aucun test e2e écrit à ce jour.
+- **Unitaires** : `*.spec.ts` à côté du code source, runner Jest (config inline dans `package.json`, `rootDir: src`). NestJS 12 est publié en ESM pur : comme le template officiel Nest 12 CommonJS, Jest tourne sous `node --experimental-vm-modules` (support `require(esm)` de Jest, Node ≥ 24.9), avertissement `ExperimentalWarning` masqué.
+- **Intégration HTTP** : `src/app.setup.spec.ts` monte la configuration HTTP réelle (`setupApp`) et vérifie les erreurs JSON, Swagger et les replis.
+- **E2E** : harnais `test/jest-e2e.json` présent mais aucun test e2e écrit : `pnpm test:e2e` sort en 1 (« No tests found »).
 
 ```bash
 pnpm test           # Tous les tests unitaires
 pnpm test:watch     # Mode watch
 pnpm test:cov       # Avec coverage
-pnpm test:e2e       # E2E (harnais vide)
+pnpm test:e2e       # E2E (harnais vide, sort en 1)
 ```
 
 ## Scripts pnpm - récap
@@ -211,7 +212,7 @@ Liste réelle (`package.json`) - pas de script `s3:*` (démarrer MinIO à la mai
 | `pnpm build`                                                        | `nest build` → `dist/`                                                                                                   |
 | `pnpm lint` / `pnpm format`                                         | ESLint (`--fix`) / Prettier                                                                                              |
 | `pnpm lint:check` / `format:check` / `typecheck`                    | Vérifications sans écriture : ESLint, Prettier, `tsc --noEmit` (specs comprises). Ce que joue la CI                      |
-| `pnpm test` / `test:watch` / `test:cov` / `test:e2e` / `test:debug` | Jest                                                                                                                     |
+| `pnpm test` / `test:watch` / `test:cov` / `test:e2e` / `test:debug` | Jest (sous `--experimental-vm-modules`, cf. Tests)                                                                       |
 | `pnpm db:up` / `db:down` / `db:wait`                                | Cycle container Postgres (`podman compose`)                                                                              |
 | `pnpm db:generate` / `db:migrate` / `db:studio`                     | Drizzle Kit                                                                                                              |
 | `pnpm db:seed`                                                      | Crée l'admin (idempotent, `ADMIN_EMAIL`/`ADMIN_INITIAL_PASSWORD`)                                                        |
@@ -219,6 +220,7 @@ Liste réelle (`package.json`) - pas de script `s3:*` (démarrer MinIO à la mai
 | `pnpm db:reset`                                                     | Wipe volume + recrée + migrate + seed (dev only)                                                                         |
 | `pnpm mail:up`                                                      | Démarre le container Mailpit                                                                                             |
 | `pnpm sentry:sourcemaps`                                            | Upload des sourcemaps vers Sentry (`scripts/upload-sentry-sourcemaps.mjs`)                                               |
+| `pnpm sentry:check-instrumentation`                                | Vérifie que Sentry trace `@Injectable`, `@Catch`, `@Cron` (`scripts/check-sentry-instrumentation.cjs`, après `pnpm build`) |
 
 **CI** (`.github/workflows/ci.yml`, à chaque PR et sur `master`) : `install --frozen-lockfile`, `lint:check`, `format:check`, `typecheck`, `pnpm test` **avec** les tests d'intégration (service `postgres:17-alpine`, base jetable `PROFILE_IT_DATABASE_URL`), `build`, puis le build de l'image Docker tel que Dokploy l'exécute (sans push).
 
@@ -380,19 +382,21 @@ Collecte de page-views/events custom du portfolio public + agrégation quotidien
 
 **Cron** : `@Cron('0 0 * * *', { timeZone: 'UTC' })` dans `AnalyticsAggregatorService` - agrège J-1 dans `daily_stat` (upsert idempotent), purge `page_view` + `analytics_event` de plus de 30 jours.
 
-**`app.set('trust proxy', 1)`** activé dans `main.ts` pour lire `X-Forwarded-For` correctement derrière un reverse proxy.
+**`app.set('trust proxy', 1)`** activé dans `src/app.setup.ts` pour lire `X-Forwarded-For` correctement derrière un reverse proxy.
 
 ## Observabilité (Sentry)
 
 `@sentry/nestjs` (error tracking uniquement, pas de profiling CPU - overkill pour le trafic d'un portfolio), initialisé dans `src/instrument.ts` (importé en tout premier dans `main.ts`, avant même `NestFactory.create`, car `@nestjs/config` n'a pas encore chargé `.env`).
 
 - **Désactivé si `SENTRY_DSN` est vide** - pas de crash, juste no-op.
-- `sendDefaultPii: false`, `beforeSend` filtre systématiquement cookies, headers `authorization`/`cookie`, et les champs sensibles du body (`password`, `newPassword`, `currentPassword`, `code`, `token`, `refreshToken`, `jwt`).
-- **Jeton du flux d'agenda** (`src/common/sentry-before-send.ts`) : les requêtes du flux sont exclues du span `http.server` (`ignoreIncomingRequests`), mais Nest ouvre quand même une transaction racine (`request_context.nestjs`, ou celle du filtre d'exceptions) qui porte l'URL concrète. `beforeSendTransaction` **écarte** donc toute transaction dont le nom, `request.url` ou une URL de `contexts.trace.data` désigne le flux, et masque par `redactUrl` toute URL du flux restante dans les autres (requête, données de trace, spans). `beforeSend` masque `request.url`, `transaction` et retire `query_string` des événements d'erreur. Toute nouvelle route portant un secret dans son chemin doit être ajoutée à `redactUrl`.
+- **`@sentry/nestjs` 11.6.0** (épinglée) : la v11 supprime `sendDefaultPii` et collecte tout par défaut. `dataCollection` ferme donc chaque catégorie : `userInfo` (IP comprise), `cookies`, `httpHeaders` (requête : `User-Agent` seul, réponse : rien), `httpBodies: []`, `urlQueryParams`, `graphQL`, `genAI`, `databaseQueryData`, `queues`, `stackFrameVariables`. Seul `frameContextLines` (lignes de notre code autour des frames) garde son défaut. `traceLifecycle: 'static'` : en `stream` (défaut v11), `beforeSendTransaction` serait ignoré.
+- `beforeSend` sert de filet : retire `user.ip_address`, les cookies, les en-têtes `authorization`/`proxy-authorization`/`cookie`/`set-cookie` en toute casse, la query string et le fragment de `request.url` (et `query_string`), et filtre les champs sensibles du body (liste `SENSITIVE_BODY_FIELDS` de `src/common/log-redact.ts`).
+- **Jeton du flux d'agenda** (`src/common/sentry-before-send.ts`) : les requêtes du flux sont exclues du span `http.server` (`ignoreIncomingRequests`), mais Nest ouvre quand même une transaction racine (`request_context.nestjs`, ou celle du filtre d'exceptions) qui porte l'URL concrète. `beforeSendTransaction` **écarte** donc toute transaction dont le nom, `request.url` ou une URL de `contexts.trace.data` désigne le flux, et masque par `redactUrl` toute URL du flux restante dans les autres (requête, données de trace, spans). `beforeSend` masque aussi le jeton dans `request.url` et `transaction`. Toute nouvelle route portant un secret dans son chemin doit être ajoutée à `redactUrl`.
 - `tracesSampleRate` : 20% en prod, 100% en dev (ou override via `SENTRY_TRACES_SAMPLE_RATE`).
 - `ThrottlerException` est ignorée (pas de bruit Sentry sur un simple rate-limit).
 - **`GET /api/config`** expose un DSN Sentry **distinct** (`SENTRY_FRONTEND_DSN`) pour le frontend Angular - projet Sentry séparé du backend, volontairement public (il ship dans le bundle browser une fois fetché).
 - `pnpm sentry:sourcemaps` (`scripts/upload-sentry-sourcemaps.mjs`) : upload des sourcemaps vers Sentry en CI/CD.
+- `pnpm sentry:check-instrumentation` (`scripts/check-sentry-instrumentation.cjs`, après `pnpm build`) : décore des classes témoins avec les vrais `@Injectable`, `@Catch`, `@Cron` après `dist/instrument.js` et vérifie les marques posées par Sentry ; exit 1 si l'un n'est pas tracé.
 
 ## Docker
 

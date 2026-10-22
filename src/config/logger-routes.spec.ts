@@ -23,16 +23,23 @@ const PATHS = ['/api', '/api/', '/api/projects', '/api/a/b/c', '/docs', '/'];
 
 type Run = { loggedUrls: string[]; legacyWarnings: string[] };
 
+/**
+ * nestjs-pino 5 construit une seule instance pino-http par processus (à la première
+ * initialisation) : le flux passé aux `forRoot` suivants est ignoré. Toutes les apps du fichier
+ * écrivent donc dans ce même flux, vidé à chaque montage.
+ */
+const loggedUrls: string[] = [];
+const sink = new Writable({
+  write(chunk: Buffer, _encoding, callback) {
+    const line = JSON.parse(chunk.toString()) as { req?: { url?: string } };
+    if (line.req?.url) loggedUrls.push(line.req.url);
+    callback();
+  },
+});
+
 /** Monte une app au préfixe `api` (comme main.ts) et relève les URLs journalisées par pino-http. */
 async function run(forRoutes: Params['forRoutes']): Promise<Run> {
-  const loggedUrls: string[] = [];
-  const stream = new Writable({
-    write(chunk: Buffer, _encoding, callback) {
-      const line = JSON.parse(chunk.toString()) as { req?: { url?: string } };
-      if (line.req?.url) loggedUrls.push(line.req.url);
-      callback();
-    },
-  });
+  loggedUrls.length = 0;
   const legacyWarnings: string[] = [];
   const warn = jest
     .spyOn(Logger.prototype, 'warn')
@@ -46,7 +53,7 @@ async function run(forRoutes: Params['forRoutes']): Promise<Run> {
     });
 
   const module = await Test.createTestingModule({
-    imports: [LoggerModule.forRoot({ pinoHttp: [{}, stream], forRoutes })],
+    imports: [LoggerModule.forRoot({ pinoHttp: [{}, sink], forRoutes })],
     controllers: [ProbeController],
   }).compile();
   const app: INestApplication<App> = module.createNestApplication({
@@ -75,11 +82,13 @@ describe('LOGGER_ROUTES', () => {
     expect(loggedUrls).toEqual(['/api/', '/api/a/b/c', '/api/projects']);
   });
 
-  it('Given the library default, When compared, Then the same paths are covered (the default warned)', async () => {
-    const legacy = await run(undefined);
+  it('Given the nestjs-pino 5 default, When compared, Then it no longer warns but also logs the bare /api prefix', async () => {
+    const libraryDefault = await run(undefined);
     const current = await run(LOGGER_ROUTES);
 
-    expect(legacy.legacyWarnings.length).toBeGreaterThan(0);
-    expect(current.loggedUrls).toEqual(legacy.loggedUrls);
+    expect(libraryDefault.legacyWarnings).toEqual([]);
+    expect(libraryDefault.loggedUrls).toEqual(
+      ['/api', ...current.loggedUrls].sort(),
+    );
   });
 });

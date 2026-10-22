@@ -17,7 +17,20 @@ if (dsn) {
     dsn,
     environment: process.env.NODE_ENV ?? 'development',
     release: process.env.SENTRY_RELEASE,
-    sendDefaultPii: false,
+    // Sentry v11 collecte tout par défaut : chaque catégorie est fermée explicitement.
+    // `frameContextLines` (lignes de notre propre code autour de chaque frame) garde son défaut.
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: { request: { allow: ['user-agent'] }, response: false },
+      httpBodies: [],
+      urlQueryParams: false,
+      graphQL: { document: false, variables: false },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      stackFrameVariables: false,
+    },
     integrations: [
       Sentry.httpIntegration({
         ignoreIncomingRequests: isUntracedIncomingRequest,
@@ -31,5 +44,8 @@ if (dsn) {
     ignoreErrors: ['ThrottlerException'],
     beforeSend: sentryBeforeSend,
     beforeSendTransaction: sentryBeforeSendTransaction,
+    // v11 diffuse les spans par défaut (`stream`) et ignore alors `beforeSendTransaction` :
+    // le cycle `static` garde les transactions entières, donc passées à ce hook.
+    traceLifecycle: 'static',
   });
 }

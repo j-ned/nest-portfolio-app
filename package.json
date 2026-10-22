@@ -25,6 +25,7 @@
   "scripts": {
     "build": "nest build",
     "sentry:sourcemaps": "node scripts/upload-sentry-sourcemaps.mjs",
+    "sentry:check-instrumentation": "node scripts/check-sentry-instrumentation.cjs",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "lint:check": "eslint \"{src,test}/**/*.ts\"",
@@ -46,24 +47,24 @@
     "db:change-password": "tsx src/database/scripts/change-password.ts",
     "db:studio": "drizzle-kit studio",
     "mail:up": "podman compose up -d mailpit",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test": "node --experimental-vm-modules --no-warnings=ExperimentalWarning ./node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules --no-warnings=ExperimentalWarning ./node_modules/jest/bin/jest.js --watch",
+    "test:cov": "node --experimental-vm-modules --no-warnings=ExperimentalWarning ./node_modules/jest/bin/jest.js --coverage",
+    "test:debug": "node --inspect-brk --experimental-vm-modules --no-warnings=ExperimentalWarning -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:e2e": "node --experimental-vm-modules --no-warnings=ExperimentalWarning ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1141.0",
-    "@nestjs/common": "^11.0.1",
-    "@nestjs/config": "^4.0.4",
-    "@nestjs/core": "^11.0.1",
-    "@nestjs/jwt": "^11.0.2",
-    "@nestjs/passport": "^11.0.5",
-    "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/schedule": "^6.1.3",
-    "@nestjs/swagger": "^11.4.1",
+    "@nestjs/common": "^12.1.0",
+    "@nestjs/config": "^12.0.1",
+    "@nestjs/core": "^12.1.0",
+    "@nestjs/jwt": "^12.0.2",
+    "@nestjs/passport": "^12.0.0",
+    "@nestjs/platform-express": "^12.1.0",
+    "@nestjs/schedule": "^12.0.2",
+    "@nestjs/swagger": "^12.0.2",
     "@nestjs/throttler": "^6.7.1",
-    "@sentry/nestjs": "^10.73.0",
+    "@sentry/nestjs": "11.6.0",
     "argon2": "^0.44.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
@@ -73,7 +74,7 @@
     "helmet": "8.3.0",
     "isbot": "^5.2.2",
     "multer": "^2.4.0",
-    "nestjs-pino": "^4.6.1",
+    "nestjs-pino": "^5.2.1",
     "nodemailer": "^10.0.11",
     "otplib": "^13.5.0",
     "passport": "^0.7.0",
@@ -89,9 +90,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@nestjs/cli": "^11.0.0",
-    "@nestjs/schematics": "^11.0.0",
-    "@nestjs/testing": "^11.0.1",
+    "@nestjs/cli": "^12.0.7",
+    "@nestjs/schematics": "^12.0.5",
+    "@nestjs/testing": "^12.1.0",
     "@smithy/util-stream": "^4.8.2",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
@@ -144,9 +145,6 @@
         }
       ]
     },
-    "transformIgnorePatterns": [
-      "node_modules\\.pnpm(?!.*(@scure|@otplib|otplib))"
-    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
