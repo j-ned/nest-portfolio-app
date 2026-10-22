@@ -57,6 +57,19 @@ describe('HttpExceptionFilter', () => {
     expect(JSON.stringify(logError.mock.calls)).not.toContain(FEED_TOKEN);
   });
 
+  it('Given un 500 sur une URL à query string, Then le log ne garde que le chemin', () => {
+    const { host } = httpHost('/api/projects?email=a@b.c&token=xyz#top');
+    const boom = new Error('boom');
+
+    new HttpExceptionFilter().catch(boom, host);
+
+    expect(logError).toHaveBeenCalledWith(
+      { err: boom, path: '/api/projects', method: 'GET' },
+      'Unhandled 500 on GET /api/projects',
+    );
+    expect(JSON.stringify(logError.mock.calls)).not.toMatch(/a@b\.c|xyz/);
+  });
+
   it('Given une autre route, Then le chemin reste lisible dans le corps', () => {
     const { host, res } = httpHost('/api/booking/slots?from=2026-10-01');
 
