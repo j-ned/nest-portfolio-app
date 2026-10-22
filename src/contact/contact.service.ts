@@ -116,7 +116,7 @@ export class ContactService {
       }),
       this.mailer.sendMail({
         to: msg.email,
-        subject: 'Confirmation de votre message',
+        subject: 'J’ai bien reçu ton message',
         html: renderTemplate(visitorTpl, variables),
       }),
     ]);

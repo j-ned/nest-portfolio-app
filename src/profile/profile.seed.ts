@@ -4,6 +4,10 @@ import type { ProfileContent } from './profile-content';
  * Contenu initial du parcours (spec 021, A2) : généré mécaniquement depuis les données statiques du
  * front (`profile.static-data.ts`, résumés de `about-what-i-do.ts` et `about-diploma.ts`), jamais
  * recopié à la main. La migration `drizzle/0021_profile_seed.sql` verse le même JSON (test d'égalité).
+ *
+ * Instantané figé de 0021, déjà appliquée en production : ne pas le réécrire. Un texte devenu faux
+ * se corrige par une migration suivante (0028 remplace `motivation.description`, qu'elle repère mot
+ * pour mot dans cette graine) ou dans l'admin.
  */
 export const PROFILE_SEED: ProfileContent = {
   biography: {
