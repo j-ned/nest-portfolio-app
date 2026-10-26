@@ -4,7 +4,9 @@ import {
   Delete,
   Get,
   HttpCode,
+  Headers,
   HttpStatus,
+  Ip,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -29,17 +31,25 @@ import { CreateContactMessageDto } from './dto/create-contact-message.dto';
 export class ContactController {
   constructor(private readonly contact: ContactService) {}
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  // Un visiteur réel envoie un message ; trois par heure laissent la place à une correction.
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   @Post('messages')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Submit a contact message (public, rate-limited 5/60s par IP)',
+    summary: 'Submit a contact message (public, rate-limited 3/h par IP)',
   })
-  @ApiResponse({ status: 201, description: 'Message saved' })
+  @ApiResponse({
+    status: 201,
+    description: 'Message saved (or silently dropped by the honeypot)',
+  })
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  create(@Body() dto: CreateContactMessageDto) {
-    return this.contact.create(dto);
+  create(
+    @Body() dto: CreateContactMessageDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string | undefined,
+  ): Promise<void> {
+    return this.contact.create(dto, { ip, userAgent: userAgent ?? '' });
   }
 
   @UseGuards(JwtAuthGuard)

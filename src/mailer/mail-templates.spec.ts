@@ -20,10 +20,6 @@ const read = (path: string): string =>
 
 const TEMPLATES: readonly (readonly [string, string])[] = [
   [
-    'contact-confirmation',
-    read('contact/mail-templates/contact-confirmation.html'),
-  ],
-  [
     'contact-notification',
     read('contact/mail-templates/contact-notification.html'),
   ],

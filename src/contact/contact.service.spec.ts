@@ -5,6 +5,7 @@ import { ContactService } from './contact.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import { createMockDb } from '../database/test-utils';
 import { MailerService } from '../mailer/mailer.service';
+import { AppConfigService } from '../config/app-config.service';
 import { contactMessages, type ContactMessage } from '../database/schema';
 
 describe('ContactService', () => {
@@ -21,6 +22,8 @@ describe('ContactService', () => {
     subject: 'Hello',
     message: 'Hi there!',
     read: false,
+    senderHash: null,
+    userAgent: null,
     createdAt: new Date('2026-04-26T00:00:00Z'),
     ...overrides,
   });
@@ -36,138 +39,126 @@ describe('ContactService', () => {
         ContactService,
         { provide: DRIZZLE, useValue: db },
         { provide: MailerService, useValue: mailer },
+        {
+          provide: AppConfigService,
+          useValue: { jwtSecret: 'test-jwt-secret' },
+        },
       ],
     }).compile();
     service = module.get(ContactService);
   });
 
   describe('create', () => {
-    it('insère un message et retourne la row', async () => {
-      const created = mkMessage();
-      db.returning.mockResolvedValueOnce([created]);
-      const result = await service.create({
-        name: 'Visitor',
-        email: 'visitor@example.com',
-        subject: 'Hello',
-        message: 'Hi there!',
-      });
-      expect(result).toEqual(created);
+    const DTO = {
+      name: 'Visitor',
+      email: 'visitor@example.com',
+      subject: 'Hello',
+      message: 'Hi there!',
+    };
+    const SENDER = { ip: '203.0.113.7', userAgent: 'Mozilla/5.0 Test' };
+    const flushMails = () => new Promise((resolve) => setImmediate(resolve));
+    const insertedRows = () =>
+      (db.values.mock.calls as [Record<string, unknown>][]).map(
+        ([values]) => values,
+      );
+    const insertedValues = () => insertedRows()[0];
+
+    it('Given un message valide, When il est créé, Then il est inséré sans rien renvoyer au visiteur', async () => {
+      db.returning.mockResolvedValueOnce([mkMessage()]);
+      await expect(service.create(DTO, SENDER)).resolves.toBeUndefined();
+      expect(db.insert).toHaveBeenCalledWith(contactMessages);
     });
 
-    it('retourne immédiatement, sans attendre les mails', async () => {
-      const created = mkMessage();
-      db.returning.mockResolvedValueOnce([created]);
-      // Mailer met 100ms à répondre
+    it('Given un message, When il est inséré, Then il porte une empreinte HMAC de l’IP et le user-agent, jamais l’IP en clair', async () => {
+      db.returning.mockResolvedValueOnce([mkMessage()]);
+      await service.create(DTO, SENDER);
+      const values = insertedValues();
+      expect(values.senderHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(values.userAgent).toBe('Mozilla/5.0 Test');
+      expect(JSON.stringify(values)).not.toContain('203.0.113.7');
+    });
+
+    it('Given deux messages de la même IP à des jours différents, When ils sont insérés, Then ils ont la même empreinte', async () => {
+      db.returning.mockResolvedValue([mkMessage()]);
+      await service.create(DTO, SENDER);
+      await service.create(DTO, { ...SENDER, userAgent: 'Autre navigateur' });
+      await service.create(DTO, { ...SENDER, ip: '198.51.100.1' });
+      const [a, b, c] = insertedRows().map((values) => values.senderHash);
+      expect(a).toBe(b);
+      expect(a).not.toBe(c);
+    });
+
+    it('Given un secret différent, When l’empreinte est calculée, Then elle change (clé, pas un SHA-256 brut)', async () => {
+      db.returning.mockResolvedValue([mkMessage()]);
+      await service.create(DTO, SENDER);
+      const other = await Test.createTestingModule({
+        providers: [
+          ContactService,
+          { provide: DRIZZLE, useValue: db },
+          { provide: MailerService, useValue: mailer },
+          {
+            provide: AppConfigService,
+            useValue: { jwtSecret: 'un-autre-secret' },
+          },
+        ],
+      }).compile();
+      await other.get(ContactService).create(DTO, SENDER);
+      const [a, b] = insertedRows().map((values) => values.senderHash);
+      expect(a).not.toBe(b);
+    });
+
+    it('Given un user-agent démesuré ou absent, When il est stocké, Then il est tronqué à 300 caractères ou null', async () => {
+      db.returning.mockResolvedValue([mkMessage()]);
+      await service.create(DTO, { ...SENDER, userAgent: 'x'.repeat(1000) });
+      await service.create(DTO, { ...SENDER, userAgent: '' });
+      const [long, empty] = insertedRows().map((values) => values.userAgent);
+      expect(long).toHaveLength(300);
+      expect(empty).toBeNull();
+    });
+
+    it('Given le champ piège rempli, When le message arrive, Then rien n’est inséré ni envoyé', async () => {
+      await expect(
+        service.create({ ...DTO, website: 'https://spam.test' }, SENDER),
+      ).resolves.toBeUndefined();
+      await flushMails();
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(mailer.sendMail).not.toHaveBeenCalled();
+    });
+
+    it('Given le champ piège vide, When le message arrive, Then il est traité normalement', async () => {
+      db.returning.mockResolvedValueOnce([mkMessage()]);
+      await service.create({ ...DTO, website: '' }, SENDER);
+      expect(db.insert).toHaveBeenCalledWith(contactMessages);
+      expect(insertedValues()).not.toHaveProperty('website');
+    });
+
+    it('retourne immédiatement, sans attendre le mail', async () => {
+      db.returning.mockResolvedValueOnce([mkMessage()]);
       mailer.sendMail.mockImplementation(
         () => new Promise((resolve) => setTimeout(resolve, 100)),
       );
       const start = Date.now();
-      await service.create({
-        name: 'V',
-        email: 'v@x.com',
-        subject: 's',
-        message: 'm',
-      });
-      const elapsed = Date.now() - start;
-      // Le `create` doit retourner bien avant les 100ms × 2 mails
-      expect(elapsed).toBeLessThan(50);
+      await service.create(DTO, SENDER);
+      expect(Date.now() - start).toBeLessThan(50);
     });
 
-    it('appelle MailerService.sendMail 2 fois (admin + visitor)', async () => {
-      const created = mkMessage();
-      db.returning.mockResolvedValueOnce([created]);
-      await service.create({
-        name: 'V',
-        email: 'v@x.com',
-        subject: 's',
-        message: 'm',
-      });
-      // Attendre que les promises fire-and-forget se résolvent
-      await new Promise((resolve) => setImmediate(resolve));
-      expect(mailer.sendMail).toHaveBeenCalledTimes(2);
-    });
-
-    it('envoie le mail admin au destinataire fixe avec sujet "Nouveau message de contact: <subject>"', async () => {
-      const created = mkMessage({ subject: 'Demande de devis' });
-      db.returning.mockResolvedValueOnce([created]);
-      await service.create({
-        name: 'V',
-        email: 'v@x.com',
-        subject: 'Demande de devis',
-        message: 'm',
-      });
-      await new Promise((resolve) => setImmediate(resolve));
-      const adminCall = mailer.sendMail.mock.calls.find(
-        (call) => call[0].to === 'contact@nedellec-julien.fr',
-      );
-      expect(adminCall).toBeDefined();
-      expect(adminCall![0].subject).toBe(
-        'Nouveau message de contact: Demande de devis',
-      );
-      expect(adminCall![0].html).toContain('Demande de devis');
-    });
-
-    it('envoie le mail confirmation à dto.email avec sujet "J’ai bien reçu ton message"', async () => {
-      const created = mkMessage({ email: 'visitor@example.com' });
-      db.returning.mockResolvedValueOnce([created]);
-      await service.create({
-        name: 'V',
-        email: 'visitor@example.com',
-        subject: 's',
-        message: 'm',
-      });
-      await new Promise((resolve) => setImmediate(resolve));
-      const visitorCall = mailer.sendMail.mock.calls.find(
-        (call) => call[0].to === 'visitor@example.com',
-      );
-      expect(visitorCall).toBeDefined();
-      expect(visitorCall![0].subject).toBe('J’ai bien reçu ton message');
-    });
-
-    it('Given le mail de confirmation, When il est rendu, Then il tutoie le visiteur en « je », sans vouvoiement, « nous » ni tiret cadratin', async () => {
-      db.returning.mockResolvedValueOnce([mkMessage({ name: 'Alice' })]);
-      await service.create({
-        name: 'Alice',
-        email: 'visitor@example.com',
-        subject: 's',
-        message: 'm',
-      });
-      await new Promise((resolve) => setImmediate(resolve));
-      const html =
-        mailer.sendMail.mock.calls.find(
-          (call) => call[0].to === 'visitor@example.com',
-        )?.[0].html ?? '';
-      const text = html
-        .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&#(\d+);/g, (_entity, code: string) =>
-          String.fromCodePoint(Number(code)),
-        )
-        .replace(/[ \t\r\n]+/g, ' ');
-
-      expect(text).toContain('J’ai bien reçu ton message');
-      expect(text).toContain('Salut Alice,');
-      expect(text).toContain(
-        'Merci pour ton message\u00a0! Je l’ai bien reçu et je te réponds dès que je peux.',
-      );
-      expect(text).toContain('Tourneur CN et développeur web Angular / NestJS');
-      expect(text).not.toMatch(/\b(?:vous|votre|vos|nous|notre|nos)\b/i);
-      expect(text).not.toContain('—');
+    it('Given un message, When il est créé, Then un seul mail part, vers le propriétaire, jamais vers l’adresse saisie', async () => {
+      db.returning.mockResolvedValueOnce([
+        mkMessage({ subject: 'Demande de devis' }),
+      ]);
+      await service.create({ ...DTO, subject: 'Demande de devis' }, SENDER);
+      await flushMails();
+      expect(mailer.sendMail).toHaveBeenCalledTimes(1);
+      const [mail] = mailer.sendMail.mock.calls[0];
+      expect(mail.to).toBe('contact@nedellec-julien.fr');
+      expect(mail.subject).toBe('Nouveau message de contact: Demande de devis');
+      expect(mail.html).toContain('Demande de devis');
     });
 
     it('resolve quand même si MailerService.sendMail reject (fire-and-forget)', async () => {
-      const created = mkMessage();
-      db.returning.mockResolvedValueOnce([created]);
+      db.returning.mockResolvedValueOnce([mkMessage()]);
       mailer.sendMail.mockRejectedValue(new Error('SMTP down'));
-      // Le create ne doit pas throw même si les mails échouent
-      await expect(
-        service.create({
-          name: 'V',
-          email: 'v@x.com',
-          subject: 's',
-          message: 'm',
-        }),
-      ).resolves.toEqual(created);
+      await expect(service.create(DTO, SENDER)).resolves.toBeUndefined();
     });
   });
 
