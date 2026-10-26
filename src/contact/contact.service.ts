@@ -1,6 +1,8 @@
+import { createHash, createHmac } from 'node:crypto';
 import { resolve } from 'node:path';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { desc, eq, sql } from 'drizzle-orm';
+import { AppConfigService } from '../config/app-config.service';
 import { DRIZZLE } from '../database/drizzle.constants';
 import type { Database } from '../database/drizzle.types';
 import { contactMessages, type ContactMessage } from '../database/schema';
@@ -14,25 +16,61 @@ import {
 import { fireAndForget } from '../common/utils';
 import { CreateContactMessageDto } from './dto/create-contact-message.dto';
 
+const USER_AGENT_MAX_LENGTH = 300;
+
+export type ContactSender = { ip: string; userAgent: string };
+
 @Injectable()
 export class ContactService {
   private readonly logger = new Logger(ContactService.name);
   private static readonly TEMPLATES_DIR = resolve(__dirname, 'mail-templates');
 
+  /**
+   * Clé de l'empreinte d'expéditeur, dérivée du secret JWT et distincte de celle de l'analytics.
+   * Sans jour dans l'empreinte : deux messages d'une même IP restent reliés d'un jour à l'autre.
+   */
+  private readonly senderHashKey: Buffer;
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly mailer: MailerService,
-  ) {}
+    cfg: AppConfigService,
+  ) {
+    this.senderHashKey = createHash('sha256')
+      .update(`contact|${cfg.jwtSecret}`)
+      .digest();
+  }
 
-  async create(dto: CreateContactMessageDto): Promise<ContactMessage> {
-    const [row] = await this.db.insert(contactMessages).values(dto).returning();
-    // Fire-and-forget : DB write garanti, mails best-effort (SMTP down → admin panel).
+  /** Ne renvoie rien : un robot ne distingue pas un message enregistré d'un message écarté. */
+  async create(
+    dto: CreateContactMessageDto,
+    sender: ContactSender,
+  ): Promise<void> {
+    if (dto.website) {
+      // Champ piège rempli : même réponse qu'un envoi, rien d'écrit ni d'envoyé.
+      this.logger.warn('Contact honeypot filled: message dropped');
+      return;
+    }
+
+    const [row] = await this.db
+      .insert(contactMessages)
+      .values({
+        name: dto.name,
+        email: dto.email,
+        subject: dto.subject,
+        message: dto.message,
+        senderHash: createHmac('sha256', this.senderHashKey)
+          .update(sender.ip)
+          .digest('hex'),
+        userAgent: sender.userAgent.slice(0, USER_AGENT_MAX_LENGTH) || null,
+      })
+      .returning();
+    // Fire-and-forget : DB write garanti, mail best-effort (SMTP down → admin panel).
     fireAndForget(
-      this.sendNotificationMails(row),
+      this.sendNotificationMail(row),
       this.logger,
-      `Failed to send contact mails for ${row.id}`,
+      `Failed to send contact mail for ${row.id}`,
     );
-    return row;
   }
 
   async findAll(
@@ -93,32 +131,25 @@ export class ContactService {
       throw new NotFoundException(`Contact message ${id} not found`);
   }
 
-  // Helper privé non-bloquant. Les erreurs sont catch chez l'appelant.
-  private async sendNotificationMails(msg: ContactMessage): Promise<void> {
-    const adminTpl = loadTemplate(
+  /**
+   * Seul le propriétaire est notifié. Pas d'accusé de réception à l'adresse saisie : n'importe
+   * qui pourrait y mettre celle d'un tiers et faire envoyer, signé SPF/DKIM du domaine, un mail
+   * reprenant un nom ou un sujet piégé (une URL en texte brut reste cliquable chez le client).
+   */
+  private async sendNotificationMail(msg: ContactMessage): Promise<void> {
+    const template = loadTemplate(
       resolve(ContactService.TEMPLATES_DIR, 'contact-notification.html'),
     );
-    const visitorTpl = loadTemplate(
-      resolve(ContactService.TEMPLATES_DIR, 'contact-confirmation.html'),
-    );
-    const variables = {
-      name: msg.name,
-      email: msg.email,
-      subject: msg.subject,
-      message: msg.message,
-      year: String(new Date().getFullYear()),
-    };
-    await Promise.all([
-      this.mailer.sendMail({
-        to: OWNER_EMAIL,
-        subject: `Nouveau message de contact: ${msg.subject}`,
-        html: renderTemplate(adminTpl, variables),
+    await this.mailer.sendMail({
+      to: OWNER_EMAIL,
+      subject: `Nouveau message de contact: ${msg.subject}`,
+      html: renderTemplate(template, {
+        name: msg.name,
+        email: msg.email,
+        subject: msg.subject,
+        message: msg.message,
+        year: String(new Date().getFullYear()),
       }),
-      this.mailer.sendMail({
-        to: msg.email,
-        subject: 'J’ai bien reçu ton message',
-        html: renderTemplate(visitorTpl, variables),
-      }),
-    ]);
+    });
   }
 }

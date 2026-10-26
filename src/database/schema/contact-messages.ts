@@ -19,6 +19,10 @@ export const contactMessages = pgTable(
     subject: text('subject').notNull(),
     message: text('message').notNull(),
     read: boolean('read').notNull().default(false),
+    // Empreinte HMAC de l'IP (clé dérivée du secret JWT) : relie les messages d'un même
+    // expéditeur sans conserver l'IP, donnée personnelle. Null pour les messages antérieurs.
+    senderHash: text('sender_hash'),
+    userAgent: text('user_agent'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
