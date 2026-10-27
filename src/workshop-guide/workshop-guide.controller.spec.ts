@@ -11,6 +11,7 @@ import { PUBLIC_READ_THROTTLE } from '../common/throttle';
 import { WorkshopGuideController } from './workshop-guide.controller';
 import { WorkshopGuideService } from './workshop-guide.service';
 import {
+  anAllMaterialsEntry,
   aWorkshopGuideContent,
   withoutDecoderToggle,
 } from './workshop-guide-test-builders';
@@ -133,6 +134,43 @@ describe('WorkshopGuideController (HTTP)', () => {
     });
 
     it.each([
+      [
+        'an all-materials boring entry without radius',
+        {
+          ...body,
+          entries: [
+            { ...anAllMaterialsEntry(), operation: 'boring', material: '' },
+          ],
+        },
+      ],
+      [
+        'an entry with a null radius',
+        { ...body, entries: [{ ...body.entries[0], noseRadius: null }] },
+      ],
+    ])(
+      'Given %s (spec 037), When sent, Then 200 and the service is called',
+      async (_l, sent) => {
+        guide.replace.mockResolvedValueOnce({ version: 3 });
+
+        const res = await put().send(sent);
+
+        expect(res.status).toBe(200);
+        expect(guide.replace).toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      [
+        'an entry without material nor allMaterials',
+        {
+          ...body,
+          entries: [{ ...body.entries[0], material: undefined }],
+        },
+      ],
+      [
+        'a radius at 0',
+        { ...body, entries: [{ ...body.entries[0], noseRadius: 0 }] },
+      ],
       ['an unknown key', { ...body, updatedAt: '2026-10-27' }],
       [
         'an operation outside the closed list',

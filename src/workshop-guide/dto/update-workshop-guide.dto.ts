@@ -7,6 +7,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsOptional,
   IsPositive,
   Max,
   Min,
@@ -26,10 +27,30 @@ const L = WORKSHOP_GUIDE_LIMITS;
 const hasNote = ({ note }: WorkshopGuideEntryDto): boolean =>
   typeof note === 'string' ? note.trim() !== '' : note != null;
 
+/** Ligne « toutes matières » (spec 037) : seul `true` en fait une ; absent, `false` ou `null` non. */
+const isAllMaterials = ({ allMaterials }: WorkshopGuideEntryDto): boolean =>
+  allMaterials === true;
+
 export class WorkshopGuideEntryDto {
-  @ApiProperty({ maxLength: L.material, example: 'Inox 304L' })
+  @ApiPropertyOptional({
+    description:
+      'Ligne valable pour toutes les matières (spec 037). Vrai : `material` est ignoré et peut manquer. Booléen JSON strict',
+  })
+  // Même garde que `enabled` : "true" n'est jamais converti.
+  @Transform(({ obj, key }) => (obj as Record<string, unknown>)[key])
+  @IsOptional()
+  @IsBoolean()
+  allMaterials?: boolean | null;
+
+  @ApiPropertyOptional({
+    maxLength: L.material,
+    example: 'Inox 304L',
+    description:
+      'Obligatoire, sauf sur une ligne « toutes matières » où il est ignoré',
+  })
+  @ValidateIf((entry: WorkshopGuideEntryDto) => !isAllMaterials(entry))
   @ProfileText(L.material)
-  material!: string;
+  material?: string | null;
 
   @ApiProperty({ enum: WORKSHOP_GUIDE_OPERATIONS })
   @IsIn([...WORKSHOP_GUIDE_OPERATIONS])
@@ -39,13 +60,16 @@ export class WorkshopGuideEntryDto {
   @ProfileText(L.insert)
   insert!: string;
 
-  @ApiProperty({
-    description: 'Rayon de bec en mm, deux décimales au plus',
+  @ApiPropertyOptional({
+    description:
+      'Rayon de bec en mm, deux décimales au plus. Facultatif (spec 037) : absent ou null = non renseigné',
+    nullable: true,
     exclusiveMinimum: true,
     minimum: 0,
     maximum: L.noseRadius,
     example: 0.8,
   })
+  @ValidateIf(({ noseRadius }: WorkshopGuideEntryDto) => noseRadius != null)
   @IsNumber({
     maxDecimalPlaces: L.noseRadiusDecimals,
     allowNaN: false,
@@ -53,7 +77,7 @@ export class WorkshopGuideEntryDto {
   })
   @IsPositive()
   @Max(L.noseRadius)
-  noseRadius!: number;
+  noseRadius?: number | null;
 
   @ApiPropertyOptional({
     maxLength: L.note,

@@ -1,18 +1,29 @@
 import type {
   StoredWorkshopGuideContent,
+  WorkshopGuideAllMaterialsEntry,
   WorkshopGuideContent,
-  WorkshopGuideEntry,
+  WorkshopGuideMaterialEntry,
 } from './workshop-guide-content';
 
 /** Ligne de test neutre, valide au regard du DTO. */
 export const anEntry = (
-  overrides: Partial<WorkshopGuideEntry> = {},
-): WorkshopGuideEntry => ({
+  overrides: Partial<WorkshopGuideMaterialEntry> = {},
+): WorkshopGuideMaterialEntry => ({
   material: 'Matière A',
   operation: 'external-roughing',
   insert: 'CODE 0001',
   noseRadius: 0.8,
   note: 'Remarque',
+  ...overrides,
+});
+
+/** Ligne « toutes matières » de test (spec 037), neutre, sans rayon. */
+export const anAllMaterialsEntry = (
+  overrides: Partial<WorkshopGuideAllMaterialsEntry> = {},
+): WorkshopGuideAllMaterialsEntry => ({
+  allMaterials: true,
+  operation: 'internal-finishing',
+  insert: 'CODE 0003',
   ...overrides,
 });
 

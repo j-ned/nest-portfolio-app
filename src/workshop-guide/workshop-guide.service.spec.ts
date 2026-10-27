@@ -15,6 +15,7 @@ import type {
   WorkshopGuideContent,
 } from './workshop-guide-content';
 import {
+  anAllMaterialsEntry,
   anEntry,
   aWorkshopGuideContent,
   withoutDecoderToggle,
@@ -222,6 +223,121 @@ describe('WorkshopGuideService', () => {
             noseRadius: 0.2,
           },
         ],
+      });
+    });
+
+    describe('all-materials entries and optional radius (spec 037)', () => {
+      /** Entrées écrites par le dernier `set` (mise à jour conditionnelle). */
+      const writtenEntries = () =>
+        (db.set.mock.calls as [[{ content: { entries: unknown } }]])[0][0]
+          .content.entries;
+
+      /** Remplace le guide par un corps brut (valeurs `null` ou vides comprises), tel que validé. */
+      const replaceWith = async (entries: object[]) => {
+        db.limit.mockResolvedValueOnce([aRow()]);
+        db.returning.mockResolvedValueOnce([aRow({ version: 4 })]);
+        await service.replace(
+          plainToInstance(UpdateWorkshopGuideDto, {
+            enabled: true,
+            decoderEnabled: true,
+            entries,
+            version: 3,
+          }),
+        );
+      };
+
+      it.each([
+        ['without material', {}],
+        ['with an empty material', { material: '' }],
+        ['with a null material', { material: null }],
+        ['with a material, ignored', { material: '  Inox  ' }],
+      ])(
+        'Given an all-materials entry %s, When replaced, Then allMaterials is stored without material',
+        async (_l, extra) => {
+          await replaceWith([
+            { ...anAllMaterialsEntry({ operation: 'boring' }), ...extra },
+          ]);
+
+          expect(writtenEntries()).toStrictEqual([
+            { allMaterials: true, operation: 'boring', insert: 'CODE 0003' },
+          ]);
+        },
+      );
+
+      it.each([
+        ['missing', {}],
+        ['null', { noseRadius: null }],
+      ])(
+        'Given a radius %s, When replaced, Then the radius is omitted (never null)',
+        async (_l, radius) => {
+          await replaceWith([
+            {
+              material: 'Matière A',
+              operation: 'external-roughing',
+              insert: 'CODE 0001',
+              note: 'Vue',
+              ...radius,
+            },
+          ]);
+
+          expect(writtenEntries()).toStrictEqual([
+            {
+              material: 'Matière A',
+              operation: 'external-roughing',
+              insert: 'CODE 0001',
+              note: 'Vue',
+            },
+          ]);
+        },
+      );
+
+      it('Given allMaterials false, When replaced, Then the material is stored and allMaterials omitted', async () => {
+        await replaceWith([
+          { ...anEntry({ note: 'Vue' }), allMaterials: false },
+        ]);
+
+        expect(writtenEntries()).toStrictEqual([anEntry({ note: 'Vue' })]);
+      });
+
+      it('Given a body from the front before spec 037, When replaced, Then the entries are stored as before', async () => {
+        await replaceWith([
+          {
+            material: ' Matière A ',
+            operation: 'internal-finishing',
+            insert: 'CODE 0001',
+            noseRadius: 0.8,
+            note: '',
+          },
+        ]);
+
+        expect(writtenEntries()).toStrictEqual([
+          {
+            material: 'Matière A',
+            operation: 'internal-finishing',
+            insert: 'CODE 0001',
+            noseRadius: 0.8,
+          },
+        ]);
+      });
+
+      it('Given a row stored before spec 037, When read, Then its entries come back unchanged', async () => {
+        const before = aWorkshopGuideContent();
+        db.limit.mockResolvedValueOnce([aRow({ content: before })]);
+
+        expect((await service.findCurrent()).entries).toStrictEqual(
+          before.entries,
+        );
+      });
+
+      it('Given a stored all-materials entry without radius, When the same content is replaced, Then nothing is written', async () => {
+        const content = aWorkshopGuideContent({
+          entries: [anEntry(), anAllMaterialsEntry({ operation: 'boring' })],
+        });
+        db.limit.mockResolvedValueOnce([aRow({ content })]);
+
+        await service.replace(aDto(content, 3));
+
+        expect(db.update).not.toHaveBeenCalled();
       });
     });
 

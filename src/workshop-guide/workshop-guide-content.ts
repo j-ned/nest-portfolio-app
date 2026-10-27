@@ -7,6 +7,7 @@ export const WORKSHOP_GUIDE_OPERATIONS = [
   'external-finishing',
   'internal-roughing',
   'internal-finishing',
+  'boring',
   'drilling',
   'grooving',
   'parting-off',
@@ -15,16 +16,31 @@ export const WORKSHOP_GUIDE_OPERATIONS = [
 
 export type WorkshopGuideOperation = (typeof WORKSHOP_GUIDE_OPERATIONS)[number];
 
-/** Une ligne du guide : ce que Julien monte à l'atelier pour une matière et une opération. */
-export type WorkshopGuideEntry = {
-  readonly material: string;
+/** Champs communs à toutes les lignes du guide. */
+type WorkshopGuideEntryBase = {
   readonly operation: WorkshopGuideOperation;
   readonly insert: string;
-  /** Rayon de bec, en mm. */
-  readonly noseRadius: number;
+  /** Rayon de bec, en mm. Absent quand il n'est pas renseigné (jamais `null`, spec 037). */
+  readonly noseRadius?: number;
   /** Absente quand la remarque n'est pas renseignée (jamais de chaîne vide). */
   readonly note?: string;
 };
+
+/** Ligne propre à une matière : ce que Julien monte à l'atelier pour cette matière et cette opération. */
+export type WorkshopGuideMaterialEntry = WorkshopGuideEntryBase & {
+  readonly material: string;
+  readonly allMaterials?: never;
+};
+
+/** Ligne « toutes matières » (spec 037) : vaut pour chaque matière, sans `material` stocké. */
+export type WorkshopGuideAllMaterialsEntry = WorkshopGuideEntryBase & {
+  readonly allMaterials: true;
+  readonly material?: never;
+};
+
+/** Une ligne du guide : propre à une matière, ou commune à toutes. */
+export type WorkshopGuideEntry =
+  WorkshopGuideMaterialEntry | WorkshopGuideAllMaterialsEntry;
 
 /** Contenu éditable du guide des plaquettes : un document unique, saisi dans l'admin. */
 export type WorkshopGuideContent = {

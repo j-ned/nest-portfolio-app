@@ -5,6 +5,7 @@ import { WORKSHOP_GUIDE_OPERATIONS } from '../workshop-guide-content';
 import { WORKSHOP_GUIDE_LIMITS } from '../workshop-guide-limits';
 import { WORKSHOP_GUIDE_SEED } from '../workshop-guide.seed';
 import {
+  anAllMaterialsEntry,
   anEntry,
   aWorkshopGuideContent,
 } from '../workshop-guide-test-builders';
@@ -183,7 +184,7 @@ describe('UpdateWorkshopGuideDto (spec 035)', () => {
       [10.01, 'max'],
       [0.125, 'isNumber'],
       ['abc', 'isNumber'],
-      [undefined, 'isNumber'],
+      ['', 'isPositive'],
     ])(
       'Given %p, When validated, Then %s fails',
       async (radius, constraint) => {
@@ -192,6 +193,104 @@ describe('UpdateWorkshopGuideDto (spec 035)', () => {
         ).toContain(`entries.0.noseRadius:${constraint}`);
       },
     );
+  });
+
+  describe('entries.0.noseRadius (optional, spec 037)', () => {
+    it.each([
+      ['missing', undefined],
+      ['null', null],
+    ])('Given %s, When validated, Then it is accepted', async (_l, value) => {
+      expect(await violationsOf(withEntryField('noseRadius', value))).toEqual(
+        [],
+      );
+    });
+  });
+
+  describe('entries.0.operation boring (spec 037)', () => {
+    it('Given boring, When validated, Then it is accepted', async () => {
+      expect(await violationsOf(withEntryField('operation', 'boring'))).toEqual(
+        [],
+      );
+    });
+
+    it('Given the closed list, When read, Then boring sits between internal-finishing and drilling', () => {
+      const ops: readonly string[] = WORKSHOP_GUIDE_OPERATIONS;
+      expect(ops.indexOf('boring')).toBe(ops.indexOf('internal-finishing') + 1);
+      expect(ops.indexOf('drilling')).toBe(ops.indexOf('boring') + 1);
+    });
+  });
+
+  describe('entries.0.allMaterials (spec 037)', () => {
+    /** Corps valide dont la première ligne est remplacée par `entry`. */
+    const withFirstEntry = (entry: Record<string, unknown>) => {
+      const body = aBody();
+      body.entries[0] = entry;
+      return body;
+    };
+
+    it.each([
+      ['without material nor radius', { ...anAllMaterialsEntry() }],
+      ['with an empty material', { ...anAllMaterialsEntry(), material: '' }],
+      ['with a null material', { ...anAllMaterialsEntry(), material: null }],
+      [
+        'with a radius and a note',
+        { ...anAllMaterialsEntry({ noseRadius: 0.4, note: 'Remarque' }) },
+      ],
+    ])(
+      'Given an all-materials entry %s, When validated, Then it is accepted',
+      async (_l, entry) => {
+        expect(await violationsOf(withFirstEntry(entry))).toEqual([]);
+      },
+    );
+
+    it('Given an all-materials entry with a radius at 0, When validated, Then it is refused', async () => {
+      expect(
+        await violationsOf(
+          withFirstEntry({ ...anAllMaterialsEntry(), noseRadius: 0 }),
+        ),
+      ).toContain('entries.0.noseRadius:isPositive');
+    });
+
+    it.each([
+      ['false', false],
+      ['null', null],
+    ])(
+      'Given allMaterials %s and no material, When validated, Then the material is required',
+      async (_l, allMaterials) => {
+        const body = withEntryField('material', undefined);
+        body.entries[0].allMaterials = allMaterials;
+
+        expect(await violationsOf(body)).toContain(
+          'entries.0.material:isString',
+        );
+      },
+    );
+
+    it.each([
+      ['the string "true"', 'true'],
+      ['1', 1],
+    ])(
+      'Given allMaterials as %s, When validated, Then it is refused (never coerced)',
+      async (_l, allMaterials) => {
+        expect(
+          await violationsOf(withEntryField('allMaterials', allMaterials)),
+        ).toContain('entries.0.allMaterials:isBoolean');
+      },
+    );
+
+    it('Given a body from the front before spec 037 (material and radius always sent), When validated, Then it is accepted', async () => {
+      expect(
+        await violationsOf(
+          withFirstEntry({
+            material: 'Matière A',
+            operation: 'internal-finishing',
+            insert: 'CODE 0001',
+            noseRadius: 0.8,
+            note: '',
+          }),
+        ),
+      ).toEqual([]);
+    });
   });
 
   it('Given an unknown key on an entry, When validated, Then it is refused', async () => {
