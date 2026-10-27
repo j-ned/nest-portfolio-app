@@ -10,7 +10,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PUBLIC_READ_THROTTLE } from '../common/throttle';
 import { WorkshopGuideController } from './workshop-guide.controller';
 import { WorkshopGuideService } from './workshop-guide.service';
-import { aWorkshopGuideContent } from './workshop-guide-test-builders';
+import {
+  aWorkshopGuideContent,
+  withoutDecoderToggle,
+} from './workshop-guide-test-builders';
 
 const handler = (name: keyof WorkshopGuideController): object =>
   Object.getOwnPropertyDescriptor(WorkshopGuideController.prototype, name)
@@ -69,6 +72,7 @@ describe('WorkshopGuideController (HTTP)', () => {
     it('Given the document, When requested, Then 200 with the document', async () => {
       guide.findCurrent.mockResolvedValueOnce({
         enabled: false,
+        decoderEnabled: false,
         entries: [],
         version: 0,
         updatedAt: null,
@@ -79,6 +83,7 @@ describe('WorkshopGuideController (HTTP)', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         enabled: false,
+        decoderEnabled: false,
         entries: [],
         version: 0,
         updatedAt: null,
@@ -104,8 +109,27 @@ describe('WorkshopGuideController (HTTP)', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ version: 3 });
       expect(guide.replace).toHaveBeenCalledWith(
-        expect.objectContaining({ version: 2, enabled: true }),
+        expect.objectContaining({
+          version: 2,
+          enabled: true,
+          decoderEnabled: true,
+        }),
       );
+    });
+
+    it('Given a document without decoderEnabled (admin before spec 036), When sent, Then 200 and decoderEnabled stays undefined', async () => {
+      guide.replace.mockResolvedValueOnce({ version: 3 });
+
+      const res = await put().send({
+        ...withoutDecoderToggle(body),
+        version: body.version,
+      });
+
+      expect(res.status).toBe(200);
+      const [[dto]] = guide.replace.mock.calls as [
+        [{ decoderEnabled?: unknown }],
+      ];
+      expect(dto.decoderEnabled).toBeUndefined();
     });
 
     it.each([
@@ -118,6 +142,7 @@ describe('WorkshopGuideController (HTTP)', () => {
         },
       ],
       ['enabled as a string', { ...body, enabled: 'false' }],
+      ['decoderEnabled as a string', { ...body, decoderEnabled: 'false' }],
     ])(
       'Given %s, When sent, Then 400 and the service is not called',
       async (_l, sent) => {

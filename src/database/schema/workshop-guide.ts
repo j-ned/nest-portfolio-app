@@ -7,7 +7,7 @@ import {
   timestamp,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { WorkshopGuideContent } from '../../workshop-guide/workshop-guide-content';
+import type { StoredWorkshopGuideContent } from '../../workshop-guide/workshop-guide-content';
 
 /** Seule ligne autorisée : le guide des plaquettes est un document unique (spec 035 du front). */
 export const WORKSHOP_GUIDE_ROW_ID = 'main';
@@ -20,7 +20,7 @@ export const workshopGuide = pgTable(
   'workshop_guide',
   {
     id: text('id').primaryKey().default(WORKSHOP_GUIDE_ROW_ID),
-    content: jsonb('content').$type<WorkshopGuideContent>().notNull(),
+    content: jsonb('content').$type<StoredWorkshopGuideContent>().notNull(),
     version: integer('version').notNull().default(1),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()

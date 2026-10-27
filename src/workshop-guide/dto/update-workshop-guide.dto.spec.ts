@@ -217,6 +217,35 @@ describe('UpdateWorkshopGuideDto (spec 035)', () => {
   );
 
   it.each([
+    ['true', true],
+    ['false', false],
+    ['missing (admin before spec 036)', undefined],
+  ])(
+    'Given decoderEnabled %s, When validated, Then it is accepted',
+    async (_l, decoderEnabled) => {
+      const body = aBody();
+      if (decoderEnabled === undefined) delete body.decoderEnabled;
+      else body.decoderEnabled = decoderEnabled;
+
+      expect(await violationsOf(body)).toEqual([]);
+    },
+  );
+
+  it.each([
+    ['the string "false"', 'false'],
+    ['the string "true"', 'true'],
+    ['1', 1],
+    ['null', null],
+  ])(
+    'Given decoderEnabled as %s, When validated, Then it is refused (never coerced)',
+    async (_l, decoderEnabled) => {
+      expect(await violationsOf({ ...aBody(), decoderEnabled })).toContain(
+        'decoderEnabled:isBoolean',
+      );
+    },
+  );
+
+  it.each([
     ['missing', undefined, 'version:isInt'],
     ['negative', -1, 'version:min'],
     ['decimal', 1.5, 'version:isInt'],

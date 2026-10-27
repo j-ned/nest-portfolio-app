@@ -79,11 +79,24 @@ export class UpdateWorkshopGuideDto {
   @Min(0)
   version!: number;
 
-  @ApiProperty({ description: 'Guide visible sur le site' })
+  @ApiProperty({ description: 'Guide des plaquettes visible sur le site' })
   // La conversion implicite ferait de "false" un `true` : on valide la valeur reçue, telle quelle.
   @Transform(({ obj, key }) => (obj as Record<string, unknown>)[key])
   @IsBoolean()
   enabled!: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Décodeur de code ISO visible sur le site (spec 036). Facultatif : absent, la valeur stockée est conservée (false si aucune). Booléen JSON strict, null refusé',
+  })
+  // Même garde que `enabled` : "false" n'est jamais converti. Seul l'absent passe la validation.
+  @Transform(({ obj, key }) => (obj as Record<string, unknown>)[key])
+  @ValidateIf(
+    ({ decoderEnabled }: UpdateWorkshopGuideDto) =>
+      decoderEnabled !== undefined,
+  )
+  @IsBoolean()
+  decoderEnabled?: boolean;
 
   @ApiProperty({ type: [WorkshopGuideEntryDto], maxItems: L.entries })
   @IsArray()
