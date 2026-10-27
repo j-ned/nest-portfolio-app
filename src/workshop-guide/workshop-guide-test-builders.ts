@@ -1,4 +1,5 @@
 import type {
+  StoredWorkshopGuideContent,
   WorkshopGuideContent,
   WorkshopGuideEntry,
 } from './workshop-guide-content';
@@ -20,9 +21,16 @@ export const aWorkshopGuideContent = (
   overrides: Partial<WorkshopGuideContent> = {},
 ): WorkshopGuideContent => ({
   enabled: true,
+  decoderEnabled: true,
   entries: [
     anEntry(),
     anEntry({ operation: 'threading', insert: 'CODE 0002', noseRadius: 0.4 }),
   ],
   ...overrides,
 });
+
+/** Le même contenu sans `decoderEnabled` : ligne stockée avant la spec 036, ou corps de l'admin d'avant. */
+export const withoutDecoderToggle = ({
+  enabled,
+  entries,
+}: WorkshopGuideContent): StoredWorkshopGuideContent => ({ enabled, entries });

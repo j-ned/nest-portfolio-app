@@ -19,7 +19,7 @@ export class WorkshopGuideController {
   @Get()
   @ApiOperation({
     summary:
-      'Get the insert guide (public). Without a stored document: disabled, no entry, version 0.',
+      'Get the insert guide (public): enabled, decoderEnabled (ISO code decoder, false when never set), entries, version, updatedAt. Without a stored document: disabled, decoder off, no entry, version 0.',
   })
   findCurrent() {
     return this.guide.findCurrent();
@@ -30,7 +30,7 @@ export class WorkshopGuideController {
   @ApiBearerAuth()
   @ApiOperation({
     summary:
-      'Replace the whole insert guide (admin). An identical document at the current version writes nothing; version 0 creates it.',
+      'Replace the whole insert guide (admin). decoderEnabled is optional: when absent, the stored value is kept. An identical document at the current version writes nothing; version 0 creates it.',
   })
   @ApiResponse({ status: 400, description: 'Invalid document' })
   @ApiResponse({ status: 409, description: 'Stale version' })

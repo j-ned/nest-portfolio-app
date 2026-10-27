@@ -28,8 +28,22 @@ export type WorkshopGuideEntry = {
 
 /** Contenu éditable du guide des plaquettes : un document unique, saisi dans l'admin. */
 export type WorkshopGuideContent = {
+  /** Guide des plaquettes visible sur le site. */
   readonly enabled: boolean;
+  /** Décodeur de code ISO visible sur le site (spec 036), indépendant du guide. */
+  readonly decoderEnabled: boolean;
   readonly entries: readonly WorkshopGuideEntry[];
+};
+
+/**
+ * Contenu tel que le `jsonb` le garde : une ligne écrite avant la spec 036 n'a pas
+ * `decoderEnabled`, qui vaut alors `false` à la lecture (`toWorkshopGuideContentRead`).
+ */
+export type StoredWorkshopGuideContent = Omit<
+  WorkshopGuideContent,
+  'decoderEnabled'
+> & {
+  readonly decoderEnabled?: boolean;
 };
 
 /**

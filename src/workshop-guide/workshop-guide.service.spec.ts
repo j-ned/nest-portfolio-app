@@ -10,8 +10,15 @@ import {
 } from '../database/schema/workshop-guide';
 import { createMockDb } from '../database/test-utils';
 import { UpdateWorkshopGuideDto } from './dto/update-workshop-guide.dto';
-import type { WorkshopGuideContent } from './workshop-guide-content';
-import { anEntry, aWorkshopGuideContent } from './workshop-guide-test-builders';
+import type {
+  StoredWorkshopGuideContent,
+  WorkshopGuideContent,
+} from './workshop-guide-content';
+import {
+  anEntry,
+  aWorkshopGuideContent,
+  withoutDecoderToggle,
+} from './workshop-guide-test-builders';
 import { WorkshopGuideService } from './workshop-guide.service';
 
 const UPDATED_AT = new Date('2026-10-27T08:00:00.000Z');
@@ -25,7 +32,7 @@ const aRow = (overrides: Partial<WorkshopGuideRow> = {}): WorkshopGuideRow => ({
 });
 
 /** Le corps tel que la ValidationPipe le livre : une instance du DTO. */
-const aDto = (content: WorkshopGuideContent, version: number) =>
+const aDto = (content: StoredWorkshopGuideContent, version: number) =>
   plainToInstance(UpdateWorkshopGuideDto, { ...content, version });
 
 describe('WorkshopGuideService', () => {
@@ -59,9 +66,37 @@ describe('WorkshopGuideService', () => {
 
       expect(await service.findCurrent()).toEqual({
         enabled: false,
+        decoderEnabled: false,
         entries: [],
         version: 0,
         updatedAt: null,
+      });
+    });
+
+    it('Given a row stored before the decoder toggle, When read, Then decoderEnabled is false', async () => {
+      db.limit.mockResolvedValueOnce([
+        aRow({ content: withoutDecoderToggle(aWorkshopGuideContent()) }),
+      ]);
+
+      expect(await service.findCurrent()).toStrictEqual({
+        ...aWorkshopGuideContent(),
+        decoderEnabled: false,
+        version: 3,
+        updatedAt: UPDATED_AT,
+      });
+    });
+
+    it('Given the production row (disabled, no entry, no decoder toggle), When read, Then the decoder is off', async () => {
+      db.limit.mockResolvedValueOnce([
+        aRow({ content: { enabled: false, entries: [] }, version: 1 }),
+      ]);
+
+      expect(await service.findCurrent()).toStrictEqual({
+        enabled: false,
+        decoderEnabled: false,
+        entries: [],
+        version: 1,
+        updatedAt: UPDATED_AT,
       });
     });
   });
@@ -146,6 +181,7 @@ describe('WorkshopGuideService', () => {
       db.returning.mockResolvedValueOnce([aRow({ version: 4 })]);
       const sent: WorkshopGuideContent = {
         enabled: true,
+        decoderEnabled: true,
         entries: [
           anEntry({ material: '  Inox  ', insert: ' CODE 9 ', note: '  ' }),
           anEntry({ material: 'Alu', note: ' Vue ' }),
@@ -164,6 +200,7 @@ describe('WorkshopGuideService', () => {
       const stored = written.content;
       expect(stored).toStrictEqual({
         enabled: true,
+        decoderEnabled: true,
         entries: [
           {
             material: 'Inox',
@@ -185,6 +222,129 @@ describe('WorkshopGuideService', () => {
             noseRadius: 0.2,
           },
         ],
+      });
+    });
+
+    describe('decoderEnabled (spec 036)', () => {
+      /** Contenu écrit par le dernier `set` (mise à jour conditionnelle). */
+      const writtenContent = () =>
+        (db.set.mock.calls as [[{ content: unknown }]])[0][0].content;
+
+      it.each([
+        ['turned off', true, false],
+        ['turned on', false, true],
+      ])(
+        'Given the toggle %s, When replaced, Then the new value is written',
+        async (_l, stored, sent) => {
+          db.limit.mockResolvedValueOnce([
+            aRow({
+              content: aWorkshopGuideContent({ decoderEnabled: stored }),
+            }),
+          ]);
+          db.returning.mockResolvedValueOnce([aRow({ version: 4 })]);
+
+          await service.replace(
+            aDto(aWorkshopGuideContent({ decoderEnabled: sent }), 3),
+          );
+
+          expect(writtenContent()).toStrictEqual(
+            aWorkshopGuideContent({ decoderEnabled: sent }),
+          );
+        },
+      );
+
+      it.each([
+        ['on', true],
+        ['off', false],
+      ])(
+        'Given the stored decoder %s and a body without the field, When the entries change, Then the stored value is kept',
+        async (_l, stored) => {
+          db.limit.mockResolvedValueOnce([
+            aRow({
+              content: aWorkshopGuideContent({ decoderEnabled: stored }),
+            }),
+          ]);
+          db.returning.mockResolvedValueOnce([aRow({ version: 4 })]);
+
+          await service.replace(
+            aDto(
+              withoutDecoderToggle(aWorkshopGuideContent({ entries: [] })),
+              3,
+            ),
+          );
+
+          expect(writtenContent()).toStrictEqual(
+            aWorkshopGuideContent({ decoderEnabled: stored, entries: [] }),
+          );
+        },
+      );
+
+      it('Given a row stored before the toggle and a body without the field, When the entries change, Then false is written', async () => {
+        db.limit.mockResolvedValueOnce([
+          aRow({ content: withoutDecoderToggle(aWorkshopGuideContent()) }),
+        ]);
+        db.returning.mockResolvedValueOnce([aRow({ version: 4 })]);
+
+        await service.replace(
+          aDto(withoutDecoderToggle(aWorkshopGuideContent({ entries: [] })), 3),
+        );
+
+        expect(writtenContent()).toStrictEqual(
+          aWorkshopGuideContent({ decoderEnabled: false, entries: [] }),
+        );
+      });
+
+      it('Given no row, version 0 and a body without the field, When replaced, Then the document is created with the decoder off', async () => {
+        db.limit.mockResolvedValueOnce([]);
+        db.returning.mockResolvedValueOnce([aRow({ version: 1 })]);
+
+        await service.replace(
+          aDto(withoutDecoderToggle(aWorkshopGuideContent()), 0),
+        );
+
+        expect(db.values).toHaveBeenCalledWith({
+          id: 'main',
+          content: aWorkshopGuideContent({ decoderEnabled: false }),
+        });
+      });
+
+      it.each([
+        [
+          'a body without the field',
+          aRow(),
+          withoutDecoderToggle(aWorkshopGuideContent()),
+        ],
+        [
+          'a row stored before the toggle and a body without the field',
+          aRow({ content: withoutDecoderToggle(aWorkshopGuideContent()) }),
+          withoutDecoderToggle(aWorkshopGuideContent()),
+        ],
+        [
+          'a row stored before the toggle and decoderEnabled false',
+          aRow({ content: withoutDecoderToggle(aWorkshopGuideContent()) }),
+          aWorkshopGuideContent({ decoderEnabled: false }),
+        ],
+      ])(
+        'Given %s, same content otherwise, When replaced, Then nothing is written',
+        async (_l, row, sent) => {
+          db.limit.mockResolvedValueOnce([row]);
+
+          await service.replace(aDto(sent, 3));
+
+          expect(db.update).not.toHaveBeenCalled();
+          expect(db.insert).not.toHaveBeenCalled();
+        },
+      );
+
+      it('Given a row with the decoder on and decoderEnabled false, same content otherwise, When replaced, Then it is written', async () => {
+        db.limit.mockResolvedValueOnce([aRow()]);
+        db.returning.mockResolvedValueOnce([aRow({ version: 4 })]);
+
+        await service.replace(
+          aDto(aWorkshopGuideContent({ decoderEnabled: false }), 3),
+        );
+
+        expect(db.update).toHaveBeenCalledWith(workshopGuide);
       });
     });
   });

@@ -13,6 +13,7 @@ import type { WorkshopGuideDocument } from './workshop-guide-content';
 import {
   DEFAULT_WORKSHOP_GUIDE_DOCUMENT,
   toWorkshopGuideContent,
+  toWorkshopGuideContentRead,
   toWorkshopGuideDocument,
 } from './workshop-guide-document';
 
@@ -30,15 +31,25 @@ export class WorkshopGuideService {
   /**
    * Remplace le document sous contrôle de version : un contenu identique à la version lue n'écrit
    * rien ; une version périmée donne 409. Version 0 = création, 409 si la ligne existe déjà.
+   * `decoderEnabled` est facultatif dans le corps : absent, la valeur stockée est conservée.
    */
   async replace(dto: UpdateWorkshopGuideDto): Promise<WorkshopGuideDocument> {
     const current = await this.findRow();
-    const content = toWorkshopGuideContent(dto);
-    // jsonb ne garde pas l'ordre des clés : comparaison structurelle, pas textuelle.
+    const stored = current
+      ? toWorkshopGuideContentRead(current.content)
+      : undefined;
+    // `decoderEnabled` absent du corps : la valeur de la ligne lue est gardée. Elle n'est écrite que
+    // si cette ligne a toujours la version envoyée (mise à jour conditionnelle), sinon 409.
+    const content = toWorkshopGuideContent(
+      dto,
+      stored?.decoderEnabled ?? false,
+    );
+    // jsonb ne garde pas l'ordre des clés : comparaison structurelle, pas textuelle. Le contenu lu
+    // a son défaut appliqué : une ligne sans `decoderEnabled` égale un corps à `false`.
     if (
       current &&
       dto.version === current.version &&
-      isDeepStrictEqual(current.content, content)
+      isDeepStrictEqual(stored, content)
     ) {
       return toWorkshopGuideDocument(current);
     }
