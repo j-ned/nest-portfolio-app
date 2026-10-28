@@ -1,9 +1,13 @@
 name: CI
 
+# Sur une PR : lint, types, tests sur Postgres, build, et construction de l'image. Sur master (push ou
+# lancement manuel), une fois les deux jobs verts : l'image est publiée sur GHCR et Dokploy la déploie
+# par son API, sans rien reconstruire.
 on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -88,7 +92,7 @@ jobs:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Exactement ce que Dokploy exécute : le Dockerfile du repo, sans push.
+      # Le Dockerfile du repo, sans push : l'image que `publish` pousse est reconstruite depuis ce cache.
       - name: Build image
         uses: docker/build-push-action@v6
         with:
@@ -97,3 +101,53 @@ jobs:
           tags: nest-portfolio-app:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  publish:
+    name: Publish · Deploy
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    needs: [verify, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Même Dockerfile et même cache que le job `docker` : toutes les couches viennent du cache.
+      - name: Push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          cache-from: type=gha
+
+      # Dokploy tire `latest` et redémarre le conteneur (le webhook d'une application « image »
+      # attend la charge utile de Docker Hub). Sans les secrets, l'étape ne fait rien.
+      - name: Deploy (Dokploy API)
+        env:
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_APPLICATION_ID: ${{ secrets.DOKPLOY_APPLICATION_ID }}
+        run: |
+          if [ -z "$DOKPLOY_URL" ] || [ -z "$DOKPLOY_API_KEY" ] || [ -z "$DOKPLOY_APPLICATION_ID" ]; then
+            echo "Secrets Dokploy absents : pas de déclenchement."
+            exit 0
+          fi
+          curl -fsS -X POST "$DOKPLOY_URL/api/application.deploy" \
+            -H "x-api-key: $DOKPLOY_API_KEY" -H 'Content-Type: application/json' \
+            -d "{\"applicationId\": \"$DOKPLOY_APPLICATION_ID\"}" -o /dev/null
